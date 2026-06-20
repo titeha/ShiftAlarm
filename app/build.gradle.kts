@@ -1,0 +1,56 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+  alias(libs.plugins.android.application)
+  alias(libs.plugins.kotlin.android)
+  alias(libs.plugins.compose.compiler)
+}
+
+android {
+  namespace = "ru.titeha.shiftalarm"
+  compileSdk = 36
+
+  defaultConfig {
+    applicationId = "ru.titeha.shiftalarm"
+    minSdk = 26
+    targetSdk = 36
+    versionCode = 1
+    versionName = "0.1.0"
+
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+  }
+
+  buildFeatures { compose = true }
+
+  buildTypes {
+    release {
+      isMinifyEnabled = false
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+    }
+  }
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+  }
+}
+
+kotlin {
+  jvmToolchain(21)
+  compilerOptions {
+    jvmTarget.set(JvmTarget.JVM_21)
+  }
+}
+
+dependencies {
+  implementation(libs.androidx.core.ktx)
+  implementation(platform(libs.androidx.compose.bom))
+  implementation(libs.androidx.compose.ui)
+  implementation(libs.androidx.compose.ui.tooling.preview)
+  implementation(libs.androidx.compose.material3)
+  implementation(libs.androidx.activity.compose)
+
+  // Наш опубликованный компонент с JitPack
+  implementation(libs.analog.timepicker)
+
+  testImplementation(libs.junit)
+}

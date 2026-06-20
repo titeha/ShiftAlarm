@@ -1,0 +1,4 @@
+<resources>
+    <!-- Базовая тема окна; собственно оформление рисует Compose (MaterialTheme). -->
+    <style name="Theme.ShiftAlarm" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
