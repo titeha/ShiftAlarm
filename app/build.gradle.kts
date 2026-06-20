@@ -52,5 +52,8 @@ dependencies {
   // Наш опубликованный компонент с JitPack
   implementation(libs.analog.timepicker)
 
+  // Хранение настроек будильника
+  implementation(libs.androidx.datastore.preferences)
+
   testImplementation(libs.junit)
 }

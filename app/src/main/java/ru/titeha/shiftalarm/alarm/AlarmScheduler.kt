@@ -5,6 +5,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import ru.titeha.shiftalarm.AlarmActivity
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 /**
  * Планирование одного будильника через системный AlarmManager.setAlarmClock —
@@ -29,8 +31,21 @@ object AlarmScheduler {
     alarmManager.setAlarmClock(info, firePendingIntent(context))
   }
 
+  /** Запланировать на ближайшее время HH:MM (сегодня, иначе завтра). */
+  fun scheduleAt(context: Context, hour: Int, minute: Int) {
+    schedule(context, nextTriggerMillis(hour, minute))
+  }
+
   fun cancel(context: Context) {
     context.getSystemService(AlarmManager::class.java).cancel(firePendingIntent(context))
+  }
+
+  /** Ближайший момент срабатывания для HH:MM. */
+  fun nextTriggerMillis(hour: Int, minute: Int): Long {
+    val now = LocalDateTime.now()
+    var target = now.toLocalDate().atTime(hour, minute)
+    if (!target.isAfter(now)) target = target.plusDays(1)
+    return target.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
   }
 
   /** PendingIntent, который сработает в назначенное время и разбудит AlarmReceiver. */
