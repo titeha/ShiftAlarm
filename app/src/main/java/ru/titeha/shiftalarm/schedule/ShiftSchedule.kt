@@ -1,6 +1,7 @@
 package ru.titeha.shiftalarm.schedule
 
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.temporal.ChronoUnit
 
@@ -98,4 +99,26 @@ object ShiftEngine {
 
   fun wakeTimeOn(date: LocalDate, schedule: ShiftSchedule): LocalTime? =
     shiftOn(date, schedule).wakeTime
+
+  /**
+   * Ближайший момент звонка строго после [from] по расписанию [schedule].
+   * Перебирает дни вперёд до [searchDays]; возвращает null, если за этот горизонт
+   * рабочих дней нет (например, график целиком из выходных).
+   */
+  fun nextAlarm(
+    from: LocalDateTime,
+    schedule: ShiftSchedule,
+    searchDays: Int = 366
+  ): LocalDateTime? {
+    var date = from.toLocalDate()
+    repeat(searchDays) {
+      val wake = wakeTimeOn(date, schedule)
+      if (wake != null) {
+        val candidate = date.atTime(wake)
+        if (candidate.isAfter(from)) return candidate
+      }
+      date = date.plusDays(1)
+    }
+    return null
+  }
 }

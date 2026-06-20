@@ -6,6 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 
 class ShiftEngineTest {
@@ -147,5 +148,44 @@ class ShiftEngineTest {
     assertNull(ShiftEngine.wakeTimeOn(anchor.plusDays(1), schedule))
     // соседний день в периоде — подмена
     assertEquals("Ночь", ShiftEngine.shiftOn(anchor.plusDays(2), schedule).name)
+  }
+
+  // --- Ближайший звонок ---
+
+  @Test
+  fun next_alarm_today_before_wake() {
+    val s = ShiftSchedule(ShiftPattern.workRest(2, 2, work, anchor))
+    val from = anchor.atTime(6, 0) // рабочий день, до 7:00
+    assertEquals(anchor.atTime(7, 0), ShiftEngine.nextAlarm(from, s))
+  }
+
+  @Test
+  fun next_alarm_today_after_wake_goes_to_next_work_day() {
+    val s = ShiftSchedule(ShiftPattern.workRest(2, 2, work, anchor))
+    val from = anchor.atTime(8, 0) // рабочий день, уже после 7:00
+    assertEquals(anchor.plusDays(1).atTime(7, 0), ShiftEngine.nextAlarm(from, s))
+  }
+
+  @Test
+  fun next_alarm_from_day_off_skips_to_work_day() {
+    val s = ShiftSchedule(ShiftPattern.workRest(2, 2, work, anchor))
+    val from = anchor.plusDays(2).atTime(10, 0) // выходной (дни 2,3) -> следующий рабочий день 4
+    assertEquals(anchor.plusDays(4).atTime(7, 0), ShiftEngine.nextAlarm(from, s))
+  }
+
+  @Test
+  fun next_alarm_skips_today_when_exception_forces_off() {
+    val s = ShiftSchedule(
+      base = ShiftPattern.workRest(2, 2, work, anchor),
+      exceptions = mapOf(anchor to ShiftType.off())
+    )
+    val from = anchor.atTime(6, 0)
+    assertEquals(anchor.plusDays(1).atTime(7, 0), ShiftEngine.nextAlarm(from, s))
+  }
+
+  @Test
+  fun next_alarm_null_when_schedule_all_off() {
+    val s = ShiftSchedule(ShiftPattern(listOf(ShiftType.off()), anchor))
+    assertNull(ShiftEngine.nextAlarm(anchor.atTime(6, 0), s))
   }
 }
