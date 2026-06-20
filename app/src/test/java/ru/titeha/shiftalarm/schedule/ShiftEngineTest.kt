@@ -100,4 +100,52 @@ class ShiftEngineTest {
     // 100 полных циклов (1200 дней) + 7 -> снова "Ночь"
     assertEquals("Ночь", nameOn(p, 1200 + 7))
   }
+
+  // --- Подмены и исключения ---
+
+  private val night = ShiftType("n", "Ночь", LocalTime.of(18, 0))
+
+  @Test
+  fun exception_forces_day_off() {
+    val schedule = ShiftSchedule(
+      base = ShiftPattern.workRest(2, 2, work, anchor),
+      exceptions = mapOf(anchor to ShiftType.off()) // в рабочий день — выходной
+    )
+    assertNull(ShiftEngine.wakeTimeOn(anchor, schedule))
+  }
+
+  @Test
+  fun exception_forces_specific_shift_on_day_off() {
+    val schedule = ShiftSchedule(
+      base = ShiftPattern.workRest(2, 2, work, anchor),
+      exceptions = mapOf(anchor.plusDays(2) to night) // в выходной — выйти в ночь
+    )
+    assertEquals(LocalTime.of(18, 0), ShiftEngine.wakeTimeOn(anchor.plusDays(2), schedule))
+  }
+
+  @Test
+  fun swap_overrides_base_within_period() {
+    val schedule = ShiftSchedule(
+      base = ShiftPattern.workRest(2, 2, work, anchor),
+      swaps = listOf(TemporarySwap(anchor.plusDays(2), anchor.plusDays(3), night))
+    )
+    assertEquals("Ночь", ShiftEngine.shiftOn(anchor.plusDays(2), schedule).name)
+    assertEquals("Ночь", ShiftEngine.shiftOn(anchor.plusDays(3), schedule).name)
+    // вне периода — базовая ротация
+    assertEquals("Работа", ShiftEngine.shiftOn(anchor.plusDays(0), schedule).name)
+    assertEquals("Работа", ShiftEngine.shiftOn(anchor.plusDays(4), schedule).name)
+  }
+
+  @Test
+  fun exception_beats_swap() {
+    val schedule = ShiftSchedule(
+      base = ShiftPattern.workRest(2, 2, work, anchor),
+      swaps = listOf(TemporarySwap(anchor, anchor.plusDays(5), night)),
+      exceptions = mapOf(anchor.plusDays(1) to ShiftType.off())
+    )
+    // на день 1 действует и подмена (ночь), и исключение (выходной) — выигрывает исключение
+    assertNull(ShiftEngine.wakeTimeOn(anchor.plusDays(1), schedule))
+    // соседний день в периоде — подмена
+    assertEquals("Ночь", ShiftEngine.shiftOn(anchor.plusDays(2), schedule).name)
+  }
 }

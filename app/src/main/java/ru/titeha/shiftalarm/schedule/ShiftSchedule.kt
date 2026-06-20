@@ -52,6 +52,28 @@ data class ShiftPattern(
   }
 }
 
+/** Временная подмена: на период [from]..[to] (включительно) действует смена [shift]. */
+data class TemporarySwap(
+  val from: LocalDate,
+  val to: LocalDate,
+  val shift: ShiftType
+) {
+  init { require(!to.isBefore(from)) { "Конец периода раньше начала" } }
+  fun covers(date: LocalDate): Boolean = !date.isBefore(from) && !date.isAfter(to)
+}
+
+/**
+ * Полное расписание: базовая ротация + временные подмены на период + ручные исключения на дату.
+ *
+ * Приоритет резолва: исключение на дату > подмена на период > базовая ротация.
+ * (Учёт производственного календаря для праздников добавится отдельным слоем — см. #15.)
+ */
+data class ShiftSchedule(
+  val base: ShiftPattern,
+  val swaps: List<TemporarySwap> = emptyList(),
+  val exceptions: Map<LocalDate, ShiftType> = emptyMap()
+)
+
 /** Чистый (без UI и I/O) движок резолва смены на дату. */
 object ShiftEngine {
 
@@ -63,7 +85,17 @@ object ShiftEngine {
     return pattern.slots[index]
   }
 
+  /** Смена на [date] с учётом исключений и подмен (по приоритету). */
+  fun shiftOn(date: LocalDate, schedule: ShiftSchedule): ShiftType {
+    schedule.exceptions[date]?.let { return it }
+    schedule.swaps.firstOrNull { it.covers(date) }?.let { return it.shift }
+    return shiftOn(date, schedule.base)
+  }
+
   /** Во сколько будить в [date] (или null — выходной/без звонка). */
   fun wakeTimeOn(date: LocalDate, pattern: ShiftPattern): LocalTime? =
     shiftOn(date, pattern).wakeTime
+
+  fun wakeTimeOn(date: LocalDate, schedule: ShiftSchedule): LocalTime? =
+    shiftOn(date, schedule).wakeTime
 }
