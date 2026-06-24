@@ -5,66 +5,61 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import ru.titeha.shiftalarm.AlarmActivity
-import ru.titeha.shiftalarm.data.AlarmState
-import ru.titeha.shiftalarm.schedule.ShiftEngine
-import ru.titeha.shiftalarm.schedule.ShiftPresets
-import java.time.LocalDate
+import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.schedule.AlarmTimes
 import java.time.LocalDateTime
 import java.time.ZoneId
 
 /**
- * Планирование будильника через системный AlarmManager.setAlarmClock —
+ * Планирование будильников через системный AlarmManager.setAlarmClock —
  * «честный» будильник: переживает Doze и показывает системную иконку будущего сигнала.
+ *
+ * У каждого будильника свой PendingIntent: код запроса выводится из id записи,
+ * поэтому несколько будильников не затирают друг друга.
  */
 object AlarmScheduler {
 
-  private const val REQUEST_FIRE = 1001
-  private const val REQUEST_SHOW = 1002
+  const val EXTRA_ALARM_ID = "alarm_id"
+  const val NO_ID = -1L
 
-  /** Запланировать/отменить будильник по сохранённому состоянию. */
-  fun applyFromState(context: Context, state: AlarmState) {
-    val next = if (state.enabled) nextTrigger(state) else null
+  /** Запланировать (или отменить, если выключен/нечего ставить) один будильник. */
+  fun reschedule(context: Context, alarm: AlarmEntity) {
+    val next = if (alarm.enabled) AlarmTimes.next(alarm, LocalDateTime.now()) else null
     if (next == null) {
-      cancel(context)
+      cancel(context, alarm.id)
     } else {
-      schedule(context, next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
+      scheduleAt(context, alarm.id, next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
     }
   }
 
-  /** Ближайший момент срабатывания для состояния (или null — нечего ставить). */
-  fun nextTrigger(state: AlarmState): LocalDateTime? {
-    val now = LocalDateTime.now()
-    return if (state.mode == AlarmState.MODE_SHIFT) {
-      val preset = ShiftPresets.byId(state.presetId) ?: return null
-      val anchor = LocalDate.ofEpochDay(state.anchorEpochDay)
-      ShiftEngine.nextAlarm(now, preset.build(anchor))
-    } else {
-      var t = now.toLocalDate().atTime(state.hour, state.minute)
-      if (!t.isAfter(now)) t = t.plusDays(1)
-      t
-    }
+  /** Перепланировать набор будильников (после загрузки или массового изменения). */
+  fun rescheduleAll(context: Context, alarms: List<AlarmEntity>) {
+    alarms.forEach { reschedule(context, it) }
   }
 
-  /** Запланировать на конкретный момент (используется тестовой кнопкой). */
-  fun schedule(context: Context, triggerAtMillis: Long) {
+  fun scheduleAt(context: Context, alarmId: Long, triggerAtMillis: Long) {
     val alarmManager = context.getSystemService(AlarmManager::class.java)
-    val showPending = PendingIntent.getActivity(
-      context, REQUEST_SHOW,
+    val show = PendingIntent.getActivity(
+      context, showRequest(alarmId),
       Intent(context, AlarmActivity::class.java),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
-    val info = AlarmManager.AlarmClockInfo(triggerAtMillis, showPending)
-    alarmManager.setAlarmClock(info, firePendingIntent(context))
+    val info = AlarmManager.AlarmClockInfo(triggerAtMillis, show)
+    alarmManager.setAlarmClock(info, firePendingIntent(context, alarmId))
   }
 
-  fun cancel(context: Context) {
-    context.getSystemService(AlarmManager::class.java).cancel(firePendingIntent(context))
+  fun cancel(context: Context, alarmId: Long) {
+    context.getSystemService(AlarmManager::class.java).cancel(firePendingIntent(context, alarmId))
   }
 
-  private fun firePendingIntent(context: Context): PendingIntent =
+  private fun firePendingIntent(context: Context, alarmId: Long): PendingIntent =
     PendingIntent.getBroadcast(
-      context, REQUEST_FIRE,
-      Intent(context, AlarmReceiver::class.java),
+      context, fireRequest(alarmId),
+      Intent(context, AlarmReceiver::class.java).putExtra(EXTRA_ALARM_ID, alarmId),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
+
+  // Разные коды запроса для «звонка» и «показа», уникальные по id будильника.
+  private fun fireRequest(id: Long): Int = (id * 2).toInt()
+  private fun showRequest(id: Long): Int = (id * 2 + 1).toInt()
 }
