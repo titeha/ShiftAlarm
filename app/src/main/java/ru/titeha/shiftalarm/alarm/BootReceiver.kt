@@ -17,9 +17,7 @@ class BootReceiver : BroadcastReceiver() {
     val pending = goAsync()
     try {
       val state = runBlocking { AlarmStore(context.applicationContext).state.first() }
-      if (state.enabled) {
-        AlarmScheduler.scheduleAt(context, state.hour, state.minute)
-      }
+      AlarmScheduler.applyFromState(context, state)
     } finally {
       pending.finish()
     }
