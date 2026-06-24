@@ -5,9 +5,11 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,8 +33,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -44,6 +48,7 @@ import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftPresets
+import ru.titeha.shiftalarm.ui.AlarmEditorScreen
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -58,14 +63,15 @@ class MainActivity : ComponentActivity() {
         val scope = rememberCoroutineScope()
         val alarms by repo.all.collectAsState(initial = emptyList())
 
+        // null — показываем список; иначе редактор этого будильника.
+        var editing by remember { mutableStateOf<AlarmEntity?>(null) }
+
         RequestNotificationPermission()
 
-        // Сохранить будильник и перепланировать его.
         fun saveAndSchedule(alarm: AlarmEntity) {
           scope.launch {
             val id = repo.upsert(alarm)
-            val saved = alarm.copy(id = id)
-            AlarmScheduler.reschedule(context, saved)
+            AlarmScheduler.reschedule(context, alarm.copy(id = id))
           }
         }
 
@@ -76,59 +82,82 @@ class MainActivity : ComponentActivity() {
           }
         }
 
-        Scaffold { padding ->
-          Column(
-            modifier = Modifier
-              .fillMaxSize()
-              .padding(padding)
-              .padding(16.dp)
-          ) {
-            Text("Будильники", style = MaterialTheme.typography.headlineSmall)
-            Spacer(Modifier.height(12.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-              Button(onClick = {
-                saveAndSchedule(
-                  AlarmEntity(
-                    hour = 7, minute = 0,
-                    mode = AlarmEntity.MODE_WEEKLY,
-                    daysMask = AlarmTimes.maskOf(*DayOfWeek.entries.toTypedArray()),
-                    enabled = true
-                  )
+        val current = editing
+        if (current != null) {
+          BackHandler { editing = null }
+          AlarmEditorScreen(
+            initial = current,
+            onSave = { saveAndSchedule(it); editing = null },
+            onCancel = { editing = null }
+          )
+        } else {
+          AlarmListScreen(
+            alarms = alarms,
+            onAdd = { editing = defaultAlarm() },
+            onAddTest = {
+              val fireAt = LocalDateTime.now().plusMinutes(1)
+              saveAndSchedule(
+                AlarmEntity(
+                  label = "Тест",
+                  hour = fireAt.hour, minute = fireAt.minute,
+                  mode = AlarmEntity.MODE_WEEKLY, daysMask = 0,
+                  deleteAfterFiring = true, enabled = true
                 )
-              }) { Text("+ Будильник") }
-
-              OutlinedButton(onClick = {
-                val fireAt = LocalDateTime.now().plusMinutes(1)
-                saveAndSchedule(
-                  AlarmEntity(
-                    label = "Тест",
-                    hour = fireAt.hour, minute = fireAt.minute,
-                    mode = AlarmEntity.MODE_WEEKLY, daysMask = 0,
-                    deleteAfterFiring = true, enabled = true
-                  )
-                )
-              }) { Text("Тест (+1 мин)") }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            if (alarms.isEmpty()) {
-              Text(
-                "Список пуст. Добавьте будильник.",
-                style = MaterialTheme.typography.bodyMedium
               )
-            } else {
-              LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(alarms, key = { it.id }) { alarm ->
-                  AlarmRow(
-                    alarm = alarm,
-                    onToggle = { on -> saveAndSchedule(alarm.copy(enabled = on)) },
-                    onDelete = { remove(alarm) }
-                  )
-                }
-              }
-            }
+            },
+            onEdit = { editing = it },
+            onToggle = { alarm, on -> saveAndSchedule(alarm.copy(enabled = on)) },
+            onDelete = { remove(it) }
+          )
+        }
+      }
+    }
+  }
+}
+
+private fun defaultAlarm() = AlarmEntity(
+  hour = 7, minute = 0,
+  mode = AlarmEntity.MODE_WEEKLY,
+  daysMask = AlarmTimes.maskOf(*DayOfWeek.entries.toTypedArray()),
+  enabled = true
+)
+
+@Composable
+private fun AlarmListScreen(
+  alarms: List<AlarmEntity>,
+  onAdd: () -> Unit,
+  onAddTest: () -> Unit,
+  onEdit: (AlarmEntity) -> Unit,
+  onToggle: (AlarmEntity, Boolean) -> Unit,
+  onDelete: (AlarmEntity) -> Unit
+) {
+  Scaffold { padding ->
+    Column(
+      modifier = Modifier
+        .fillMaxSize()
+        .padding(padding)
+        .padding(16.dp)
+    ) {
+      Text("Будильники", style = MaterialTheme.typography.headlineSmall)
+      Spacer(Modifier.height(12.dp))
+
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = onAdd) { Text("+ Будильник") }
+        OutlinedButton(onClick = onAddTest) { Text("Тест (+1 мин)") }
+      }
+      Spacer(Modifier.height(12.dp))
+
+      if (alarms.isEmpty()) {
+        Text("Список пуст. Добавьте будильник.", style = MaterialTheme.typography.bodyMedium)
+      } else {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          items(alarms, key = { it.id }) { alarm ->
+            AlarmRow(
+              alarm = alarm,
+              onClick = { onEdit(alarm) },
+              onToggle = { on -> onToggle(alarm, on) },
+              onDelete = { onDelete(alarm) }
+            )
           }
         }
       }
@@ -139,10 +168,15 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AlarmRow(
   alarm: AlarmEntity,
+  onClick: () -> Unit,
   onToggle: (Boolean) -> Unit,
   onDelete: () -> Unit
 ) {
-  Card(modifier = Modifier.fillMaxWidth()) {
+  Card(
+    modifier = Modifier
+      .fillMaxWidth()
+      .clickable(onClick = onClick)
+  ) {
     Row(
       modifier = Modifier
         .fillMaxWidth()
@@ -150,10 +184,9 @@ private fun AlarmRow(
       verticalAlignment = Alignment.CenterVertically
     ) {
       Column(modifier = Modifier.weight(1f)) {
-        Text(
-          "%02d:%02d".format(alarm.hour, alarm.minute),
-          style = MaterialTheme.typography.headlineMedium
-        )
+        val title = if (alarm.label.isBlank()) "%02d:%02d".format(alarm.hour, alarm.minute)
+        else "%02d:%02d · ${alarm.label}".format(alarm.hour, alarm.minute)
+        Text(title, style = MaterialTheme.typography.headlineMedium)
         Text(describe(alarm), style = MaterialTheme.typography.bodyMedium)
         if (alarm.enabled) {
           val next = AlarmTimes.next(alarm, LocalDateTime.now())
@@ -171,7 +204,6 @@ private fun AlarmRow(
 
 private val DOW_SHORT = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 
-/** Человекочитаемое описание режима будильника. */
 private fun describe(alarm: AlarmEntity): String {
   if (alarm.mode == AlarmEntity.MODE_SHIFT) {
     val title = ShiftPresets.byId(alarm.presetId)?.title ?: alarm.presetId
