@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -34,8 +35,15 @@ import ru.titeha.shiftalarm.schedule.ShiftPresets
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
 
 private val DOW_SHORT = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+
+/** Дата в формате текущей локали устройства (РФ/КЗ → 25.06.2026, US → Jun 25, 2026). */
+private fun LocalDate.localized(): String =
+  format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault()))
 
 /**
  * Экран добавления/редактирования одного будильника.
@@ -142,8 +150,8 @@ private fun WeeklyEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
         checked = draft.deleteAfterFiring,
         onCheckedChange = { onChange(draft.copy(deleteAfterFiring = it)) }
       )
-      Spacer(Modifier.height(0.dp))
-      Text("  Удалить после срабатывания", style = MaterialTheme.typography.bodyMedium)
+      Spacer(Modifier.width(8.dp))
+      Text("Удалить после срабатывания", style = MaterialTheme.typography.bodyMedium)
     }
   }
 }
@@ -166,7 +174,7 @@ private fun ShiftEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   }
   Spacer(Modifier.height(8.dp))
   Text(
-    "Отсчёт цикла — с сегодняшнего дня (${LocalDate.now()}).",
+    "Отсчёт цикла — с сегодняшнего дня (${LocalDate.now().localized()}).",
     style = MaterialTheme.typography.bodySmall
   )
 }
