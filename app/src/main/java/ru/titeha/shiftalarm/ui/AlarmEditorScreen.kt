@@ -1,5 +1,6 @@
 package ru.titeha.shiftalarm.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -127,18 +129,21 @@ private fun WeeklyEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   Spacer(Modifier.height(8.dp))
   FlowRow(
     modifier = Modifier.fillMaxWidth(),
-    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)
   ) {
     DayOfWeek.entries.forEach { day ->
       val on = AlarmTimes.maskHas(draft.daysMask, day)
-      FilterChip(
-        selected = on,
-        onClick = {
-          val bit = AlarmTimes.bitOf(day)
-          onChange(draft.copy(daysMask = if (on) draft.daysMask and bit.inv() else draft.daysMask or bit))
-        },
-        label = { Text(DOW_SHORT[day.value - 1]) }
-      )
+      val toggle = {
+        val bit = AlarmTimes.bitOf(day)
+        onChange(draft.copy(daysMask = if (on) draft.daysMask and bit.inv() else draft.daysMask or bit))
+      }
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clickable { toggle() }
+      ) {
+        Checkbox(checked = on, onCheckedChange = { toggle() })
+        Text(DOW_SHORT[day.value - 1])
+      }
     }
   }
   Spacer(Modifier.height(8.dp))
