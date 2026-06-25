@@ -24,7 +24,13 @@ data class AlarmEntity(
   val presetId: String = "2x2",
   val anchorEpochDay: Long = 0L,
   /** Удалить запись после срабатывания (для разовых «выстрелил и забыл»). */
-  val deleteAfterFiring: Boolean = false
+  val deleteAfterFiring: Boolean = false,
+  /**
+   * Режим цикла смен во время периодов без будильника (отпуск/больничный/отгул):
+   *  - false — цикл «крутится» по календарю (отпуск лишь глушит звонок);
+   *  - true — цикл «замораживается» (отпускные дни не считаются, фаза возобновляется с места ухода).
+   */
+  val freezeCycleDuringOff: Boolean = false
 ) {
   companion object {
     const val MODE_WEEKLY = "weekly"
