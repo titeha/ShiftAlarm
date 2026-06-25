@@ -64,15 +64,39 @@ data class TemporarySwap(
 }
 
 /**
- * Полное расписание: базовая ротация + временные подмены на период + ручные исключения на дату.
+ * Период без будильника (отпуск/больничный/отгул): на [from]..[to] (включительно) звонка нет.
+ * [reason] — ярлык периода (для UI). Влияние на фазу цикла после периода задаётся флагом
+ * [ShiftSchedule.freezeCycleDuringOff].
+ */
+data class OffPeriod(
+  val from: LocalDate,
+  val to: LocalDate,
+  val reason: String = "Отпуск"
+) {
+  init { require(!to.isBefore(from)) { "Конец периода раньше начала" } }
+  fun covers(date: LocalDate): Boolean = !date.isBefore(from) && !date.isAfter(to)
+  /** Длина периода в днях (включительно). */
+  val days: Long get() = ChronoUnit.DAYS.between(from, to) + 1
+}
+
+/**
+ * Полное расписание: базовая ротация + временные подмены + исключения на дату + периоды отпуска.
  *
- * Приоритет резолва: исключение на дату > подмена на период > базовая ротация.
+ * Приоритет резолва: исключение на дату > подмена на период > период отпуска > базовая ротация.
  * (Учёт производственного календаря для праздников добавится отдельным слоем — см. #15.)
+ *
+ * [freezeCycleDuringOff] управляет фазой цикла после отпуска:
+ *  - false (по умолчанию) — цикл «крутится» по календарю: отпуск лишь глушит звонок, базовая
+ *    ротация под низом продолжает идти, после отпуска выходишь на смену «по календарю»;
+ *  - true — цикл «замораживается»: отпускные дни не считаются, после отпуска продолжаешь с той же
+ *    фазы, на которой ушёл (для индивидуального отсчёта/вахты).
  */
 data class ShiftSchedule(
   val base: ShiftPattern,
   val swaps: List<TemporarySwap> = emptyList(),
-  val exceptions: Map<LocalDate, ShiftType> = emptyMap()
+  val exceptions: Map<LocalDate, ShiftType> = emptyMap(),
+  val offPeriods: List<OffPeriod> = emptyList(),
+  val freezeCycleDuringOff: Boolean = false
 )
 
 /** Чистый (без UI и I/O) движок резолва смены на дату. */
@@ -86,11 +110,36 @@ object ShiftEngine {
     return pattern.slots[index]
   }
 
-  /** Смена на [date] с учётом исключений и подмен (по приоритету). */
+  /** Смена на [date] с учётом исключений, подмен и периодов отпуска (по приоритету). */
   fun shiftOn(date: LocalDate, schedule: ShiftSchedule): ShiftType {
     schedule.exceptions[date]?.let { return it }
     schedule.swaps.firstOrNull { it.covers(date) }?.let { return it.shift }
-    return shiftOn(date, schedule.base)
+    if (schedule.offPeriods.any { it.covers(date) }) return ShiftType.off()
+    return baseShiftOn(date, schedule)
+  }
+
+  /** Базовая ротация с учётом «заморозки» цикла на время отпускных периодов. */
+  private fun baseShiftOn(date: LocalDate, schedule: ShiftSchedule): ShiftType {
+    val pattern = schedule.base
+    val len = pattern.slots.size
+    val raw = ChronoUnit.DAYS.between(pattern.anchorDate, date)
+    val effective =
+      if (schedule.freezeCycleDuringOff) raw - frozenDaysBefore(date, pattern.anchorDate, schedule.offPeriods)
+      else raw
+    val index = Math.floorMod(effective, len.toLong()).toInt()
+    return pattern.slots[index]
+  }
+
+  /** Сколько отпускных дней прошло в полуинтервале [anchor, date) — на столько «отстаёт» цикл. */
+  private fun frozenDaysBefore(date: LocalDate, anchor: LocalDate, offPeriods: List<OffPeriod>): Long {
+    if (!date.isAfter(anchor)) return 0L
+    var count = 0L
+    for (p in offPeriods) {
+      val lo = maxOf(p.from, anchor)
+      val hi = minOf(p.to, date.minusDays(1)) // строго до date → включительно по date-1
+      if (!lo.isAfter(hi)) count += ChronoUnit.DAYS.between(lo, hi) + 1
+    }
+    return count
   }
 
   /** Во сколько будить в [date] (или null — выходной/без звонка). */

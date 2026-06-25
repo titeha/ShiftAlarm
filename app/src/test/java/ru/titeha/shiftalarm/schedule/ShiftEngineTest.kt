@@ -188,4 +188,72 @@ class ShiftEngineTest {
     val s = ShiftSchedule(ShiftPattern(listOf(ShiftType.off()), anchor))
     assertNull(ShiftEngine.nextAlarm(anchor.atTime(6, 0), s))
   }
+
+  // --- Периоды отпуска (off) ---
+
+  /** 2/2, отпуск на дни 0..1 (это рабочие дни базовой ротации). */
+  private fun scheduleWithVacation(freeze: Boolean) = ShiftSchedule(
+    base = ShiftPattern.workRest(2, 2, work, anchor),
+    offPeriods = listOf(OffPeriod(anchor, anchor.plusDays(1))),
+    freezeCycleDuringOff = freeze
+  )
+
+  @Test
+  fun off_period_silences_alarm() {
+    val s = scheduleWithVacation(freeze = false)
+    // дни 0,1 — рабочие по базе, но в отпуске звонка нет
+    assertNull(ShiftEngine.wakeTimeOn(anchor.plusDays(0), s))
+    assertNull(ShiftEngine.wakeTimeOn(anchor.plusDays(1), s))
+  }
+
+  @Test
+  fun off_period_roll_keeps_calendar_phase() {
+    val s = scheduleWithVacation(freeze = false)
+    // цикл крутится: после отпуска фаза «по календарю» — дни 2,3 выходные базовые, день 4 — работа
+    assertFalse(ShiftEngine.shiftOn(anchor.plusDays(2), s).isWorkDay)
+    assertFalse(ShiftEngine.shiftOn(anchor.plusDays(3), s).isWorkDay)
+    assertTrue(ShiftEngine.shiftOn(anchor.plusDays(4), s).isWorkDay)
+  }
+
+  @Test
+  fun off_period_freeze_resumes_same_phase() {
+    val s = scheduleWithVacation(freeze = true)
+    // заморозка: 2 отпускных дня не считаются, цикл стартует заново — дни 2,3 работа, 4,5 выходные
+    assertTrue(ShiftEngine.shiftOn(anchor.plusDays(2), s).isWorkDay)
+    assertTrue(ShiftEngine.shiftOn(anchor.plusDays(3), s).isWorkDay)
+    assertFalse(ShiftEngine.shiftOn(anchor.plusDays(4), s).isWorkDay)
+    assertFalse(ShiftEngine.shiftOn(anchor.plusDays(5), s).isWorkDay)
+    assertTrue(ShiftEngine.shiftOn(anchor.plusDays(6), s).isWorkDay)
+  }
+
+  @Test
+  fun next_alarm_skips_off_period() {
+    val s = scheduleWithVacation(freeze = false)
+    // из дня 0 06:00: дни 0,1 в отпуске (молчат), 2,3 выходные базовые → первый звонок день 4
+    assertEquals(anchor.plusDays(4).atTime(7, 0), ShiftEngine.nextAlarm(anchor.atTime(6, 0), s))
+  }
+
+  @Test
+  fun exception_beats_off_period() {
+    val s = ShiftSchedule(
+      base = ShiftPattern.workRest(2, 2, work, anchor),
+      offPeriods = listOf(OffPeriod(anchor, anchor.plusDays(3))),
+      exceptions = mapOf(anchor.plusDays(1) to night)
+    )
+    // в отпускной день исключение выводит в ночь
+    assertEquals(LocalTime.of(18, 0), ShiftEngine.wakeTimeOn(anchor.plusDays(1), s))
+    // соседний отпускной день — без звонка
+    assertNull(ShiftEngine.wakeTimeOn(anchor.plusDays(2), s))
+  }
+
+  @Test
+  fun swap_beats_off_period() {
+    val s = ShiftSchedule(
+      base = ShiftPattern.workRest(2, 2, work, anchor),
+      offPeriods = listOf(OffPeriod(anchor, anchor.plusDays(3))),
+      swaps = listOf(TemporarySwap(anchor.plusDays(1), anchor.plusDays(1), night))
+    )
+    assertEquals("Ночь", ShiftEngine.shiftOn(anchor.plusDays(1), s).name)
+    assertNull(ShiftEngine.wakeTimeOn(anchor.plusDays(2), s))
+  }
 }
