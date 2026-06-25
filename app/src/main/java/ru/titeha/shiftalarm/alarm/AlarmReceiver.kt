@@ -30,7 +30,7 @@ class AlarmReceiver : BroadcastReceiver() {
         when {
           isOneShot(alarm) && alarm.deleteAfterFiring -> repo.delete(alarm)
           isOneShot(alarm) -> repo.update(alarm.copy(enabled = false))
-          else -> AlarmScheduler.reschedule(appContext, alarm) // следующий повтор
+          else -> AlarmScheduler.reschedule(appContext, repo, alarm) // следующий повтор
         }
       }
     } finally {

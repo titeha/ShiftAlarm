@@ -1,6 +1,7 @@
 package ru.titeha.shiftalarm.schedule
 
 import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.data.AlarmPeriod
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -42,12 +43,27 @@ object AlarmTimes {
     return nextWeekly(hour, minute, daysMask, from.plusDays(7))
   }
 
-  /** Ближайшее срабатывание будильника [alarm] строго после [from] (или null — нечего ставить). */
-  fun next(alarm: AlarmEntity, from: LocalDateTime): LocalDateTime? = when (alarm.mode) {
-    AlarmEntity.MODE_SHIFT -> {
-      val preset = ShiftPresets.byId(alarm.presetId)
-      preset?.let { ShiftEngine.nextAlarm(from, it.build(LocalDate.ofEpochDay(alarm.anchorEpochDay))) }
+  /**
+   * Ближайшее срабатывание [alarm] строго после [from] с учётом периодов отпуска [periods]
+   * (для режима смен; «по дням недели» периоды не использует). null — ставить нечего.
+   */
+  fun next(alarm: AlarmEntity, periods: List<AlarmPeriod>, from: LocalDateTime): LocalDateTime? =
+    when (alarm.mode) {
+      AlarmEntity.MODE_SHIFT -> ShiftPresets.byId(alarm.presetId)?.let { preset ->
+        val schedule = preset.build(LocalDate.ofEpochDay(alarm.anchorEpochDay)).copy(
+          offPeriods = periods.map {
+            OffPeriod(LocalDate.ofEpochDay(it.fromEpochDay), LocalDate.ofEpochDay(it.toEpochDay), it.reason)
+          },
+          freezeCycleDuringOff = alarm.freezeCycleDuringOff
+        )
+        ShiftEngine.nextAlarm(from, schedule)
+      }
+      else -> nextWeekly(alarm.hour, alarm.minute, alarm.daysMask, from)
     }
-    else -> nextWeekly(alarm.hour, alarm.minute, alarm.daysMask, from)
-  }
+
+  /**
+   * Без периодов отпуска. Используется для превью «след:» в списке (приблизительно — не глушит
+   * отпускные дни) и для режима «по дням недели», который периоды не использует.
+   */
+  fun next(alarm: AlarmEntity, from: LocalDateTime): LocalDateTime? = next(alarm, emptyList(), from)
 }

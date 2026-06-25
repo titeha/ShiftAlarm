@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import ru.titeha.shiftalarm.AlarmActivity
 import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.data.AlarmPeriod
+import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -22,9 +24,17 @@ object AlarmScheduler {
   const val EXTRA_ALARM_ID = "alarm_id"
   const val NO_ID = -1L
 
-  /** Запланировать (или отменить, если выключен/нечего ставить) один будильник. */
-  fun reschedule(context: Context, alarm: AlarmEntity) {
-    val next = if (alarm.enabled) AlarmTimes.next(alarm, LocalDateTime.now()) else null
+  /** Запланировать, подгрузив периоды отпуска из репозитория (для смен). */
+  suspend fun reschedule(context: Context, repo: AlarmRepository, alarm: AlarmEntity) {
+    reschedule(context, alarm, offPeriodsFor(repo, alarm))
+  }
+
+  /**
+   * Запланировать (или отменить, если выключен/нечего ставить) с уже известными периодами.
+   * Чистый I/O по AlarmManager — без обращений к БД.
+   */
+  fun reschedule(context: Context, alarm: AlarmEntity, periods: List<AlarmPeriod> = emptyList()) {
+    val next = if (alarm.enabled) AlarmTimes.next(alarm, periods, LocalDateTime.now()) else null
     if (next == null) {
       cancel(context, alarm.id)
     } else {
@@ -33,9 +43,13 @@ object AlarmScheduler {
   }
 
   /** Перепланировать набор будильников (после загрузки или массового изменения). */
-  fun rescheduleAll(context: Context, alarms: List<AlarmEntity>) {
-    alarms.forEach { reschedule(context, it) }
+  suspend fun rescheduleAll(context: Context, repo: AlarmRepository, alarms: List<AlarmEntity>) {
+    alarms.forEach { reschedule(context, repo, it) }
   }
+
+  /** Периоды отпуска нужны только сменам; «по дням недели» их не использует. */
+  private suspend fun offPeriodsFor(repo: AlarmRepository, alarm: AlarmEntity): List<AlarmPeriod> =
+    if (alarm.mode == AlarmEntity.MODE_SHIFT) repo.periodsList(alarm.id) else emptyList()
 
   fun scheduleAt(context: Context, alarmId: Long, triggerAtMillis: Long) {
     val alarmManager = context.getSystemService(AlarmManager::class.java)

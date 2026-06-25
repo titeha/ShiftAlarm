@@ -17,8 +17,8 @@ class BootReceiver : BroadcastReceiver() {
     val appContext = context.applicationContext
     try {
       runBlocking {
-        val alarms = AlarmRepository(appContext).enabled()
-        AlarmScheduler.rescheduleAll(appContext, alarms)
+        val repo = AlarmRepository(appContext)
+        AlarmScheduler.rescheduleAll(appContext, repo, repo.enabled())
       }
     } finally {
       pending.finish()

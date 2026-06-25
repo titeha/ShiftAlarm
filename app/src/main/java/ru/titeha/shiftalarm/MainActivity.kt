@@ -71,7 +71,7 @@ class MainActivity : ComponentActivity() {
         fun saveAndSchedule(alarm: AlarmEntity) {
           scope.launch {
             val id = repo.upsert(alarm)
-            AlarmScheduler.reschedule(context, alarm.copy(id = id))
+            AlarmScheduler.reschedule(context, repo, alarm.copy(id = id))
           }
         }
 
