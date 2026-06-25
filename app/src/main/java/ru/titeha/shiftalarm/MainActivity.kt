@@ -45,6 +45,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import ru.titeha.shiftalarm.alarm.AlarmScheduler
 import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftPresets
@@ -63,14 +64,25 @@ class MainActivity : ComponentActivity() {
         val scope = rememberCoroutineScope()
         val alarms by repo.all.collectAsState(initial = emptyList())
 
-        // null — показываем список; иначе редактор этого будильника.
-        var editing by remember { mutableStateOf<AlarmEntity?>(null) }
+        // null — список; иначе редактор: пара (будильник, его периоды отпуска).
+        var editing by remember { mutableStateOf<Pair<AlarmEntity, List<AlarmPeriod>>?>(null) }
 
         RequestNotificationPermission()
 
+        // Включение/выключение, тест — периоды не трогаем (они уже в БД).
         fun saveAndSchedule(alarm: AlarmEntity) {
           scope.launch {
             val id = repo.upsert(alarm)
+            AlarmScheduler.reschedule(context, repo, alarm.copy(id = id))
+          }
+        }
+
+        // Сохранение из редактора — пересохраняем периоды отпуска вместе с будильником.
+        fun saveFromEditor(alarm: AlarmEntity, periods: List<AlarmPeriod>) {
+          scope.launch {
+            val id = repo.upsert(alarm)
+            repo.deletePeriodsForAlarm(id)
+            periods.forEach { repo.upsertPeriod(it.copy(id = 0, alarmId = id)) }
             AlarmScheduler.reschedule(context, repo, alarm.copy(id = id))
           }
         }
@@ -86,14 +98,15 @@ class MainActivity : ComponentActivity() {
         if (current != null) {
           BackHandler { editing = null }
           AlarmEditorScreen(
-            initial = current,
-            onSave = { saveAndSchedule(it); editing = null },
+            initial = current.first,
+            initialPeriods = current.second,
+            onSave = { alarm, periods -> saveFromEditor(alarm, periods); editing = null },
             onCancel = { editing = null }
           )
         } else {
           AlarmListScreen(
             alarms = alarms,
-            onAdd = { editing = defaultAlarm() },
+            onAdd = { editing = defaultAlarm() to emptyList() },
             onAddTest = {
               val fireAt = LocalDateTime.now().plusMinutes(1)
               saveAndSchedule(
@@ -105,7 +118,7 @@ class MainActivity : ComponentActivity() {
                 )
               )
             },
-            onEdit = { editing = it },
+            onEdit = { alarm -> scope.launch { editing = alarm to repo.periodsList(alarm.id) } },
             onToggle = { alarm, on -> saveAndSchedule(alarm.copy(enabled = on)) },
             onDelete = { remove(it) }
           )

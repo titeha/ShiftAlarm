@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.analog.AnalogTimePicker
 import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftPresets
 import java.time.DayOfWeek
@@ -44,7 +45,7 @@ import java.util.Locale
 private val DOW_SHORT = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 
 /** Дата в формате текущей локали устройства (РФ/КЗ → 25.06.2026, US → Jun 25, 2026). */
-private fun LocalDate.localized(): String =
+internal fun LocalDate.localized(): String =
   format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault()))
 
 /**
@@ -54,10 +55,12 @@ private fun LocalDate.localized(): String =
 @Composable
 fun AlarmEditorScreen(
   initial: AlarmEntity,
-  onSave: (AlarmEntity) -> Unit,
+  initialPeriods: List<AlarmPeriod>,
+  onSave: (AlarmEntity, List<AlarmPeriod>) -> Unit,
   onCancel: () -> Unit
 ) {
   var draft by remember { mutableStateOf(initial) }
+  var periods by remember { mutableStateOf(initialPeriods) }
   val isNew = initial.id == 0L
 
   Column(
@@ -100,7 +103,13 @@ fun AlarmEditorScreen(
     if (draft.mode == AlarmEntity.MODE_WEEKLY) {
       WeeklyEditor(draft) { draft = it }
     } else {
-      ShiftEditor(draft) { draft = it }
+      ShiftEditor(
+        draft = draft,
+        periods = periods,
+        onChange = { draft = it },
+        onAddPeriod = { periods = periods + it },
+        onRemovePeriod = { p -> periods = periods - p }
+      )
     }
 
     Spacer(Modifier.height(24.dp))
@@ -110,7 +119,7 @@ fun AlarmEditorScreen(
       horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
       OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Отмена") }
-      Button(onClick = { onSave(draft) }, modifier = Modifier.weight(1f)) { Text("Сохранить") }
+      Button(onClick = { onSave(draft, periods) }, modifier = Modifier.weight(1f)) { Text("Сохранить") }
     }
   }
 }
@@ -163,7 +172,13 @@ private fun WeeklyEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
 }
 
 @Composable
-private fun ShiftEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
+private fun ShiftEditor(
+  draft: AlarmEntity,
+  periods: List<AlarmPeriod>,
+  onChange: (AlarmEntity) -> Unit,
+  onAddPeriod: (AlarmPeriod) -> Unit,
+  onRemovePeriod: (AlarmPeriod) -> Unit
+) {
   Text("Время подъёма задаётся графиком смены.", style = MaterialTheme.typography.bodyMedium)
   Spacer(Modifier.height(8.dp))
   Text("График:", style = MaterialTheme.typography.titleMedium)
@@ -183,6 +198,36 @@ private fun ShiftEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
     "Отсчёт цикла — с сегодняшнего дня (${LocalDate.now().localized()}).",
     style = MaterialTheme.typography.bodySmall
   )
+
+  Spacer(Modifier.height(16.dp))
+  VacationSection(
+    alarmId = draft.id,
+    periods = periods,
+    onAdd = onAddPeriod,
+    onRemove = onRemovePeriod
+  )
+
+  Spacer(Modifier.height(16.dp))
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    Switch(
+      checked = draft.freezeCycleDuringOff,
+      onCheckedChange = { onChange(draft.copy(freezeCycleDuringOff = it)) }
+    )
+    Spacer(Modifier.width(8.dp))
+    Column {
+      Text("Заморозить цикл на время отпуска", style = MaterialTheme.typography.bodyMedium)
+      Text(
+        if (draft.freezeCycleDuringOff)
+          "После отпуска цикл продолжится с той смены, где ты ушёл."
+        else
+          "Цикл крутится по календарю; после отпуска — смена «по графику».",
+        style = MaterialTheme.typography.bodySmall
+      )
+    }
+  }
 }
 
 @Composable
