@@ -118,7 +118,8 @@ private fun WeeklyEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   AnalogTimePicker(
     time = LocalTime.of(draft.hour, draft.minute),
     onTimeChange = { t -> onChange(draft.copy(hour = t.hour, minute = t.minute)) },
-    snapLabel = "5 минут"
+    snapLabel = "5 минут",
+    nowLabel = "Сейчас"
   )
   Spacer(Modifier.height(16.dp))
 
