@@ -59,6 +59,13 @@ GRADLE_USER_HOME="H:\gradlecache" \
 
 Готовый APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
+Инструментальный тест миграции БД (нужен подключённый телефон/устройство, не эмулятор):
+
+```bash
+./gradlew.bat :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=ru.titeha.shiftalarm.data.AppDatabaseMigrationTest
+```
+
 ## Стек и версии
 
 - compileSdk / targetSdk 36, **minSdk 26**, JVM 21.
@@ -69,9 +76,10 @@ GRADLE_USER_HOME="H:\gradlecache" \
 
 Приложение **предрелизное**. Известные TODO до публичного релиза:
 
-- БД сейчас пересоздаётся при смене схемы (`fallbackToDestructiveMigration`) — заменить на
-  нормальную миграцию с инструментальным тестом.
 - Превью «след:» в списке для смен пока не учитывает периоды отпуска.
+
+Миграции БД — настоящие (без пересоздания): схемы версий экспортируются в `app/schemas/`,
+переходы покрыты инструментальным тестом миграции (`AppDatabaseMigrationTest`).
 
 Планы (следующие итерации): производственный календарь праздников как **отдельный платный
 модуль по странам** (РФ → Казахстан → …), временные подмены/исключения в UI, локализация (en, kk).

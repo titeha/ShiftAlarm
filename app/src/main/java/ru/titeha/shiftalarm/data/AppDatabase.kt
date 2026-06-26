@@ -4,11 +4,25 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
+/**
+ * База приложения (Room).
+ *
+ * Версии схемы экспортируются в `app/schemas/` (`exportSchema = true`) — по ним пишутся
+ * миграции и тест миграции. Переходы регистрируются через [addMigrations]; пересоздания
+ * БД (`fallbackToDestructiveMigration`) нет — данные пользователя сохраняются при апгрейде.
+ *
+ * История версий:
+ *  - v1 — таблица `alarms`.
+ *  - v2 — фича «отпуск»: колонка `alarms.freezeCycleDuringOff` + таблица `alarm_periods`
+ *    (см. [MIGRATION_1_2]).
+ */
 @Database(
   entities = [AlarmEntity::class, AlarmPeriod::class],
   version = 2,
-  exportSchema = false
+  exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 
@@ -18,6 +32,40 @@ abstract class AppDatabase : RoomDatabase() {
   companion object {
     @Volatile private var instance: AppDatabase? = null
 
+    /**
+     * Миграция 1→2 (фича «отпуск»): добавлена колонка цикла и таблица периодов.
+     *
+     * SQL таблицы/индекса скопирован дословно из эталонной схемы Room
+     * (`app/schemas/.../2.json`, поле `createSql`) — иначе хэш схемы разойдётся
+     * и Room упадёт на старте. Проверяется инструментальным тестом
+     * `AppDatabaseMigrationTest` через `MigrationTestHelper.runMigrationsAndValidate`.
+     */
+    val MIGRATION_1_2 = object : Migration(1, 2) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        // alarms: новая колонка режима цикла во время периодов без будильника.
+        // DEFAULT 0 нужен только для существующих строк при ALTER; в схеме Room
+        // колонка без default — на валидацию это не влияет (проверяются тип/NOT NULL).
+        db.execSQL(
+          "ALTER TABLE `alarms` ADD COLUMN `freezeCycleDuringOff` INTEGER NOT NULL DEFAULT 0"
+        )
+        // Новая таблица периодов отпуска + индекс по alarmId (FK на alarms, CASCADE).
+        db.execSQL(
+          "CREATE TABLE IF NOT EXISTS `alarm_periods` (" +
+            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`alarmId` INTEGER NOT NULL, " +
+            "`fromEpochDay` INTEGER NOT NULL, " +
+            "`toEpochDay` INTEGER NOT NULL, " +
+            "`reason` TEXT NOT NULL, " +
+            "FOREIGN KEY(`alarmId`) REFERENCES `alarms`(`id`) " +
+            "ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
+        db.execSQL(
+          "CREATE INDEX IF NOT EXISTS `index_alarm_periods_alarmId` " +
+            "ON `alarm_periods` (`alarmId`)"
+        )
+      }
+    }
+
     fun get(context: Context): AppDatabase =
       instance ?: synchronized(this) {
         instance ?: Room.databaseBuilder(
@@ -25,10 +73,7 @@ abstract class AppDatabase : RoomDatabase() {
           AppDatabase::class.java,
           "shiftalarm.db"
         )
-          // TODO(перед публичным релизом): заменить на нормальную миграцию 1→2
-          // с инструментальным тестом. Сейчас приложение предрелизное — допускаем
-          // пересоздание БД при смене схемы (теряются лишь тестовые будильники).
-          .fallbackToDestructiveMigration(dropAllTables = true)
+          .addMigrations(MIGRATION_1_2)
           .build().also { instance = it }
       }
   }

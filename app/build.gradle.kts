@@ -23,6 +23,9 @@ android {
 
   buildFeatures { compose = true }
 
+  // Эталонные JSON-схемы Room доступны инструментальному тесту миграции как assets.
+  sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
+
   buildTypes {
     release {
       isMinifyEnabled = false
@@ -40,6 +43,11 @@ kotlin {
   compilerOptions {
     jvmTarget.set(JvmTarget.JVM_21)
   }
+}
+
+// Room экспортирует JSON-схему каждой версии БД — нужна для миграций и теста миграции.
+ksp {
+  arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -62,4 +70,9 @@ dependencies {
   ksp(libs.androidx.room.compiler)
 
   testImplementation(libs.junit)
+
+  // Инструментальные тесты (на устройстве): тест миграции БД через MigrationTestHelper.
+  androidTestImplementation(libs.androidx.test.ext.junit)
+  androidTestImplementation(libs.androidx.test.runner)
+  androidTestImplementation(libs.androidx.room.testing)
 }

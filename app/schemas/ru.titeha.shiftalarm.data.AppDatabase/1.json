@@ -1,0 +1,35 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+    "entities": [
+      {
+        "tableName": "alarms",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `label` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `hour` INTEGER NOT NULL, `minute` INTEGER NOT NULL, `mode` TEXT NOT NULL, `daysMask` INTEGER NOT NULL, `presetId` TEXT NOT NULL, `anchorEpochDay` INTEGER NOT NULL, `deleteAfterFiring` INTEGER NOT NULL)",
+        "fields": [
+          { "fieldPath": "id", "columnName": "id", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "label", "columnName": "label", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "enabled", "columnName": "enabled", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "hour", "columnName": "hour", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "minute", "columnName": "minute", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "mode", "columnName": "mode", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "daysMask", "columnName": "daysMask", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "presetId", "columnName": "presetId", "affinity": "TEXT", "notNull": true },
+          { "fieldPath": "anchorEpochDay", "columnName": "anchorEpochDay", "affinity": "INTEGER", "notNull": true },
+          { "fieldPath": "deleteAfterFiring", "columnName": "deleteAfterFiring", "affinity": "INTEGER", "notNull": true }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": ["id"]
+        },
+        "indices": [],
+        "foreignKeys": []
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6')"
+    ]
+  }
+}
