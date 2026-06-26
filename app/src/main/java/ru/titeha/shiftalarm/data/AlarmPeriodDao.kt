@@ -14,6 +14,10 @@ interface AlarmPeriodDao {
   @Query("SELECT * FROM alarm_periods WHERE alarmId = :alarmId ORDER BY fromEpochDay")
   fun observeForAlarm(alarmId: Long): Flow<List<AlarmPeriod>>
 
+  /** Все периоды всех будильников (живой поток) — для превью «след:» в списке. */
+  @Query("SELECT * FROM alarm_periods ORDER BY fromEpochDay")
+  fun observeAll(): Flow<List<AlarmPeriod>>
+
   /** Периоды будильника — для расчёта расписания (перепланирование). */
   @Query("SELECT * FROM alarm_periods WHERE alarmId = :alarmId ORDER BY fromEpochDay")
   suspend fun forAlarm(alarmId: Long): List<AlarmPeriod>

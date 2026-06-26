@@ -63,6 +63,9 @@ class MainActivity : ComponentActivity() {
         val repo = remember { AlarmRepository(context.applicationContext) }
         val scope = rememberCoroutineScope()
         val alarms by repo.all.collectAsState(initial = emptyList())
+        // Периоды отпуска всех будильников — чтобы превью «след:» в списке глушило отпускные дни.
+        val periodsAll by repo.allPeriods.collectAsState(initial = emptyList())
+        val periodsByAlarm = remember(periodsAll) { periodsAll.groupBy { it.alarmId } }
 
         // null — список; иначе редактор: пара (будильник, его периоды отпуска).
         var editing by remember { mutableStateOf<Pair<AlarmEntity, List<AlarmPeriod>>?>(null) }
@@ -106,6 +109,7 @@ class MainActivity : ComponentActivity() {
         } else {
           AlarmListScreen(
             alarms = alarms,
+            periodsByAlarm = periodsByAlarm,
             onAdd = { editing = defaultAlarm() to emptyList() },
             onAddTest = {
               val fireAt = LocalDateTime.now().plusMinutes(1)
@@ -138,6 +142,7 @@ private fun defaultAlarm() = AlarmEntity(
 @Composable
 private fun AlarmListScreen(
   alarms: List<AlarmEntity>,
+  periodsByAlarm: Map<Long, List<AlarmPeriod>>,
   onAdd: () -> Unit,
   onAddTest: () -> Unit,
   onEdit: (AlarmEntity) -> Unit,
@@ -167,6 +172,7 @@ private fun AlarmListScreen(
           items(alarms, key = { it.id }) { alarm ->
             AlarmRow(
               alarm = alarm,
+              periods = periodsByAlarm[alarm.id].orEmpty(),
               onClick = { onEdit(alarm) },
               onToggle = { on -> onToggle(alarm, on) },
               onDelete = { onDelete(alarm) }
@@ -181,6 +187,7 @@ private fun AlarmListScreen(
 @Composable
 private fun AlarmRow(
   alarm: AlarmEntity,
+  periods: List<AlarmPeriod>,
   onClick: () -> Unit,
   onToggle: (Boolean) -> Unit,
   onDelete: () -> Unit
@@ -202,7 +209,7 @@ private fun AlarmRow(
         Text(title, style = MaterialTheme.typography.headlineMedium)
         Text(describe(alarm), style = MaterialTheme.typography.bodyMedium)
         if (alarm.enabled) {
-          val next = AlarmTimes.next(alarm, LocalDateTime.now())
+          val next = AlarmTimes.next(alarm, periods, LocalDateTime.now())
           if (next != null) {
             Text("след: ${formatNext(next)}", style = MaterialTheme.typography.bodySmall)
           }

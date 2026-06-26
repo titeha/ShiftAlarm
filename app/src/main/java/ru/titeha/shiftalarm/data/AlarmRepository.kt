@@ -24,6 +24,9 @@ class AlarmRepository(context: Context) {
   /** Периоды будильника для UI (живой поток). */
   fun periods(alarmId: Long): Flow<List<AlarmPeriod>> = periodDao.observeForAlarm(alarmId)
 
+  /** Все периоды всех будильников (живой поток) — для превью «след:» в списке. */
+  val allPeriods: Flow<List<AlarmPeriod>> = periodDao.observeAll()
+
   /** Периоды будильника — для расчёта расписания. */
   suspend fun periodsList(alarmId: Long): List<AlarmPeriod> = periodDao.forAlarm(alarmId)
 

@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.data.AlarmPeriod
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -82,6 +83,24 @@ class AlarmTimesTest {
     )
     val next = AlarmTimes.next(alarm, at(wed, 6, 0))
     assertEquals(at(wed, 7, 0), next)
+  }
+
+  @Test
+  fun `next — период отпуска глушит день и сдвигает звонок на следующую смену`() {
+    // Пресет 2x2 в 7:00, опора = среда (рабочий день, как и четверг).
+    val alarm = AlarmEntity(
+      mode = AlarmEntity.MODE_SHIFT,
+      presetId = "2x2",
+      anchorEpochDay = wed.toEpochDay()
+    )
+    // Отпуск ровно на среду → ближайший звонок переезжает на четверг.
+    val period = AlarmPeriod(
+      alarmId = 1,
+      fromEpochDay = wed.toEpochDay(),
+      toEpochDay = wed.toEpochDay()
+    )
+    val next = AlarmTimes.next(alarm, listOf(period), at(wed, 6, 0))
+    assertEquals(at(wed.plusDays(1), 7, 0), next)
   }
 
   @Test
