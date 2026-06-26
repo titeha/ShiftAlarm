@@ -23,6 +23,11 @@ data class AlarmEntity(
   val daysMask: Int = 0,
   val presetId: String = "2x2",
   val anchorEpochDay: Long = 0L,
+  /**
+   * Произвольный цикл смен, сериализованный [ru.titeha.shiftalarm.schedule.ShiftCycleCodec].
+   * null — использовать встроенный пресет [presetId] (старое поведение); иначе цикл берётся отсюда.
+   */
+  val cycleSpec: String? = null,
   /** Удалить запись после срабатывания (для разовых «выстрелил и забыл»). */
   val deleteAfterFiring: Boolean = false,
   /**

@@ -48,6 +48,7 @@ import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.schedule.AlarmTimes
+import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.ui.AlarmEditorScreen
 import java.time.DayOfWeek
@@ -226,6 +227,9 @@ private val DOW_SHORT = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "
 
 private fun describe(alarm: AlarmEntity): String {
   if (alarm.mode == AlarmEntity.MODE_SHIFT) {
+    alarm.cycleSpec?.let {
+      return "Смены: свой цикл (${ShiftCycleCodec.decode(it).size} дн.)"
+    }
     val title = ShiftPresets.byId(alarm.presetId)?.title ?: alarm.presetId
     return "Смены: $title"
   }

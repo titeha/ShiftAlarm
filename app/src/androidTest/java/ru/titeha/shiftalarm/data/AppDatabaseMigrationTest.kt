@@ -66,4 +66,29 @@ class AppDatabaseMigrationTest {
     }
     db.close()
   }
+
+  @Test
+  fun migrate2To3_addsCycleSpec_andPreservesData() {
+    // v2: будильник-смена (колонки cycleSpec ещё нет).
+    helper.createDatabase(dbName, 2).apply {
+      execSQL(
+        "INSERT INTO alarms " +
+          "(label, enabled, hour, minute, mode, daysMask, presetId, anchorEpochDay, " +
+          "deleteAfterFiring, freezeCycleDuringOff) " +
+          "VALUES ('Смена', 1, 7, 0, 'shift', 0, '2x2', 20000, 0, 0)"
+      )
+      close()
+    }
+
+    val db = helper.runMigrationsAndValidate(dbName, 3, true, AppDatabase.MIGRATION_2_3)
+
+    // Данные на месте, новая колонка существует и по умолчанию NULL (= использовать пресет).
+    db.query("SELECT label, presetId, cycleSpec FROM alarms").use { c ->
+      assertTrue(c.moveToFirst())
+      assertEquals("Смена", c.getString(0))
+      assertEquals("2x2", c.getString(1))
+      assertTrue("cycleSpec должен быть NULL после миграции", c.isNull(2))
+    }
+    db.close()
+  }
 }

@@ -49,8 +49,8 @@ object AlarmTimes {
    */
   fun next(alarm: AlarmEntity, periods: List<AlarmPeriod>, from: LocalDateTime): LocalDateTime? =
     when (alarm.mode) {
-      AlarmEntity.MODE_SHIFT -> ShiftPresets.byId(alarm.presetId)?.let { preset ->
-        val schedule = preset.build(LocalDate.ofEpochDay(alarm.anchorEpochDay)).copy(
+      AlarmEntity.MODE_SHIFT -> shiftBase(alarm)?.let { base ->
+        val schedule = ShiftSchedule(base).copy(
           offPeriods = periods.map {
             OffPeriod(LocalDate.ofEpochDay(it.fromEpochDay), LocalDate.ofEpochDay(it.toEpochDay), it.reason)
           },
@@ -60,6 +60,19 @@ object AlarmTimes {
       }
       else -> nextWeekly(alarm.hour, alarm.minute, alarm.daysMask, from)
     }
+
+  /**
+   * Базовая ротация будильника-смены: произвольный цикл из [AlarmEntity.cycleSpec], если он задан
+   * и непустой, иначе встроенный пресет [AlarmEntity.presetId]. null — цикл задать нечем.
+   */
+  fun shiftBase(alarm: AlarmEntity): ShiftPattern? {
+    val anchor = LocalDate.ofEpochDay(alarm.anchorEpochDay)
+    alarm.cycleSpec?.let { spec ->
+      val slots = ShiftCycleCodec.decode(spec)
+      if (slots.isNotEmpty()) return ShiftPattern(slots, anchor)
+    }
+    return ShiftPresets.byId(alarm.presetId)?.build(anchor)?.base
+  }
 
   /**
    * Без периодов отпуска — удобная перегрузка для режима «по дням недели», который периоды

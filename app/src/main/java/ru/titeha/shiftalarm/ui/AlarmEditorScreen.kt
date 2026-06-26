@@ -34,7 +34,6 @@ import dev.analog.AnalogTimePicker
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.schedule.AlarmTimes
-import ru.titeha.shiftalarm.schedule.ShiftPresets
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -179,23 +178,10 @@ private fun ShiftEditor(
   onAddPeriod: (AlarmPeriod) -> Unit,
   onRemovePeriod: (AlarmPeriod) -> Unit
 ) {
-  Text("Время подъёма задаётся графиком смены.", style = MaterialTheme.typography.bodyMedium)
-  Spacer(Modifier.height(8.dp))
-  Text("График:", style = MaterialTheme.typography.titleMedium)
-  Spacer(Modifier.height(8.dp))
-  FlowRow(
-    modifier = Modifier.fillMaxWidth(),
-    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
-  ) {
-    ShiftPresets.all.forEach { preset ->
-      ModeChip(preset.title, draft.presetId == preset.id) {
-        onChange(draft.copy(presetId = preset.id, anchorEpochDay = LocalDate.now().toEpochDay()))
-      }
-    }
-  }
+  ShiftCycleEditor(draft = draft, onChange = onChange)
   Spacer(Modifier.height(8.dp))
   Text(
-    "Отсчёт цикла — с сегодняшнего дня (${LocalDate.now().localized()}).",
+    "Отсчёт цикла — с ${LocalDate.ofEpochDay(draft.anchorEpochDay).localized()} (день 1).",
     style = MaterialTheme.typography.bodySmall
   )
 
@@ -231,7 +217,7 @@ private fun ShiftEditor(
 }
 
 @Composable
-private fun ModeChip(text: String, selected: Boolean, onClick: () -> Unit) {
+internal fun ModeChip(text: String, selected: Boolean, onClick: () -> Unit) {
   FilterChip(
     selected = selected,
     onClick = onClick,

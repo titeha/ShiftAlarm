@@ -108,4 +108,32 @@ class AlarmTimesTest {
     val alarm = AlarmEntity(mode = AlarmEntity.MODE_SHIFT, presetId = "нет-такого")
     assertNull(AlarmTimes.next(alarm, at(wed, 6, 0)))
   }
+
+  @Test
+  fun `next — произвольный цикл из cycleSpec перекрывает пресет`() {
+    // Цикл 1/1 с побудкой в 9:00; presetId оставлен «2x2» (7:00) — должен игнорироваться.
+    val spec = ShiftCycleCodec.encode(
+      listOf(ShiftType("w", "Работа", LocalTime.of(9, 0)), ShiftType.off())
+    )
+    val alarm = AlarmEntity(
+      mode = AlarmEntity.MODE_SHIFT,
+      presetId = "2x2",
+      cycleSpec = spec,
+      anchorEpochDay = wed.toEpochDay()
+    )
+    val next = AlarmTimes.next(alarm, at(wed, 6, 0))
+    assertEquals(at(wed, 9, 0), next) // из цикла, не из пресета (7:00)
+  }
+
+  @Test
+  fun `next — пустой cycleSpec откатывается на пресет`() {
+    val alarm = AlarmEntity(
+      mode = AlarmEntity.MODE_SHIFT,
+      presetId = "2x2",
+      cycleSpec = "",
+      anchorEpochDay = wed.toEpochDay()
+    )
+    val next = AlarmTimes.next(alarm, at(wed, 6, 0))
+    assertEquals(at(wed, 7, 0), next) // пресет 2x2 в 7:00
+  }
 }
