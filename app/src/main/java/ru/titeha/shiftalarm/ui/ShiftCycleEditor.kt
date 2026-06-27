@@ -27,9 +27,11 @@ import androidx.compose.ui.unit.dp
 import dev.analog.AnalogTimePicker
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.schedule.ShiftCategory
+import ru.titeha.shiftalarm.schedule.ShiftCycle
 import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.schedule.ShiftType
+import ru.titeha.shiftalarm.schedule.SlotRun
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -87,25 +89,28 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
     return
   }
 
-  // --- Редактор произвольного цикла ---
+  // --- Редактор произвольного цикла (компактно: одинаковые дни подряд — одной записью «×N») ---
+  val runs = ShiftCycle.group(slots)
   Spacer(Modifier.height(12.dp))
   Text(
-    "Цикл из ${slots.size} дн.: повторяется по кругу. Каждый слот — рабочий день (со временем " +
-      "подъёма) или выходной.",
+    "Цикл ${slots.size} дн. (${runs.size} зап.): повторяется по кругу. Запись — несколько " +
+      "одинаковых дней подряд (тип + будильник + количество).",
     style = MaterialTheme.typography.bodySmall
   )
   Spacer(Modifier.height(8.dp))
 
-  slots.forEachIndexed { i, slot ->
-    SlotCard(
+  runs.forEachIndexed { i, run ->
+    fun apply(newRuns: List<SlotRun>) = setSlots(ShiftCycle.expand(newRuns))
+    RunCard(
       index = i,
-      slot = slot,
+      run = run,
       isFirst = i == 0,
-      isLast = i == slots.lastIndex,
-      onChange = { updated -> setSlots(slots.toMutableList().also { it[i] = updated }) },
-      onRemove = { setSlots(slots.toMutableList().also { it.removeAt(i) }) },
-      onMoveUp = { setSlots(slots.toMutableList().also { it.add(i - 1, it.removeAt(i)) }) },
-      onMoveDown = { setSlots(slots.toMutableList().also { it.add(i + 1, it.removeAt(i)) }) }
+      isLast = i == runs.lastIndex,
+      onChangeSlot = { updated -> apply(runs.toMutableList().also { it[i] = run.copy(slot = updated) }) },
+      onCount = { n -> apply(runs.toMutableList().also { it[i] = run.copy(count = n) }) },
+      onRemove = { apply(runs.toMutableList().also { it.removeAt(i) }) },
+      onMoveUp = { apply(runs.toMutableList().also { it.add(i - 1, it.removeAt(i)) }) },
+      onMoveDown = { apply(runs.toMutableList().also { it.add(i + 1, it.removeAt(i)) }) }
     )
     Spacer(Modifier.height(8.dp))
   }
@@ -113,7 +118,7 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   Button(
     onClick = { setSlots(slots + ShiftType("c${slots.size}", "Смена", LocalTime.of(7, 0))) },
     enabled = slots.size < 60
-  ) { Text("+ День") }
+  ) { Text("+ Запись") }
 
   if (slots.isEmpty()) {
     Spacer(Modifier.height(8.dp))
@@ -140,23 +145,25 @@ private fun defaultAlarmFor(category: ShiftCategory): LocalTime = when (category
 }
 
 @Composable
-private fun SlotCard(
+private fun RunCard(
   index: Int,
-  slot: ShiftType,
+  run: SlotRun,
   isFirst: Boolean,
   isLast: Boolean,
-  onChange: (ShiftType) -> Unit,
+  onChangeSlot: (ShiftType) -> Unit,
+  onCount: (Int) -> Unit,
   onRemove: () -> Unit,
   onMoveUp: () -> Unit,
   onMoveDown: () -> Unit
 ) {
+  val slot = run.slot
   var pickingTime by remember { mutableStateOf(false) }
   val wt = slot.wakeTime
 
   Card(modifier = Modifier.fillMaxWidth()) {
     Column(modifier = Modifier.padding(12.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("День ${index + 1}", style = MaterialTheme.typography.labelLarge)
+        Text("Запись ${index + 1}", style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.weight(1f))
         TextButton(onClick = onMoveUp, enabled = !isFirst) { Text("↑") }
         TextButton(onClick = onMoveDown, enabled = !isLast) { Text("↓") }
@@ -165,8 +172,8 @@ private fun SlotCard(
 
       OutlinedTextField(
         value = slot.name,
-        onValueChange = { onChange(slot.copy(name = it)) },
-        label = { Text("Название дня") },
+        onValueChange = { onChangeSlot(slot.copy(name = it)) },
+        label = { Text("Название") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
       )
@@ -176,7 +183,7 @@ private fun SlotCard(
       Text("Тип (цвет в календаре):", style = MaterialTheme.typography.labelMedium)
       FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         CATEGORIES.forEach { (cat, label) ->
-          ModeChip(label, slot.category == cat) { onChange(slot.copy(category = cat)) }
+          ModeChip(label, slot.category == cat) { onChangeSlot(slot.copy(category = cat)) }
         }
       }
       Spacer(Modifier.height(8.dp))
@@ -186,7 +193,7 @@ private fun SlotCard(
         Switch(
           checked = wt != null,
           onCheckedChange = { on ->
-            onChange(slot.copy(wakeTime = if (on) defaultAlarmFor(slot.category) else null))
+            onChangeSlot(slot.copy(wakeTime = if (on) defaultAlarmFor(slot.category) else null))
           }
         )
         Spacer(Modifier.width(8.dp))
@@ -198,13 +205,23 @@ private fun SlotCard(
           }
         }
       }
+      Spacer(Modifier.height(8.dp))
+
+      // Сколько таких дней подряд (свёртка повторов).
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Дней подряд:", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.width(8.dp))
+        TextButton(onClick = { onCount(run.count - 1) }, enabled = run.count > 1) { Text("−") }
+        Text("${run.count}", style = MaterialTheme.typography.titleMedium)
+        TextButton(onClick = { onCount(run.count + 1) }, enabled = run.count < 60) { Text("+") }
+      }
     }
   }
 
   if (pickingTime && wt != null) {
     SlotTimeDialog(
       time = wt,
-      onPick = { onChange(slot.copy(wakeTime = it)) },
+      onPick = { onChangeSlot(slot.copy(wakeTime = it)) },
       onDismiss = { pickingTime = false }
     )
   }
