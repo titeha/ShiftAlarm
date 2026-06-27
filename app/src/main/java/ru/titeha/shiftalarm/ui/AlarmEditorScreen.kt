@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +35,8 @@ import dev.analog.AnalogTimePicker
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.schedule.AlarmTimes
+import ru.titeha.shiftalarm.schedule.OffPeriod
+import ru.titeha.shiftalarm.schedule.ShiftSchedule
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -212,6 +215,33 @@ private fun ShiftEditor(
           "Цикл крутится по календарю; после отпуска — смена «по графику».",
         style = MaterialTheme.typography.bodySmall
       )
+    }
+  }
+
+  // Наглядный календарь резолва смен (read-only) — от текущего черновика.
+  Spacer(Modifier.height(16.dp))
+  var showCalendar by remember { mutableStateOf(false) }
+  TextButton(onClick = { showCalendar = !showCalendar }) {
+    Text(if (showCalendar) "Скрыть календарь" else "Показать календарь смен")
+  }
+  if (showCalendar) {
+    val base = AlarmTimes.shiftBase(draft)
+    if (base != null) {
+      ShiftCalendarView(
+        ShiftSchedule(
+          base = base,
+          offPeriods = periods.map {
+            OffPeriod(
+              LocalDate.ofEpochDay(it.fromEpochDay),
+              LocalDate.ofEpochDay(it.toEpochDay),
+              it.reason
+            )
+          },
+          freezeCycleDuringOff = draft.freezeCycleDuringOff
+        )
+      )
+    } else {
+      Text("Не удалось построить график для календаря.", style = MaterialTheme.typography.bodySmall)
     }
   }
 }

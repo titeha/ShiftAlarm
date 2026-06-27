@@ -5,19 +5,37 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.temporal.ChronoUnit
 
+/** Категория смены — задаёт цвет/подпись в календаре. Независима от того, звонит ли будильник. */
+enum class ShiftCategory { MORNING, DAY, NIGHT, OFF }
+
 /**
- * Тип смены. [wakeTime] — во сколько будить; null означает «выходной» (звонка нет).
+ * Тип смены на один календарный день.
+ *  - [wakeTime] — во сколько звонить будильнику; null = в этот день не звонить.
+ *  - [category] — тип дня для календаря (цвет/подпись), НЕ зависит от [wakeTime]: ночная смена
+ *    может быть без звонка (днём не спишь — сам соберёшься), а выходной — со звонком (вечером
+ *    уходишь в ночь, отрабатываемую следующими сутками). По умолчанию выводится из [wakeTime],
+ *    для смен с переходом через полночь задаётся явно.
  */
 data class ShiftType(
   val id: String,
   val name: String,
-  val wakeTime: LocalTime?
+  val wakeTime: LocalTime?,
+  val category: ShiftCategory = categoryFromTime(wakeTime)
 ) {
+  /** Звонит ли будильник в этот день. */
   val isWorkDay: Boolean get() = wakeTime != null
 
   companion object {
     /** Выходной — слот без звонка. */
-    fun off(name: String = "Выходной") = ShiftType("off", name, null)
+    fun off(name: String = "Выходной") = ShiftType("off", name, null, ShiftCategory.OFF)
+
+    /** Категория по времени звонка (когда не задана явно): утро <10, день <16, иначе ночь. */
+    fun categoryFromTime(wakeTime: LocalTime?): ShiftCategory = when {
+      wakeTime == null -> ShiftCategory.OFF
+      wakeTime.hour < 10 -> ShiftCategory.MORNING
+      wakeTime.hour < 16 -> ShiftCategory.DAY
+      else -> ShiftCategory.NIGHT
+    }
   }
 }
 

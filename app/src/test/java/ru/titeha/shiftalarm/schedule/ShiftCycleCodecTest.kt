@@ -52,17 +52,33 @@ class ShiftCycleCodecTest {
   }
 
   @Test
-  fun `выходной кодируется как off без времени`() {
+  fun `выходной кодируется с категорией O и пустым временем`() {
     val encoded = ShiftCycleCodec.encode(listOf(ShiftType.off("Отдых")))
-    assertEquals("off|Отдых", encoded)
+    assertEquals("O||Отдых", encoded)
     val decoded = ShiftCycleCodec.decode(encoded).single()
     assertEquals(null, decoded.wakeTime)
     assertEquals("Отдых", decoded.name)
   }
 
   @Test
-  fun `рабочий слот кодирует время как HHMM`() {
-    val encoded = ShiftCycleCodec.encode(listOf(ShiftType("d", "Смена", LocalTime.of(7, 5))))
-    assertEquals("0705|Смена", encoded)
+  fun `категория переживает round-trip независимо от времени`() {
+    val slots = listOf(
+      ShiftType("n", "Ночь", null, ShiftCategory.NIGHT),            // ночь без звонка
+      ShiftType("o", "Выходной", LocalTime.of(21, 0), ShiftCategory.OFF), // выходной со звонком
+      ShiftType("d", "День", LocalTime.of(17, 0), ShiftCategory.DAY)      // 17:00, но это «День», не ночь
+    )
+    val decoded = ShiftCycleCodec.decode(ShiftCycleCodec.encode(slots))
+    assertEquals(slots.map { it.category }, decoded.map { it.category })
+    assertEquals(sig(slots), sig(decoded))
+  }
+
+  @Test
+  fun `старый формат читается, категория выводится из времени`() {
+    // Без категорий: HHMM|name и off|name (как писала прежняя версия).
+    val decoded = ShiftCycleCodec.decode("0700|Работа\noff|Выходной")
+    assertEquals(LocalTime.of(7, 0), decoded[0].wakeTime)
+    assertEquals(ShiftCategory.MORNING, decoded[0].category)
+    assertEquals(null, decoded[1].wakeTime)
+    assertEquals(ShiftCategory.OFF, decoded[1].category)
   }
 }

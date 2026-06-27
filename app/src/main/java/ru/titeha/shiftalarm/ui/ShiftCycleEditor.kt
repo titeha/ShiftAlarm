@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.analog.AnalogTimePicker
 import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.schedule.ShiftCategory
 import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.schedule.ShiftType
@@ -124,6 +125,20 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   }
 }
 
+private val CATEGORIES = listOf(
+  ShiftCategory.MORNING to "Утро",
+  ShiftCategory.DAY to "День",
+  ShiftCategory.NIGHT to "Ночь",
+  ShiftCategory.OFF to "Выходной"
+)
+
+/** Время будильника по умолчанию при включении тумблера — под категорию (звонок раньше старта). */
+private fun defaultAlarmFor(category: ShiftCategory): LocalTime = when (category) {
+  ShiftCategory.MORNING -> LocalTime.of(5, 0)
+  ShiftCategory.DAY -> LocalTime.of(13, 0)
+  ShiftCategory.NIGHT, ShiftCategory.OFF -> LocalTime.of(21, 0)
+}
+
 @Composable
 private fun SlotCard(
   index: Int,
@@ -136,7 +151,7 @@ private fun SlotCard(
   onMoveDown: () -> Unit
 ) {
   var pickingTime by remember { mutableStateOf(false) }
-  val isWork = slot.wakeTime != null
+  val wt = slot.wakeTime
 
   Card(modifier = Modifier.fillMaxWidth()) {
     Column(modifier = Modifier.padding(12.dp)) {
@@ -157,30 +172,38 @@ private fun SlotCard(
       )
       Spacer(Modifier.height(8.dp))
 
+      // Тип дня — задаёт цвет на календаре, не зависит от будильника.
+      Text("Тип (цвет в календаре):", style = MaterialTheme.typography.labelMedium)
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        CATEGORIES.forEach { (cat, label) ->
+          ModeChip(label, slot.category == cat) { onChange(slot.copy(category = cat)) }
+        }
+      }
+      Spacer(Modifier.height(8.dp))
+
+      // Будильник — отдельно: ночь можно без звонка, выходной — со звонком (уход в ночь вечером).
       Row(verticalAlignment = Alignment.CenterVertically) {
         Switch(
-          checked = isWork,
-          onCheckedChange = { work ->
-            onChange(if (work) slot.copy(wakeTime = LocalTime.of(7, 0)) else slot.copy(wakeTime = null))
+          checked = wt != null,
+          onCheckedChange = { on ->
+            onChange(slot.copy(wakeTime = if (on) defaultAlarmFor(slot.category) else null))
           }
         )
         Spacer(Modifier.width(8.dp))
-        if (isWork) {
-          Text("Подъём:", style = MaterialTheme.typography.bodyMedium)
+        Text("Будильник", style = MaterialTheme.typography.bodyMedium)
+        if (wt != null) {
           Spacer(Modifier.width(8.dp))
           TextButton(onClick = { pickingTime = true }) {
-            Text("%02d:%02d".format(slot.wakeTime!!.hour, slot.wakeTime.minute))
+            Text("%02d:%02d".format(wt.hour, wt.minute))
           }
-        } else {
-          Text("Выходной (без звонка)", style = MaterialTheme.typography.bodyMedium)
         }
       }
     }
   }
 
-  if (pickingTime && slot.wakeTime != null) {
+  if (pickingTime && wt != null) {
     SlotTimeDialog(
-      time = slot.wakeTime,
+      time = wt,
       onPick = { onChange(slot.copy(wakeTime = it)) },
       onDismiss = { pickingTime = false }
     )
