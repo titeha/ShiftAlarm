@@ -60,6 +60,22 @@ class AlarmTimesTest {
   }
 
   @Test
+  fun `по дням недели — единственный день = сегодня, время прошло, берём этот же день через неделю`() {
+    // Регрессия StackOverflowError: маска = только среда, сегодня среда, 8:00 уже позже 7:00.
+    // Раньше fallback рекурсивно прибавлял +7 дней с тем же временем суток и не сходился.
+    val mask = AlarmTimes.maskOf(DayOfWeek.WEDNESDAY)
+    val next = AlarmTimes.nextWeekly(7, 0, mask, at(wed, 8, 0))
+    assertEquals(at(wed.plusDays(7), 7, 0), next) // следующая среда
+  }
+
+  @Test
+  fun `по дням недели — единственный день = сегодня, ровно текущее время считается прошедшим`() {
+    val mask = AlarmTimes.maskOf(DayOfWeek.WEDNESDAY)
+    val next = AlarmTimes.nextWeekly(7, 0, mask, at(wed, 7, 0))
+    assertEquals(at(wed.plusDays(7), 7, 0), next)
+  }
+
+  @Test
   fun `каждый день — маска из всех семи дней даёт завтра, если время прошло`() {
     val all = AlarmTimes.maskOf(*DayOfWeek.entries.toTypedArray())
     val next = AlarmTimes.nextWeekly(7, 0, all, at(wed, 9, 0))

@@ -30,17 +30,18 @@ object AlarmTimes {
       val today = from.toLocalDate().atTime(hour, minute)
       return if (today.isAfter(from)) today else today.plusDays(1)
     }
+    // 8 дней (сегодня + неделя), чтобы покрыть случай «единственный день маски = сегодня,
+    // но время уже прошло»: тогда подходящим окажется тот же день недели ровно через неделю.
     var date: LocalDate = from.toLocalDate()
-    repeat(7) {
+    repeat(8) {
       if (maskHas(daysMask, date.dayOfWeek)) {
         val candidate = date.atTime(hour, minute)
         if (candidate.isAfter(from)) return candidate
       }
       date = date.plusDays(1)
     }
-    // Маска непустая, значит подходящий день всегда найдётся в пределах недели — сюда не дойдём,
-    // но на всякий случай возвращаем следующий подходящий день по тому же правилу.
-    return nextWeekly(hour, minute, daysMask, from.plusDays(7))
+    // Маска непустая → за 8 дней подходящий день гарантированно найден выше; сюда не дойдём.
+    error("nextWeekly: не найден день для непустой маски $daysMask")
   }
 
   /**
