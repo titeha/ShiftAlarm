@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -112,17 +111,6 @@ class MainActivity : ComponentActivity() {
             alarms = alarms,
             periodsByAlarm = periodsByAlarm,
             onAdd = { editing = defaultAlarm() to emptyList() },
-            onAddTest = {
-              val fireAt = LocalDateTime.now().plusMinutes(1)
-              saveAndSchedule(
-                AlarmEntity(
-                  label = "Тест",
-                  hour = fireAt.hour, minute = fireAt.minute,
-                  mode = AlarmEntity.MODE_WEEKLY, daysMask = 0,
-                  deleteAfterFiring = true, enabled = true
-                )
-              )
-            },
             onEdit = { alarm -> scope.launch { editing = alarm to repo.periodsList(alarm.id) } },
             onToggle = { alarm, on -> saveAndSchedule(alarm.copy(enabled = on)) },
             onDelete = { remove(it) }
@@ -145,7 +133,6 @@ private fun AlarmListScreen(
   alarms: List<AlarmEntity>,
   periodsByAlarm: Map<Long, List<AlarmPeriod>>,
   onAdd: () -> Unit,
-  onAddTest: () -> Unit,
   onEdit: (AlarmEntity) -> Unit,
   onToggle: (AlarmEntity, Boolean) -> Unit,
   onDelete: (AlarmEntity) -> Unit
@@ -160,10 +147,7 @@ private fun AlarmListScreen(
       Text("Будильники", style = MaterialTheme.typography.headlineSmall)
       Spacer(Modifier.height(12.dp))
 
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = onAdd) { Text("+ Будильник") }
-        OutlinedButton(onClick = onAddTest) { Text("Тест (+1 мин)") }
-      }
+      Button(onClick = onAdd) { Text("+ Будильник") }
       Spacer(Modifier.height(12.dp))
 
       if (alarms.isEmpty()) {
