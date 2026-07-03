@@ -28,6 +28,12 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- «Показать будильники»: приложение можно назначить обработчиком (виджеты
+                 часов, Ассистент). Ближайший будильник уже открывается через setAlarmClock. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SHOW_ALARMS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
 
         <!-- Полноэкранный экран звонка: поверх блокировки, будит экран. -->
