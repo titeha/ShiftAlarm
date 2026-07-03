@@ -45,6 +45,9 @@ private fun colorOf(kind: DayKind): Color = when (kind) {
   DayKind.NIGHT -> Color(0xFF42A5F5)    // ночь — синий
   DayKind.OFF -> Color(0xFFE57373)      // выходной — красный
   DayKind.VACATION -> Color(0xFF66BB6A) // отпуск — зелёный
+  DayKind.SICK -> Color(0xFF7C8A3E)     // больничный — болотный
+  DayKind.DAYOFF -> Color(0xFF4DB6AC)   // отгул — бирюзовый
+  DayKind.UNPAID -> Color(0xFF9575CD)   // за свой счёт — сиреневый
 }
 
 private fun labelOf(kind: DayKind): String = when (kind) {
@@ -53,6 +56,9 @@ private fun labelOf(kind: DayKind): String = when (kind) {
   DayKind.NIGHT -> "Ночь"
   DayKind.OFF -> "Выходной"
   DayKind.VACATION -> "Отпуск"
+  DayKind.SICK -> "Больничный"
+  DayKind.DAYOFF -> "Отгул"
+  DayKind.UNPAID -> "Свой счёт"
 }
 
 /**

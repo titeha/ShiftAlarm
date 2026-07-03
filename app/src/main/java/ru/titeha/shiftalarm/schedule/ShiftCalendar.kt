@@ -16,13 +16,23 @@ object ShiftCalendar {
     DAY,       // дневная смена
     NIGHT,     // ночная смена
     OFF,       // выходной/отсыпной по ротации
-    VACATION   // период без будильника (отпуск/больничный/отгул)
+    VACATION,  // отпуск
+    SICK,      // больничный
+    DAYOFF,    // отгул
+    UNPAID     // за свой счёт
   }
 
   /** Категория дня [date] по расписанию [schedule]. */
   fun kindOf(date: LocalDate, schedule: ShiftSchedule): DayKind {
-    // Период отпуска отличаем от обычного выходного отдельно: ShiftEngine для обоих вернул бы off.
-    if (schedule.offPeriods.any { it.covers(date) }) return DayKind.VACATION
+    // Период без будильника отличаем от обычного выходного и раскрашиваем по его типу.
+    schedule.offPeriods.firstOrNull { it.covers(date) }?.let { period ->
+      return when (PeriodKind.fromReason(period.reason)) {
+        PeriodKind.VACATION -> DayKind.VACATION
+        PeriodKind.SICK -> DayKind.SICK
+        PeriodKind.DAYOFF -> DayKind.DAYOFF
+        PeriodKind.UNPAID -> DayKind.UNPAID
+      }
+    }
 
     return when (ShiftEngine.shiftOn(date, schedule).category) {
       ShiftCategory.MORNING -> DayKind.MORNING

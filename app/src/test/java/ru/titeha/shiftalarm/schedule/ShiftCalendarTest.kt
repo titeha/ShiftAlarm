@@ -61,6 +61,12 @@ class ShiftCalendarTest {
   }
 
   @Test
+  fun `тип периода красится отдельно — больничный не как отпуск`() {
+    val sick = mdn.copy(offPeriods = listOf(OffPeriod(anchor, anchor, "Больничный")))
+    assertEquals(DayKind.SICK, ShiftCalendar.kindOf(anchor, sick))
+  }
+
+  @Test
   fun `2x2 — рабочий день MORNING, выходной OFF`() {
     val s = ShiftPresets.byId("2x2")!!.build(anchor) // работа 7:00
     assertEquals(DayKind.MORNING, ShiftCalendar.kindOf(anchor, s))

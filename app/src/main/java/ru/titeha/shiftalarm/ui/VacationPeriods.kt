@@ -2,6 +2,7 @@ package ru.titeha.shiftalarm.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import ru.titeha.shiftalarm.data.AlarmPeriod
+import ru.titeha.shiftalarm.schedule.PeriodKind
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -105,7 +107,7 @@ fun AddPeriodDialog(
   var from by remember { mutableStateOf<LocalDate?>(null) }
   var to by remember { mutableStateOf<LocalDate?>(null) }
   var days by remember { mutableStateOf("7") }
-  var reason by remember { mutableStateOf("Отпуск") }
+  var kind by remember { mutableStateOf(PeriodKind.VACATION) }
   var showRangePicker by remember { mutableStateOf(false) }
   var showStartPicker by remember { mutableStateOf(false) }
 
@@ -126,7 +128,7 @@ fun AddPeriodDialog(
               alarmId = alarmId,
               fromEpochDay = from!!.toEpochDay(),
               toEpochDay = computedTo!!.toEpochDay(),
-              reason = reason.ifBlank { "Отпуск" }
+              reason = kind.label
             )
           )
         }
@@ -169,13 +171,13 @@ fun AddPeriodDialog(
       }
 
       Spacer(Modifier.height(16.dp))
-      OutlinedTextField(
-        value = reason,
-        onValueChange = { reason = it },
-        label = { Text("Причина") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth()
-      )
+      Text("Тип:", style = MaterialTheme.typography.bodyMedium)
+      Spacer(Modifier.height(4.dp))
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PeriodKind.entries.forEach { k ->
+          FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(k.label) })
+        }
+      }
       Spacer(Modifier.height(8.dp))
     }
   }

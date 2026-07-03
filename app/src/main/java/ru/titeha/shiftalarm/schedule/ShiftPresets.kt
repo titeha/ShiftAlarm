@@ -46,12 +46,11 @@ object ShiftPresets {
       val nightLast = ShiftType("n", "Ночь", null, ShiftCategory.NIGHT)
       val depart = ShiftType("o", "Выходной", LocalTime.of(21, 0), ShiftCategory.OFF)
       val off = ShiftType.off()
-      val sleep = ShiftType.off("Отсыпной")
       ShiftSchedule(
         ShiftPattern(
           List(3) { morning } + listOf(off, off) +
             List(3) { day } + listOf(off, depart) +
-            listOf(night, night, nightLast) + listOf(sleep, off),
+            listOf(night, night, nightLast) + listOf(off, off),
           anchor
         )
       )
