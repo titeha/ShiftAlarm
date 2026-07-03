@@ -42,6 +42,14 @@ class AlarmService : Service() {
       Intent(this, AlarmActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
+    // Запасной выход: если полноэкранный экран не всплыл (телефон разблокирован →
+    // heads-up вместо Activity, либо OEM-ограничения), звонок всё равно можно заглушить
+    // кнопкой в самом уведомлении и смахиванием.
+    val stopPending = PendingIntent.getService(
+      this, 1,
+      Intent(this, AlarmService::class.java).setAction(ACTION_STOP),
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
     val notification = NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
       .setContentTitle("Будильник")
@@ -50,6 +58,8 @@ class AlarmService : Service() {
       .setCategory(NotificationCompat.CATEGORY_ALARM)
       .setFullScreenIntent(openScreen, true)
       .setContentIntent(openScreen)
+      .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Стоп", stopPending)
+      .setDeleteIntent(stopPending)
       .setOngoing(true)
       .build()
 
