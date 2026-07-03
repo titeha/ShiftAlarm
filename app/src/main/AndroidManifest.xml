@@ -36,6 +36,19 @@
             </intent-filter>
         </activity>
 
+        <!-- Обработчик «поставить будильник» (Ассистент/сторонние приложения). Без своего UI —
+             создаёт будильник и закрывается, поэтому прозрачная тема. -->
+        <activity
+            android:name=".SetAlarmActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SET_ALARM" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <!-- Полноэкранный экран звонка: поверх блокировки, будит экран. -->
         <activity
             android:name=".AlarmActivity"
