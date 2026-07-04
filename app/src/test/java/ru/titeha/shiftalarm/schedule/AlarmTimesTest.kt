@@ -152,4 +152,34 @@ class AlarmTimesTest {
     val next = AlarmTimes.next(alarm, at(wed, 6, 0))
     assertEquals(at(wed, 7, 0), next) // пресет 2x2 в 7:00
   }
+
+  @Test
+  fun `next — точечная правка «выходной» глушит рабочий день смены`() {
+    // Пресет 2x2 в 7:00: среда и четверг — рабочие. Сдаём среду (правка на выходной).
+    val alarm = AlarmEntity(
+      mode = AlarmEntity.MODE_SHIFT,
+      presetId = "2x2",
+      anchorEpochDay = wed.toEpochDay()
+    )
+    val ovr = ScheduleOverrides.DayOverride(wed, wed, ShiftType.off())
+    val next = AlarmTimes.next(alarm, emptyList(), listOf(ovr), at(wed, 6, 0))
+    assertEquals(at(wed.plusDays(1), 7, 0), next) // звонок переехал на четверг
+  }
+
+  @Test
+  fun `next — точечная правка «рабочий» будит в выходной смены`() {
+    // Пятница по 2x2 — выходной; «отрабатываем» её в 8:00 точечной правкой.
+    val alarm = AlarmEntity(
+      mode = AlarmEntity.MODE_SHIFT,
+      presetId = "2x2",
+      anchorEpochDay = wed.toEpochDay()
+    )
+    val fri = wed.plusDays(2)
+    val ovr = ScheduleOverrides.DayOverride(
+      fri, fri, ShiftType("w2", "Отработка", LocalTime.of(8, 0), ShiftCategory.DAY)
+    )
+    // Отсчёт с четверга 8:00 (чт 7:00 уже прошёл) → ближайший звонок = пятница 8:00.
+    val next = AlarmTimes.next(alarm, emptyList(), listOf(ovr), at(wed.plusDays(1), 8, 0))
+    assertEquals(at(fri, 8, 0), next)
+  }
 }

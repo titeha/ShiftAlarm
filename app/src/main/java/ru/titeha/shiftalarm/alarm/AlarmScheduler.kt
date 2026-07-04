@@ -9,6 +9,7 @@ import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.schedule.AlarmTimes
+import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -24,17 +25,23 @@ object AlarmScheduler {
   const val EXTRA_ALARM_ID = "alarm_id"
   const val NO_ID = -1L
 
-  /** Запланировать, подгрузив периоды отпуска из репозитория (для смен). */
+  /** Запланировать, подгрузив периоды отпуска и правки календаря из репозитория (для смен). */
   suspend fun reschedule(context: Context, repo: AlarmRepository, alarm: AlarmEntity) {
-    reschedule(context, alarm, offPeriodsFor(repo, alarm))
+    reschedule(context, alarm, offPeriodsFor(repo, alarm), overridesFor(repo, alarm))
   }
 
   /**
-   * Запланировать (или отменить, если выключен/нечего ставить) с уже известными периодами.
-   * Чистый I/O по AlarmManager — без обращений к БД.
+   * Запланировать (или отменить, если выключен/нечего ставить) с уже известными периодами и
+   * правками календаря. Чистый I/O по AlarmManager — без обращений к БД.
    */
-  fun reschedule(context: Context, alarm: AlarmEntity, periods: List<AlarmPeriod> = emptyList()) {
-    val next = if (alarm.enabled) AlarmTimes.next(alarm, periods, LocalDateTime.now()) else null
+  fun reschedule(
+    context: Context,
+    alarm: AlarmEntity,
+    periods: List<AlarmPeriod> = emptyList(),
+    overrides: List<ScheduleOverrides.DayOverride> = emptyList()
+  ) {
+    val next =
+      if (alarm.enabled) AlarmTimes.next(alarm, periods, overrides, LocalDateTime.now()) else null
     if (next == null) {
       cancel(context, alarm.id)
     } else {
@@ -50,6 +57,15 @@ object AlarmScheduler {
   /** Периоды отпуска нужны только сменам; «по дням недели» их не использует. */
   private suspend fun offPeriodsFor(repo: AlarmRepository, alarm: AlarmEntity): List<AlarmPeriod> =
     if (alarm.mode == AlarmEntity.MODE_SHIFT) repo.periodsList(alarm.id) else emptyList()
+
+  /** Правки календаря (подмены/исключения) нужны только сменам. */
+  private suspend fun overridesFor(
+    repo: AlarmRepository,
+    alarm: AlarmEntity
+  ): List<ScheduleOverrides.DayOverride> =
+    if (alarm.mode == AlarmEntity.MODE_SHIFT)
+      repo.overridesList(alarm.id).map { it.toDayOverride() }
+    else emptyList()
 
   fun scheduleAt(context: Context, alarmId: Long, triggerAtMillis: Long) {
     val alarmManager = context.getSystemService(AlarmManager::class.java)

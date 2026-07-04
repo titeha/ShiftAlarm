@@ -45,22 +45,35 @@ object AlarmTimes {
   }
 
   /**
-   * Ближайшее срабатывание [alarm] строго после [from] с учётом периодов отпуска [periods]
-   * (для режима смен; «по дням недели» периоды не использует). null — ставить нечего.
+   * Ближайшее срабатывание [alarm] строго после [from] с учётом периодов отпуска [periods] и
+   * пер-дневных правок календаря [overrides] (подмены/исключения). Всё это только для режима смен;
+   * «по дням недели» ни периоды, ни правки не использует. null — ставить нечего.
    */
-  fun next(alarm: AlarmEntity, periods: List<AlarmPeriod>, from: LocalDateTime): LocalDateTime? =
+  fun next(
+    alarm: AlarmEntity,
+    periods: List<AlarmPeriod>,
+    overrides: List<ScheduleOverrides.DayOverride>,
+    from: LocalDateTime
+  ): LocalDateTime? =
     when (alarm.mode) {
       AlarmEntity.MODE_SHIFT -> shiftBase(alarm)?.let { base ->
-        val schedule = ShiftSchedule(base).copy(
-          offPeriods = periods.map {
-            OffPeriod(LocalDate.ofEpochDay(it.fromEpochDay), LocalDate.ofEpochDay(it.toEpochDay), it.reason)
-          },
-          freezeCycleDuringOff = alarm.freezeCycleDuringOff
+        val schedule = ScheduleOverrides.apply(
+          ShiftSchedule(base).copy(
+            offPeriods = periods.map {
+              OffPeriod(LocalDate.ofEpochDay(it.fromEpochDay), LocalDate.ofEpochDay(it.toEpochDay), it.reason)
+            },
+            freezeCycleDuringOff = alarm.freezeCycleDuringOff
+          ),
+          overrides
         )
         ShiftEngine.nextAlarm(from, schedule)
       }
       else -> nextWeekly(alarm.hour, alarm.minute, alarm.daysMask, from)
     }
+
+  /** Перегрузка без правок календаря — периоды учитывает, правки нет. */
+  fun next(alarm: AlarmEntity, periods: List<AlarmPeriod>, from: LocalDateTime): LocalDateTime? =
+    next(alarm, periods, emptyList(), from)
 
   /**
    * Базовая ротация будильника-смены: произвольный цикл из [AlarmEntity.cycleSpec], если он задан
@@ -80,5 +93,6 @@ object AlarmTimes {
    * не использует. Для смен передавайте периоды через [next] с тремя аргументами, иначе
    * отпускные дни не будут заглушены.
    */
-  fun next(alarm: AlarmEntity, from: LocalDateTime): LocalDateTime? = next(alarm, emptyList(), from)
+  fun next(alarm: AlarmEntity, from: LocalDateTime): LocalDateTime? =
+    next(alarm, emptyList(), emptyList(), from)
 }
