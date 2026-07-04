@@ -32,7 +32,24 @@ class AlarmService : Service() {
     }
     goForeground()
     startRinging()
+    launchScreen()
     return START_STICKY
+  }
+
+  /**
+   * Явно поднять экран «Стоп». Full-screen intent из уведомления система сама показывает
+   * только при заблокированном экране; когда приложение видимо/телефон разблокирован —
+   * запускаем Activity отсюда (видимому приложению это разрешено). В фоне на части прошивок
+   * запуск заблокируют — тогда остаётся heads-up с кнопкой «Стоп».
+   */
+  private fun launchScreen() {
+    try {
+      startActivity(
+        Intent(this, AlarmActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      )
+    } catch (_: Exception) {
+      // Фоновый запуск Activity заблокирован ОС — звонок глушится из уведомления.
+    }
   }
 
   private fun goForeground() {
