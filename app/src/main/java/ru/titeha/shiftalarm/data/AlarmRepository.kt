@@ -9,6 +9,7 @@ class AlarmRepository(context: Context) {
   private val db = AppDatabase.get(context)
   private val dao = db.alarmDao()
   private val periodDao = db.alarmPeriodDao()
+  private val overrideDao = db.alarmOverrideDao()
 
   val all: Flow<List<AlarmEntity>> = dao.observeAll()
 
@@ -33,4 +34,19 @@ class AlarmRepository(context: Context) {
   suspend fun upsertPeriod(period: AlarmPeriod): Long = periodDao.upsert(period)
   suspend fun deletePeriod(period: AlarmPeriod) = periodDao.delete(period)
   suspend fun deletePeriodsForAlarm(alarmId: Long) = periodDao.deleteForAlarm(alarmId)
+
+  // --- Пер-дневные правки календаря (подмены/исключения) ---
+
+  /** Правки будильника для UI (живой поток). */
+  fun overrides(alarmId: Long): Flow<List<AlarmOverride>> = overrideDao.observeForAlarm(alarmId)
+
+  /** Правки будильника — для расчёта расписания. */
+  suspend fun overridesList(alarmId: Long): List<AlarmOverride> = overrideDao.forAlarm(alarmId)
+
+  suspend fun upsertOverride(override: AlarmOverride): Long = overrideDao.upsert(override)
+  suspend fun deleteOverride(override: AlarmOverride) = overrideDao.delete(override)
+
+  /** Снять все правки, покрывающие день (для «вернуть день по графику»). */
+  suspend fun clearOverrideOn(alarmId: Long, epochDay: Long) =
+    overrideDao.deleteCovering(alarmId, epochDay)
 }

@@ -91,4 +91,38 @@ class AppDatabaseMigrationTest {
     }
     db.close()
   }
+
+  @Test
+  fun migrate3To4_addsOverrides_andPreservesData() {
+    // v3: будильник-смена (таблицы alarm_overrides ещё нет).
+    helper.createDatabase(dbName, 3).apply {
+      execSQL(
+        "INSERT INTO alarms " +
+          "(label, enabled, hour, minute, mode, daysMask, presetId, anchorEpochDay, " +
+          "deleteAfterFiring, freezeCycleDuringOff, cycleSpec) " +
+          "VALUES ('Смена', 1, 7, 0, 'shift', 0, '2x2', 20000, 0, 0, NULL)"
+      )
+      close()
+    }
+
+    val db = helper.runMigrationsAndValidate(dbName, 4, true, AppDatabase.MIGRATION_3_4)
+
+    // Старый будильник на месте.
+    db.query("SELECT label FROM alarms").use { c ->
+      assertTrue(c.moveToFirst())
+      assertEquals("Смена", c.getString(0))
+    }
+
+    // Новая таблица правок существует и принимает запись, привязанную к будильнику.
+    db.execSQL(
+      "INSERT INTO alarm_overrides (alarmId, fromEpochDay, toEpochDay, category, wakeMinutes, name) " +
+        "SELECT id, 20050, 20050, 'NIGHT', 1260, 'Ночь' FROM alarms LIMIT 1"
+    )
+    db.query("SELECT category, wakeMinutes FROM alarm_overrides").use { c ->
+      assertTrue(c.moveToFirst())
+      assertEquals("NIGHT", c.getString(0))
+      assertEquals(1260, c.getInt(1))
+    }
+    db.close()
+  }
 }
