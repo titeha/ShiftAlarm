@@ -18,6 +18,11 @@ import ru.titeha.shiftalarm.AlarmActivity
 /**
  * Foreground-сервис, который проигрывает сигнал будильника независимо от UI.
  * Стартует из [AlarmReceiver] в момент срабатывания; останавливается из экрана «Стоп».
+ *
+ * Не «липкий» ([START_NOT_STICKY]): надёжность звонка держит AlarmManager+[AlarmReceiver],
+ * поэтому если ОС убьёт сервис под нехваткой памяти — сам он не воскресает. Приходящий при
+ * воскрешении пустой (`null`) интент трактуется как стоп — иначе сервис зазвенел бы без
+ * привязки к будильнику (в т.ч. после уже нажатого «Стоп»).
  */
 class AlarmService : Service() {
 
@@ -26,14 +31,19 @@ class AlarmService : Service() {
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    if (intent?.action == ACTION_STOP) {
+    // intent == null приходит, когда ОС воскрешает убитый сервис (при START_STICKY).
+    // Нам это не нужно: надёжность звонка держит AlarmManager+AlarmReceiver, а не «липучесть»
+    // сервиса. Пустой интент трактуем как стоп, чтобы не зазвенеть без привязки к будильнику
+    // (в т.ч. после уже нажатого «Стоп»).
+    if (intent == null || intent.action == ACTION_STOP) {
       stopRingingAndSelf()
       return START_NOT_STICKY
     }
     goForeground()
     startRinging()
     launchScreen()
-    return START_STICKY
+    // START_NOT_STICKY: если ОС убьёт сервис — не воскрешать самому (см. проверку intent == null).
+    return START_NOT_STICKY
   }
 
   /**
