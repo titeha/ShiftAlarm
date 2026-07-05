@@ -76,6 +76,35 @@ class ProductionCalendarTest {
   }
 
   @Test
+  fun fromIsDayOff_parsesHolidaysAndWorkingWeekends() {
+    // Строка на 2026 (не високосный, 365): выходные=1, будни=0; затем правки.
+    val chars = CharArray(365)
+    var date = LocalDate.of(2026, 1, 1)
+    for (i in 0 until 365) {
+      val weekend = date.dayOfWeek == java.time.DayOfWeek.SATURDAY ||
+        date.dayOfWeek == java.time.DayOfWeek.SUNDAY
+      chars[i] = if (weekend) '1' else '0'
+      date = date.plusDays(1)
+    }
+    // 1 января (Чт) — праздник (нерабочий будень).
+    chars[LocalDate.of(2026, 1, 1).dayOfYear - 1] = '1'
+    // 3 января (Сб) — рабочая суббота (перенос).
+    chars[LocalDate.of(2026, 1, 3).dayOfYear - 1] = '0'
+
+    val cal = ProductionCalendars.fromIsDayOff(2026, String(chars))
+
+    assertTrue(cal.isNonWorking(LocalDate.of(2026, 1, 1)))    // праздник-будень
+    assertTrue(cal.isWorking(LocalDate.of(2026, 1, 3)))       // рабочая суббота
+    assertTrue(cal.isNonWorking(LocalDate.of(2026, 1, 4)))    // обычное воскресенье
+    assertTrue(cal.isWorking(LocalDate.of(2026, 1, 2)))       // обычная пятница
+  }
+
+  @Test(expected = IllegalArgumentException::class)
+  fun fromIsDayOff_rejectsWrongLength() {
+    ProductionCalendars.fromIsDayOff(2026, "010101") // не 365 цифр
+  }
+
+  @Test
   fun nextAlarm_withoutCalendar_unchanged() {
     val anchor = LocalDate.of(2026, 6, 10)
     val everyDay = ShiftSchedule(

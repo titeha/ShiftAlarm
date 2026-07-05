@@ -49,4 +49,37 @@ object ProductionCalendars {
    */
   fun bundled(country: String): ProductionCalendar? =
     if (country.equals("RU", ignoreCase = true)) RU_2026 else null
+
+  /**
+   * Парсер ответа isDayOff.ru (`GET https://isdayoff.ru/api/getdata?year=YYYY&cc=ru`): строка из
+   * цифр по одной на КАЖДЫЙ день года по порядку (1 января → 31 декабря). Коды: `0` рабочий,
+   * `1` нерабочий (выходной/праздник), `2` сокращённый предпраздничный (рабочий), `4` рабочий день
+   * (перенос). Всё, кроме `1`, считаем рабочим.
+   *
+   * Чистая функция (без сети): переводит строку в [ProductionCalendar] относительно нашей модели —
+   * будни-нерабочие уходят в `holidays`, рабочие Сб/Вс — в `workingWeekends`. Сетевой запрос и кэш —
+   * отдельный слой.
+   *
+   * @throws IllegalArgumentException если длина не совпадает с числом дней в году (защита от мусора).
+   */
+  fun fromIsDayOff(year: Int, data: String): ProductionCalendar {
+    val digits = data.trim()
+    val start = LocalDate.of(year, 1, 1)
+    val daysInYear = if (start.isLeapYear) 366 else 365
+    require(digits.length == daysInYear) {
+      "isDayOff: ожидалось $daysInYear цифр для $year, пришло ${digits.length}"
+    }
+    val holidays = mutableSetOf<LocalDate>()
+    val workingWeekends = mutableSetOf<LocalDate>()
+    var date = start
+    for (ch in digits) {
+      val nonWorking = ch == '1'
+      val isWeekend = date.dayOfWeek == java.time.DayOfWeek.SATURDAY ||
+        date.dayOfWeek == java.time.DayOfWeek.SUNDAY
+      if (nonWorking && !isWeekend) holidays += date       // праздник/перенос на будень
+      if (!nonWorking && isWeekend) workingWeekends += date // рабочая суббота/воскресенье
+      date = date.plusDays(1)
+    }
+    return ProductionCalendar(holidays, workingWeekends)
+  }
 }
