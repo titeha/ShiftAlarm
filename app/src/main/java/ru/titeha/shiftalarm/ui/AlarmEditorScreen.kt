@@ -126,6 +126,9 @@ fun AlarmEditorScreen(
       )
     }
 
+    Spacer(Modifier.height(16.dp))
+    HolidaySection(draft) { draft = it }
+
     Spacer(Modifier.height(24.dp))
 
     Row(
@@ -483,4 +486,49 @@ internal fun ModeChip(text: String, selected: Boolean, onClick: () -> Unit) {
     onClick = onClick,
     label = { Text(text, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
   )
+}
+
+/**
+ * Секция «Учитывать праздники» (производственный календарь) + выбор полярности:
+ * буди по рабочим (нерабочие глушатся) или по выходным (звонит в выходные/праздники/переносы).
+ */
+@Composable
+private fun HolidaySection(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
+  Column(Modifier.fillMaxWidth()) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Switch(
+        checked = draft.honorHolidays,
+        onCheckedChange = { onChange(draft.copy(honorHolidays = it)) }
+      )
+      Spacer(Modifier.width(8.dp))
+      Column {
+        Text("Учитывать праздники", style = MaterialTheme.typography.bodyMedium)
+        Text(
+          "Производственный календарь РФ: праздники и переносы выходных.",
+          style = MaterialTheme.typography.bodySmall
+        )
+      }
+    }
+    if (draft.honorHolidays) {
+      Spacer(Modifier.height(8.dp))
+      Text("Когда будить:", style = MaterialTheme.typography.bodyMedium)
+      Spacer(Modifier.height(4.dp))
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ModeChip("По рабочим", draft.polarity == AlarmEntity.POLARITY_WORK) {
+          onChange(draft.copy(polarity = AlarmEntity.POLARITY_WORK))
+        }
+        ModeChip("По выходным", draft.polarity == AlarmEntity.POLARITY_REST) {
+          onChange(draft.copy(polarity = AlarmEntity.POLARITY_REST))
+        }
+      }
+      Spacer(Modifier.height(4.dp))
+      Text(
+        if (draft.polarity == AlarmEntity.POLARITY_REST)
+          "Звонит в выходные и праздники (в т.ч. перенесённые), молчит в рабочие дни."
+        else
+          "Звонит по графику, но глушится в праздники и выходные (по календарю).",
+        style = MaterialTheme.typography.bodySmall
+      )
+    }
+  }
 }
