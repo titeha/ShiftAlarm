@@ -44,6 +44,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import ru.titeha.shiftalarm.alarm.AlarmScheduler
 import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.schedule.AlarmTimes
@@ -67,8 +68,10 @@ class MainActivity : ComponentActivity() {
         val periodsAll by repo.allPeriods.collectAsState(initial = emptyList())
         val periodsByAlarm = remember(periodsAll) { periodsAll.groupBy { it.alarmId } }
 
-        // null — список; иначе редактор: пара (будильник, его периоды отпуска).
-        var editing by remember { mutableStateOf<Pair<AlarmEntity, List<AlarmPeriod>>?>(null) }
+        // null — список; иначе редактор: (будильник, его периоды отпуска, его правки календаря).
+        var editing by remember {
+          mutableStateOf<Triple<AlarmEntity, List<AlarmPeriod>, List<AlarmOverride>>?>(null)
+        }
 
         RequestNotificationPermission()
 
@@ -80,12 +83,18 @@ class MainActivity : ComponentActivity() {
           }
         }
 
-        // Сохранение из редактора — пересохраняем периоды отпуска вместе с будильником.
-        fun saveFromEditor(alarm: AlarmEntity, periods: List<AlarmPeriod>) {
+        // Сохранение из редактора — пересохраняем периоды отпуска и правки календаря вместе с будильником.
+        fun saveFromEditor(
+          alarm: AlarmEntity,
+          periods: List<AlarmPeriod>,
+          overrides: List<AlarmOverride>
+        ) {
           scope.launch {
             val id = repo.upsert(alarm)
             repo.deletePeriodsForAlarm(id)
             periods.forEach { repo.upsertPeriod(it.copy(id = 0, alarmId = id)) }
+            repo.deleteOverridesForAlarm(id)
+            overrides.forEach { repo.upsertOverride(it.copy(id = 0, alarmId = id)) }
             AlarmScheduler.reschedule(context, repo, alarm.copy(id = id))
           }
         }
@@ -103,15 +112,22 @@ class MainActivity : ComponentActivity() {
           AlarmEditorScreen(
             initial = current.first,
             initialPeriods = current.second,
-            onSave = { alarm, periods -> saveFromEditor(alarm, periods); editing = null },
+            initialOverrides = current.third,
+            onSave = { alarm, periods, overrides ->
+              saveFromEditor(alarm, periods, overrides); editing = null
+            },
             onCancel = { editing = null }
           )
         } else {
           AlarmListScreen(
             alarms = alarms,
             periodsByAlarm = periodsByAlarm,
-            onAdd = { editing = defaultAlarm() to emptyList() },
-            onEdit = { alarm -> scope.launch { editing = alarm to repo.periodsList(alarm.id) } },
+            onAdd = { editing = Triple(defaultAlarm(), emptyList(), emptyList()) },
+            onEdit = { alarm ->
+              scope.launch {
+                editing = Triple(alarm, repo.periodsList(alarm.id), repo.overridesList(alarm.id))
+              }
+            },
             onToggle = { alarm, on -> saveAndSchedule(alarm.copy(enabled = on)) },
             onDelete = { remove(it) }
           )

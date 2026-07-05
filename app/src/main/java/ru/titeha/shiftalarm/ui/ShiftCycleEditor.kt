@@ -138,7 +138,7 @@ private val CATEGORIES = listOf(
 )
 
 /** Время будильника по умолчанию при включении тумблера — под категорию (звонок раньше старта). */
-private fun defaultAlarmFor(category: ShiftCategory): LocalTime = when (category) {
+internal fun defaultAlarmFor(category: ShiftCategory): LocalTime = when (category) {
   ShiftCategory.MORNING -> LocalTime.of(5, 0)
   ShiftCategory.DAY -> LocalTime.of(13, 0)
   ShiftCategory.NIGHT, ShiftCategory.OFF -> LocalTime.of(21, 0)

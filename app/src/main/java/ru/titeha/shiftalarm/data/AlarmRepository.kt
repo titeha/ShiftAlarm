@@ -49,4 +49,6 @@ class AlarmRepository(context: Context) {
   /** Снять все правки, покрывающие день (для «вернуть день по графику»). */
   suspend fun clearOverrideOn(alarmId: Long, epochDay: Long) =
     overrideDao.deleteCovering(alarmId, epochDay)
+
+  suspend fun deleteOverridesForAlarm(alarmId: Long) = overrideDao.deleteForAlarm(alarmId)
 }

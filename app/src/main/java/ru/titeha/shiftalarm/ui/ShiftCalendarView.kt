@@ -2,6 +2,7 @@ package ru.titeha.shiftalarm.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,11 +63,18 @@ private fun labelOf(kind: DayKind): String = when (kind) {
 }
 
 /**
- * Наглядный календарь смен (read-only): месяц с цветовой меткой типа дня + легенда, листание ←/→.
+ * Наглядный календарь смен: месяц с цветовой меткой типа дня + легенда, листание ←/→.
  * Тип дня берётся из [ShiftCalendar.kindOf] по переданному расписанию [schedule].
+ *
+ * Если задан [onDayClick] — ячейки кликабельны (тап по дню → подмена/исключение в редакторе);
+ * без него календарь read-only.
  */
 @Composable
-fun ShiftCalendarView(schedule: ShiftSchedule, modifier: Modifier = Modifier) {
+fun ShiftCalendarView(
+  schedule: ShiftSchedule,
+  modifier: Modifier = Modifier,
+  onDayClick: ((LocalDate) -> Unit)? = null
+) {
   var month by remember { mutableStateOf(YearMonth.now()) }
   val today = LocalDate.now()
 
@@ -111,6 +119,9 @@ fun ShiftCalendarView(schedule: ShiftSchedule, modifier: Modifier = Modifier) {
             kind = date?.let { ShiftCalendar.kindOf(it, schedule) },
             rings = date != null && ShiftEngine.wakeTimeOn(date, schedule) != null,
             isToday = date == today,
+            onClick = if (date != null && onDayClick != null) {
+              { onDayClick(date) }
+            } else null,
             modifier = Modifier.weight(1f)
           )
         }
@@ -125,7 +136,14 @@ fun ShiftCalendarView(schedule: ShiftSchedule, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun DayCell(date: LocalDate?, kind: DayKind?, rings: Boolean, isToday: Boolean, modifier: Modifier) {
+private fun DayCell(
+  date: LocalDate?,
+  kind: DayKind?,
+  rings: Boolean,
+  isToday: Boolean,
+  onClick: (() -> Unit)?,
+  modifier: Modifier
+) {
   Box(
     modifier = modifier
       .aspectRatio(1f)
@@ -134,7 +152,8 @@ private fun DayCell(date: LocalDate?, kind: DayKind?, rings: Boolean, isToday: B
       .then(
         if (isToday) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(6.dp))
         else Modifier
-      ),
+      )
+      .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
     contentAlignment = Alignment.Center
   ) {
     if (date != null) {
