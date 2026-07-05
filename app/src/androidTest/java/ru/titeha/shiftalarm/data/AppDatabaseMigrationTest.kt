@@ -125,4 +125,29 @@ class AppDatabaseMigrationTest {
     }
     db.close()
   }
+
+  @Test
+  fun migrate4To5_addsHolidayColumns_withDefaults() {
+    // v4: будильник-смена (колонок honorHolidays/polarity ещё нет).
+    helper.createDatabase(dbName, 4).apply {
+      execSQL(
+        "INSERT INTO alarms " +
+          "(label, enabled, hour, minute, mode, daysMask, presetId, anchorEpochDay, " +
+          "deleteAfterFiring, freezeCycleDuringOff, cycleSpec) " +
+          "VALUES ('Смена', 1, 7, 0, 'shift', 0, '2x2', 20000, 0, 0, NULL)"
+      )
+      close()
+    }
+
+    val db = helper.runMigrationsAndValidate(dbName, 5, true, AppDatabase.MIGRATION_4_5)
+
+    // Данные на месте, новые колонки получили дефолты (0 и 'WORK').
+    db.query("SELECT label, honorHolidays, polarity FROM alarms").use { c ->
+      assertTrue(c.moveToFirst())
+      assertEquals("Смена", c.getString(0))
+      assertEquals(0, c.getInt(1))
+      assertEquals("WORK", c.getString(2))
+    }
+    db.close()
+  }
 }

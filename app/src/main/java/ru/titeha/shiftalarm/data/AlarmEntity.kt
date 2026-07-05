@@ -35,10 +35,23 @@ data class AlarmEntity(
    *  - false — цикл «крутится» по календарю (отпуск лишь глушит звонок);
    *  - true — цикл «замораживается» (отпускные дни не считаются, фаза возобновляется с места ухода).
    */
-  val freezeCycleDuringOff: Boolean = false
+  val freezeCycleDuringOff: Boolean = false,
+  /**
+   * Учитывать производственный календарь (праздники/переносы). false — как раньше (календарь не
+   * влияет). true — звонок сверяется с календарём по [polarity] (см. `ShiftEngine`/`HolidayAlarms`).
+   */
+  val honorHolidays: Boolean = false,
+  /**
+   * Полярность будильника относительно календаря ([ru.titeha.shiftalarm.schedule.AlarmPolarity]):
+   * [POLARITY_WORK] — буди по рабочим (нерабочие глушатся); [POLARITY_REST] — буди по выходным.
+   * Действует только при [honorHolidays] = true.
+   */
+  val polarity: String = POLARITY_WORK
 ) {
   companion object {
     const val MODE_WEEKLY = "weekly"
     const val MODE_SHIFT = "shift"
+    const val POLARITY_WORK = "WORK"
+    const val POLARITY_REST = "REST"
   }
 }

@@ -21,10 +21,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *  - v3 — редактор смен: колонка `alarms.cycleSpec` (произвольный цикл, см. [MIGRATION_2_3]).
  *  - v4 — интерактивный календарь: таблица `alarm_overrides` (пер-дневные правки/подмены,
  *    см. [MIGRATION_3_4]).
+ *  - v5 — праздничный модуль: колонки `alarms.honorHolidays` + `alarms.polarity`
+ *    (см. [MIGRATION_4_5]).
  */
 @Database(
   entities = [AlarmEntity::class, AlarmPeriod::class, AlarmOverride::class],
-  version = 4,
+  version = 5,
   exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -108,6 +110,19 @@ abstract class AppDatabase : RoomDatabase() {
       }
     }
 
+    /**
+     * Миграция 4→5 (праздничный модуль): колонки `alarms.honorHolidays` (учитывать
+     * производственный календарь) и `alarms.polarity` (буди по рабочим/выходным). Простые ALTER
+     * с дефолтами (0 и 'WORK') — старые будильники ведут себя как раньше. Проверяется в
+     * `AppDatabaseMigrationTest`.
+     */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `alarms` ADD COLUMN `honorHolidays` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `alarms` ADD COLUMN `polarity` TEXT NOT NULL DEFAULT 'WORK'")
+      }
+    }
+
     fun get(context: Context): AppDatabase =
       instance ?: synchronized(this) {
         instance ?: Room.databaseBuilder(
@@ -115,7 +130,7 @@ abstract class AppDatabase : RoomDatabase() {
           AppDatabase::class.java,
           "shiftalarm.db"
         )
-          .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+          .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
           .build().also { instance = it }
       }
   }
