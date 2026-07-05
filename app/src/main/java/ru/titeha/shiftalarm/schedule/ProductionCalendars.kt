@@ -41,4 +41,12 @@ object ProductionCalendars {
     country.equals("RU", ignoreCase = true) && year == 2026 -> RU_2026
     else -> null
   }
+
+  /**
+   * Встроенный календарь по коду страны (последний доступный набор данных). Пока только РФ.
+   * Даты вне известных годов трактуются лишь по правилу Сб/Вс (без праздников) — доводка данных
+   * и онлайн-обновление придут отдельным слоем.
+   */
+  fun bundled(country: String): ProductionCalendar? =
+    if (country.equals("RU", ignoreCase = true)) RU_2026 else null
 }

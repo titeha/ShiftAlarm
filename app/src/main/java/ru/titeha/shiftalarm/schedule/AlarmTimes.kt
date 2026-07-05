@@ -5,6 +5,7 @@ import ru.titeha.shiftalarm.data.AlarmPeriod
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 /**
  * Чистый (без Android и I/O) расчёт ближайшего срабатывания одного будильника.
@@ -54,8 +55,21 @@ object AlarmTimes {
     periods: List<AlarmPeriod>,
     overrides: List<ScheduleOverrides.DayOverride>,
     from: LocalDateTime
-  ): LocalDateTime? =
-    when (alarm.mode) {
+  ): LocalDateTime? {
+    // Производственный календарь — только если будильник просит его учитывать. Страна пока РФ
+    // (мультистрана и онлайн-источник — отдельный слой).
+    val calendar = if (alarm.honorHolidays) ProductionCalendars.bundled("RU") else null
+
+    // Полярность REST («буди по выходным»): звонок в hh:mm на нерабочих днях, независимо от
+    // режима и маски — календарь задаёт дни (выходные/праздники/переносы).
+    if (calendar != null && alarm.polarity == AlarmEntity.POLARITY_REST) {
+      return HolidayAlarms.next(
+        from, LocalTime.of(alarm.hour, alarm.minute), AlarmPolarity.REST, calendar
+      )
+    }
+
+    // Иначе — обычный расчёт по режиму; при honorHolidays (WORK) нерабочие дни глушатся.
+    return when (alarm.mode) {
       AlarmEntity.MODE_SHIFT -> shiftBase(alarm)?.let { base ->
         val schedule = ScheduleOverrides.apply(
           ShiftSchedule(base).copy(
@@ -66,10 +80,36 @@ object AlarmTimes {
           ),
           overrides
         )
-        ShiftEngine.nextAlarm(from, schedule)
+        ShiftEngine.nextAlarm(from, schedule, calendar = calendar)
       }
-      else -> nextWeekly(alarm.hour, alarm.minute, alarm.daysMask, from)
+      else ->
+        if (calendar != null) nextWeeklyWorking(alarm.hour, alarm.minute, alarm.daysMask, from, calendar)
+        else nextWeekly(alarm.hour, alarm.minute, alarm.daysMask, from)
     }
+  }
+
+  /**
+   * Как [nextWeekly], но пропускает официально нерабочие дни по [calendar] (полярность WORK:
+   * «буди по масочным дням, но не в праздник/выходной»). Разовый (маска 0) календарь не фильтрует.
+   * Горизонт шире, т.к. масочные дни могут выпасть на длинные праздники; null — за год не нашлось.
+   */
+  private fun nextWeeklyWorking(
+    hour: Int, minute: Int, daysMask: Int, from: LocalDateTime, calendar: ProductionCalendar
+  ): LocalDateTime? {
+    if (daysMask == 0) {
+      val today = from.toLocalDate().atTime(hour, minute)
+      return if (today.isAfter(from)) today else today.plusDays(1)
+    }
+    var date = from.toLocalDate()
+    repeat(370) {
+      if (maskHas(daysMask, date.dayOfWeek) && calendar.isWorking(date)) {
+        val candidate = date.atTime(hour, minute)
+        if (candidate.isAfter(from)) return candidate
+      }
+      date = date.plusDays(1)
+    }
+    return null
+  }
 
   /** Перегрузка без правок календаря — периоды учитывает, правки нет. */
   fun next(alarm: AlarmEntity, periods: List<AlarmPeriod>, from: LocalDateTime): LocalDateTime? =

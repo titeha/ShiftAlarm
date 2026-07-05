@@ -166,6 +166,50 @@ class AlarmTimesTest {
     assertEquals(at(wed.plusDays(1), 7, 0), next) // звонок переехал на четверг
   }
 
+  // --- Производственный календарь (honorHolidays) ---
+
+  @Test
+  fun `next — смена с учётом праздников пропускает праздник и выходные`() {
+    // Цикл «звонок каждый день 7:00», honorHolidays. 12 июня 2026 — праздник (Пт), 13-14 — выходные.
+    val spec = ShiftCycleCodec.encode(listOf(ShiftType("w", "Работа", LocalTime.of(7, 0))))
+    val alarm = AlarmEntity(
+      mode = AlarmEntity.MODE_SHIFT,
+      cycleSpec = spec,
+      anchorEpochDay = LocalDate.of(2026, 6, 1).toEpochDay(),
+      honorHolidays = true
+    )
+    val from = LocalDate.of(2026, 6, 11).atTime(8, 0) // четверг, звонок 7:00 прошёл
+    val next = AlarmTimes.next(alarm, emptyList(), emptyList(), from)
+    assertEquals(LocalDate.of(2026, 6, 15).atTime(7, 0), next) // понедельник
+  }
+
+  @Test
+  fun `next — weekly с учётом праздников пропускает праздничную пятницу`() {
+    val alarm = AlarmEntity(
+      hour = 7, minute = 0,
+      mode = AlarmEntity.MODE_WEEKLY,
+      daysMask = AlarmTimes.maskOf(DayOfWeek.FRIDAY),
+      honorHolidays = true
+    )
+    val from = LocalDate.of(2026, 6, 12).atTime(6, 0) // праздничная пятница, до 7:00
+    val next = AlarmTimes.next(alarm, emptyList(), emptyList(), from)
+    assertEquals(LocalDate.of(2026, 6, 19).atTime(7, 0), next) // следующая пятница (рабочая)
+  }
+
+  @Test
+  fun `next — полярность REST будит в праздник и выходные`() {
+    val alarm = AlarmEntity(
+      hour = 9, minute = 0,
+      mode = AlarmEntity.MODE_WEEKLY,
+      daysMask = 0,
+      honorHolidays = true,
+      polarity = AlarmEntity.POLARITY_REST
+    )
+    val from = LocalDate.of(2026, 6, 11).atTime(12, 0) // четверг
+    val next = AlarmTimes.next(alarm, emptyList(), emptyList(), from)
+    assertEquals(LocalDate.of(2026, 6, 12).atTime(9, 0), next) // праздник = выходной → звонит
+  }
+
   @Test
   fun `next — точечная правка «рабочий» будит в выходной смены`() {
     // Пятница по 2x2 — выходной; «отрабатываем» её в 8:00 точечной правкой.
