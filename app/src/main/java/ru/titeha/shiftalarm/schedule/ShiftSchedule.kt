@@ -171,18 +171,25 @@ object ShiftEngine {
    * Ближайший момент звонка строго после [from] по расписанию [schedule].
    * Перебирает дни вперёд до [searchDays]; возвращает null, если за этот горизонт
    * рабочих дней нет (например, график целиком из выходных).
+   *
+   * Если задан [calendar] (производственный календарь), звонок ГЛУШИТСЯ в официально нерабочие
+   * дни (праздники/выходные/переносы) — «рабочий будильник учитывает праздники». Календарь только
+   * снимает звонки, не добавляет; полярность «буди по выходным» и per-alarm — отдельный слой.
    */
   fun nextAlarm(
     from: LocalDateTime,
     schedule: ShiftSchedule,
-    searchDays: Int = 366
+    searchDays: Int = 366,
+    calendar: ProductionCalendar? = null
   ): LocalDateTime? {
     var date = from.toLocalDate()
     repeat(searchDays) {
-      val wake = wakeTimeOn(date, schedule)
-      if (wake != null) {
-        val candidate = date.atTime(wake)
-        if (candidate.isAfter(from)) return candidate
+      if (calendar == null || calendar.isWorking(date)) {
+        val wake = wakeTimeOn(date, schedule)
+        if (wake != null) {
+          val candidate = date.atTime(wake)
+          if (candidate.isAfter(from)) return candidate
+        }
       }
       date = date.plusDays(1)
     }
