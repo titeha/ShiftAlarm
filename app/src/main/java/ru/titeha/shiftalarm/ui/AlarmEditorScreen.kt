@@ -38,9 +38,11 @@ import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.OffPeriod
+import ru.titeha.shiftalarm.schedule.PeriodKind
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 import ru.titeha.shiftalarm.schedule.ShiftCategory
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
+import ru.titeha.shiftalarm.schedule.VacationSick
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -118,6 +120,7 @@ fun AlarmEditorScreen(
         onChange = { draft = it },
         onAddPeriod = { periods = periods + it },
         onRemovePeriod = { p -> periods = periods - p },
+        onPeriodsChange = { periods = it },
         onOverridesChange = { overrides = it }
       )
     }
@@ -192,6 +195,7 @@ private fun ShiftEditor(
   onChange: (AlarmEntity) -> Unit,
   onAddPeriod: (AlarmPeriod) -> Unit,
   onRemovePeriod: (AlarmPeriod) -> Unit,
+  onPeriodsChange: (List<AlarmPeriod>) -> Unit,
   onOverridesChange: (List<AlarmOverride>) -> Unit
 ) {
   ShiftCycleEditor(draft = draft, onChange = onChange)
@@ -296,14 +300,52 @@ private fun ShiftEditor(
 
   pending?.let { (from, to) ->
     val title = if (from == to) from.localized() else "${from.localized()} — ${to.localized()}"
+    // Периоды, пересекающие выбранный диапазон (для замены/снятия).
+    val overlappingPeriods = periods.filter {
+      it.fromEpochDay <= to.toEpochDay() && it.toEpochDay >= from.toEpochDay()
+    }
     DayOverrideDialog(
       title = title,
       onPickCategory = { category ->
         onOverridesChange(overrides.withOverrideRange(draft.id, from, to, category))
+        overlappingPeriods.forEach(onRemovePeriod) // смена перекрывает период на этих днях
+        pending = null
+      },
+      onPickPeriod = { kind ->
+        // Период (без будильника) на день/диапазон; снимаем пересекающие правки-смены.
+        onOverridesChange(overrides.withoutRange(from, to))
+        if (kind == PeriodKind.SICK) {
+          // Больничный: если попал в отпуск — продлить отпуск (ТК РФ), см. VacationSick.
+          val spans = periods.map {
+            VacationSick.Span(it.fromEpochDay, it.toEpochDay, PeriodKind.fromReason(it.reason))
+          }
+          val sick = VacationSick.Span(from.toEpochDay(), to.toEpochDay(), PeriodKind.SICK)
+          onPeriodsChange(
+            VacationSick.applySick(spans, sick).map {
+              AlarmPeriod(
+                alarmId = draft.id,
+                fromEpochDay = it.from,
+                toEpochDay = it.to,
+                reason = it.kind.label
+              )
+            }
+          )
+        } else {
+          overlappingPeriods.forEach(onRemovePeriod) // другой период — заменяем
+          onAddPeriod(
+            AlarmPeriod(
+              alarmId = draft.id,
+              fromEpochDay = from.toEpochDay(),
+              toEpochDay = to.toEpochDay(),
+              reason = kind.label
+            )
+          )
+        }
         pending = null
       },
       onClear = {
         onOverridesChange(overrides.withoutRange(from, to))
+        overlappingPeriods.forEach(onRemovePeriod)
         pending = null
       },
       onDismiss = { pending = null }
@@ -349,14 +391,15 @@ private fun List<AlarmOverride>.withoutRange(from: LocalDate, to: LocalDate): Li
 }
 
 /**
- * Диалог правки дня/диапазона: выбрать смену (Утро/День/Ночь), сделать выходным или вернуть по
- * графику. [title] — дата или «дата — дата». Времена звонка — по категории ([defaultAlarmFor]);
- * точную минуту можно будет доводить позже.
+ * Диалог правки дня/диапазона: выбрать смену (Утро/День/Ночь/Выходной), задать период без
+ * будильника (отпуск/больничный/отгул/свой счёт) или вернуть по графику. [title] — дата или
+ * «дата — дата». Времена звонка смены — по категории ([defaultAlarmFor]); точную минуту позже.
  */
 @Composable
 private fun DayOverrideDialog(
   title: String,
   onPickCategory: (ShiftCategory) -> Unit,
+  onPickPeriod: (PeriodKind) -> Unit,
   onClear: () -> Unit,
   onDismiss: () -> Unit
 ) {
@@ -364,9 +407,9 @@ private fun DayOverrideDialog(
     onDismissRequest = onDismiss,
     title = { Text(title) },
     text = {
-      Column {
-        Text("Чем сделать этот день?", style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(8.dp))
+      Column(Modifier.verticalScroll(rememberScrollState())) {
+        Text("Сделать сменой:", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(4.dp))
         listOf(
           ShiftCategory.MORNING, ShiftCategory.DAY, ShiftCategory.NIGHT, ShiftCategory.OFF
         ).forEach { cat ->
@@ -379,7 +422,18 @@ private fun DayOverrideDialog(
             Text(labelOfCategory(cat) + suffix, modifier = Modifier.fillMaxWidth())
           }
         }
+        Spacer(Modifier.height(8.dp))
+        Text("Период (без будильника):", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(4.dp))
+        PeriodKind.entries.forEach { kind ->
+          TextButton(
+            onClick = { onPickPeriod(kind) },
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Text(kind.label, modifier = Modifier.fillMaxWidth())
+          }
+        }
+        Spacer(Modifier.height(8.dp))
         TextButton(onClick = onClear, modifier = Modifier.fillMaxWidth()) {
           Text("Вернуть по графику", modifier = Modifier.fillMaxWidth())
         }
