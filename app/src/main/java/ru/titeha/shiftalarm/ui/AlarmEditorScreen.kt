@@ -41,6 +41,7 @@ import ru.titeha.shiftalarm.schedule.OffPeriod
 import ru.titeha.shiftalarm.schedule.PeriodKind
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 import ru.titeha.shiftalarm.schedule.ShiftCategory
+import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
 import ru.titeha.shiftalarm.schedule.VacationSick
 import java.time.DayOfWeek
@@ -242,26 +243,29 @@ private fun ShiftEditor(
   var rangeStart by remember { mutableStateOf<LocalDate?>(null) }
   // Ожидающая правки цель (диалог открыт): from..to; один день = from == to.
   var pending by remember { mutableStateOf<Pair<LocalDate, LocalDate>?>(null) }
+  // Текущее расписание с применёнными правками — общее для календаря и обработчика правок.
+  val base = AlarmTimes.shiftBase(draft)
+  val schedule = base?.let {
+    ScheduleOverrides.apply(
+      ShiftSchedule(
+        base = it,
+        offPeriods = periods.map { p ->
+          OffPeriod(
+            LocalDate.ofEpochDay(p.fromEpochDay),
+            LocalDate.ofEpochDay(p.toEpochDay),
+            p.reason
+          )
+        },
+        freezeCycleDuringOff = draft.freezeCycleDuringOff
+      ),
+      overrides.map { o -> o.toDayOverride() }
+    )
+  }
   TextButton(onClick = { showCalendar = !showCalendar }) {
     Text(if (showCalendar) "Скрыть календарь" else "Показать календарь смен")
   }
   if (showCalendar) {
-    val base = AlarmTimes.shiftBase(draft)
-    if (base != null) {
-      val schedule = ScheduleOverrides.apply(
-        ShiftSchedule(
-          base = base,
-          offPeriods = periods.map {
-            OffPeriod(
-              LocalDate.ofEpochDay(it.fromEpochDay),
-              LocalDate.ofEpochDay(it.toEpochDay),
-              it.reason
-            )
-          },
-          freezeCycleDuringOff = draft.freezeCycleDuringOff
-        ),
-        overrides.map { it.toDayOverride() }
-      )
+    if (schedule != null) {
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         ModeChip("Один день", !rangeMode) { rangeMode = false; rangeStart = null }
         ModeChip("Диапазон", rangeMode) { rangeMode = true; rangeStart = null }
@@ -307,7 +311,21 @@ private fun ShiftEditor(
     DayOverrideDialog(
       title = title,
       onPickCategory = { category ->
-        onOverridesChange(overrides.withOverrideRange(draft.id, from, to, category))
+        // Умная отмена ночи: одиночный «Выходной» на ночь-дне снимает звонок, будящий на ЭТУ
+        // ночь (он на предыдущем дне), но сохраняет исходящий звонок (см. ScheduleOverrides).
+        val isSingleNightOff = from == to && category == ShiftCategory.OFF && schedule != null &&
+          ShiftEngine.shiftOn(from, schedule).category == ShiftCategory.NIGHT
+        if (isSingleNightOff) {
+          var next = overrides
+          ScheduleOverrides.cancelNight(from) { ShiftEngine.shiftOn(it, schedule!!) }.forEach { o ->
+            next = next.withExactOverride(
+              draft.id, o.from, o.to, o.shift.category, o.shift.wakeTime, o.shift.name
+            )
+          }
+          onOverridesChange(next)
+        } else {
+          onOverridesChange(overrides.withOverrideRange(draft.id, from, to, category))
+        }
         overlappingPeriods.forEach(onRemovePeriod) // смена перекрывает период на этих днях
         pending = null
       },
@@ -363,22 +381,36 @@ private fun labelOfCategory(category: ShiftCategory): String = when (category) {
 
 /**
  * Заменить/добавить правку на [from]..[to] сменой категории [category] (выходной = без звонка).
- * Один день = `from == to`. Пересекающиеся старые правки снимаются, чтобы не накапливались.
+ * Один день = `from == to`. Время звонка — по категории ([defaultAlarmFor]). Пересекающиеся старые
+ * правки снимаются, чтобы не накапливались.
  */
 private fun List<AlarmOverride>.withOverrideRange(
   alarmId: Long,
   from: LocalDate,
   to: LocalDate,
   category: ShiftCategory
+): List<AlarmOverride> = withExactOverride(
+  alarmId, from, to, category,
+  if (category == ShiftCategory.OFF) null else defaultAlarmFor(category),
+  labelOfCategory(category)
+)
+
+/** Как [withOverrideRange], но с явными временем звонка [wakeTime] и подписью [name]. */
+private fun List<AlarmOverride>.withExactOverride(
+  alarmId: Long,
+  from: LocalDate,
+  to: LocalDate,
+  category: ShiftCategory,
+  wakeTime: LocalTime?,
+  name: String
 ): List<AlarmOverride> {
-  val wake = if (category == ShiftCategory.OFF) null else defaultAlarmFor(category)
   val ovr = AlarmOverride(
     alarmId = alarmId,
     fromEpochDay = from.toEpochDay(),
     toEpochDay = to.toEpochDay(),
     category = category.name,
-    wakeMinutes = wake?.let { it.hour * 60 + it.minute },
-    name = labelOfCategory(category)
+    wakeMinutes = wakeTime?.let { it.hour * 60 + it.minute },
+    name = name
   )
   return withoutRange(from, to) + ovr
 }

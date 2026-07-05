@@ -44,4 +44,29 @@ object ScheduleOverrides {
       exceptions = schedule.exceptions + exceptions
     )
   }
+
+  /**
+   * «Умная отмена ночи» (Вариант Б). Проблема: метка ночи стоит на дне [day], а звонок, будящий
+   * на ЭТУ ночь, — на предыдущем дне ([day]-1); исходящий звонок [day] будит уже на СЛЕДУЮЩУЮ ночь.
+   * Поэтому наивное «сделать [day] выходным без звонка» снимает не тот звонок.
+   *
+   * Возвращает ДВЕ точечные правки, чтобы «отменить именно эту ночь»:
+   *  - [day] → «Выходной», но с СОХРАНЁННЫМ звонком дня (он служит следующей ночи);
+   *  - [day]-1 → его же категория, но БЕЗ звонка (снимаем звонок, будивший на отменяемую ночь).
+   *
+   * [resolved] — резолв смены на дату по ТЕКУЩЕМУ расписанию (обычно `ShiftEngine.shiftOn(d, sched)`
+   * с уже применёнными правками), чтобы отмена соседних ночей складывалась корректно.
+   *
+   * Допущение: звонок ночи [day] лежит на [day]-1 (верно для Варианта Б и пресета mdn). Кастомный
+   * цикл, не следующий этому соглашению, может повести себя иначе.
+   */
+  fun cancelNight(day: LocalDate, resolved: (LocalDate) -> ShiftType): List<DayOverride> {
+    val d = resolved(day)
+    val prev = day.minusDays(1)
+    val p = resolved(prev)
+    return listOf(
+      DayOverride(day, day, ShiftType("override", "Выходной", d.wakeTime, ShiftCategory.OFF)),
+      DayOverride(prev, prev, ShiftType("override", p.name, null, p.category))
+    )
+  }
 }

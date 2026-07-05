@@ -86,4 +86,51 @@ class ScheduleOverridesTest {
   fun override_rejectsInvertedRange() {
     DayOverride(anchor.plusDays(3), anchor, work)
   }
+
+  // --- Умная отмена ночи (Вариант Б) ---
+
+  private val depart = ShiftType("o", "Выходной", LocalTime.of(21, 0), ShiftCategory.OFF)
+  private val nightLast = ShiftType("n", "Ночь", null, ShiftCategory.NIGHT)
+
+  /** Мини-паттерн Варианта Б: вых*🔔 / ночь🔔 / ночь— / вых / вых. Звонок ночи — на пред. дне. */
+  private fun nightSchedule() = ShiftSchedule(
+    ShiftPattern(listOf(depart, night, nightLast, ShiftType.off(), ShiftType.off()), anchor)
+  )
+
+  @Test
+  fun cancelNight_silencesServingAlarm_keepsOutgoing() {
+    val schedule = nightSchedule()
+    // idx1 (anchor+1) — «Ночь» со звонком, будящим на idx2. Отменяем её.
+    val cancelled = ScheduleOverrides.apply(
+      schedule,
+      ScheduleOverrides.cancelNight(anchor.plusDays(1)) { ShiftEngine.shiftOn(it, schedule) }
+    )
+
+    // Звонок дня idx0 (будил на отменённую ночь idx1) — снят.
+    assertNull(ShiftEngine.wakeTimeOn(anchor.plusDays(0), cancelled))
+    // Отменённый день покрашен как выходной.
+    assertEquals(ShiftCategory.OFF, ShiftEngine.shiftOn(anchor.plusDays(1), cancelled).category)
+    // Исходящий звонок idx1 сохранён — он будит на следующую ночь idx2.
+    assertEquals(LocalTime.of(21, 0), ShiftEngine.wakeTimeOn(anchor.plusDays(1), cancelled))
+  }
+
+  @Test
+  fun cancelNight_adjacentNights_composeCorrectly() {
+    var schedule = nightSchedule()
+    // Отменяем idx1, затем idx2 — считая резолв от ТЕКУЩЕГО (уже правленого) расписания.
+    schedule = ScheduleOverrides.apply(
+      schedule,
+      ScheduleOverrides.cancelNight(anchor.plusDays(1)) { ShiftEngine.shiftOn(it, schedule) }
+    )
+    schedule = ScheduleOverrides.apply(
+      schedule,
+      ScheduleOverrides.cancelNight(anchor.plusDays(2)) { ShiftEngine.shiftOn(it, schedule) }
+    )
+
+    // Все звонки ночного блока сняты, обе ночи — выходные.
+    assertNull(ShiftEngine.wakeTimeOn(anchor.plusDays(0), schedule)) // служил idx1
+    assertNull(ShiftEngine.wakeTimeOn(anchor.plusDays(1), schedule)) // служил idx2 (теперь снят)
+    assertEquals(ShiftCategory.OFF, ShiftEngine.shiftOn(anchor.plusDays(1), schedule).category)
+    assertEquals(ShiftCategory.OFF, ShiftEngine.shiftOn(anchor.plusDays(2), schedule).category)
+  }
 }
