@@ -73,7 +73,8 @@ private fun labelOf(kind: DayKind): String = when (kind) {
 fun ShiftCalendarView(
   schedule: ShiftSchedule,
   modifier: Modifier = Modifier,
-  onDayClick: ((LocalDate) -> Unit)? = null
+  onDayClick: ((LocalDate) -> Unit)? = null,
+  highlightDay: LocalDate? = null
 ) {
   var month by remember { mutableStateOf(YearMonth.now()) }
   val today = LocalDate.now()
@@ -119,6 +120,7 @@ fun ShiftCalendarView(
             kind = date?.let { ShiftCalendar.kindOf(it, schedule) },
             rings = date != null && ShiftEngine.wakeTimeOn(date, schedule) != null,
             isToday = date == today,
+            isHighlighted = date != null && date == highlightDay,
             onClick = if (date != null && onDayClick != null) {
               { onDayClick(date) }
             } else null,
@@ -141,16 +143,23 @@ private fun DayCell(
   kind: DayKind?,
   rings: Boolean,
   isToday: Boolean,
+  isHighlighted: Boolean,
   onClick: (() -> Unit)?,
   modifier: Modifier
 ) {
+  // Якорь диапазона выделяем толстой рамкой основного цвета; сегодня — тонкой контрастной.
+  val border = when {
+    isHighlighted -> 3.dp to MaterialTheme.colorScheme.primary
+    isToday -> 2.dp to MaterialTheme.colorScheme.onSurface
+    else -> null
+  }
   Box(
     modifier = modifier
       .aspectRatio(1f)
       .padding(2.dp)
       .then(if (kind != null) Modifier.background(colorOf(kind), RoundedCornerShape(6.dp)) else Modifier)
       .then(
-        if (isToday) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(6.dp))
+        if (border != null) Modifier.border(border.first, border.second, RoundedCornerShape(6.dp))
         else Modifier
       )
       .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),

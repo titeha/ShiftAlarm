@@ -234,7 +234,10 @@ private fun ShiftEditor(
   // Наглядный календарь резолва смен — от текущего черновика, с применёнными правками.
   Spacer(Modifier.height(16.dp))
   var showCalendar by remember { mutableStateOf(false) }
-  var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
+  var rangeMode by remember { mutableStateOf(false) }
+  var rangeStart by remember { mutableStateOf<LocalDate?>(null) }
+  // Ожидающая правки цель (диалог открыт): from..to; один день = from == to.
+  var pending by remember { mutableStateOf<Pair<LocalDate, LocalDate>?>(null) }
   TextButton(onClick = { showCalendar = !showCalendar }) {
     Text(if (showCalendar) "Скрыть календарь" else "Показать календарь смен")
   }
@@ -255,29 +258,55 @@ private fun ShiftEditor(
         ),
         overrides.map { it.toDayOverride() }
       )
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ModeChip("Один день", !rangeMode) { rangeMode = false; rangeStart = null }
+        ModeChip("Диапазон", rangeMode) { rangeMode = true; rangeStart = null }
+      }
+      Spacer(Modifier.height(4.dp))
       Text(
-        "Нажми на день, чтобы подменить смену.",
+        when {
+          !rangeMode -> "Нажми на день, чтобы подменить смену."
+          rangeStart == null -> "Диапазон: нажми первый день блока."
+          else -> "Начало: ${rangeStart!!.localized()}. Нажми второй день блока."
+        },
         style = MaterialTheme.typography.bodySmall
       )
       Spacer(Modifier.height(4.dp))
-      ShiftCalendarView(schedule, onDayClick = { selectedDay = it })
+      ShiftCalendarView(
+        schedule,
+        onDayClick = { day ->
+          if (!rangeMode) {
+            pending = day to day
+          } else {
+            val start = rangeStart
+            if (start == null) {
+              rangeStart = day
+            } else {
+              pending = if (day.isBefore(start)) day to start else start to day
+              rangeStart = null
+            }
+          }
+        },
+        highlightDay = rangeStart
+      )
     } else {
       Text("Не удалось построить график для календаря.", style = MaterialTheme.typography.bodySmall)
     }
   }
 
-  selectedDay?.let { day ->
+  pending?.let { (from, to) ->
+    val title = if (from == to) from.localized() else "${from.localized()} — ${to.localized()}"
     DayOverrideDialog(
-      date = day,
+      title = title,
       onPickCategory = { category ->
-        onOverridesChange(overrides.withOverride(draft.id, day, category))
-        selectedDay = null
+        onOverridesChange(overrides.withOverrideRange(draft.id, from, to, category))
+        pending = null
       },
       onClear = {
-        onOverridesChange(overrides.withoutDay(day))
-        selectedDay = null
+        onOverridesChange(overrides.withoutRange(from, to))
+        pending = null
       },
-      onDismiss = { selectedDay = null }
+      onDismiss = { pending = null }
     )
   }
 }
@@ -290,44 +319,50 @@ private fun labelOfCategory(category: ShiftCategory): String = when (category) {
   ShiftCategory.OFF -> "Выходной"
 }
 
-/** Заменить/добавить точечную правку на [day] сменой категории [category] (выходной = без звонка). */
-private fun List<AlarmOverride>.withOverride(
+/**
+ * Заменить/добавить правку на [from]..[to] сменой категории [category] (выходной = без звонка).
+ * Один день = `from == to`. Пересекающиеся старые правки снимаются, чтобы не накапливались.
+ */
+private fun List<AlarmOverride>.withOverrideRange(
   alarmId: Long,
-  day: LocalDate,
+  from: LocalDate,
+  to: LocalDate,
   category: ShiftCategory
 ): List<AlarmOverride> {
   val wake = if (category == ShiftCategory.OFF) null else defaultAlarmFor(category)
   val ovr = AlarmOverride(
     alarmId = alarmId,
-    fromEpochDay = day.toEpochDay(),
-    toEpochDay = day.toEpochDay(),
+    fromEpochDay = from.toEpochDay(),
+    toEpochDay = to.toEpochDay(),
     category = category.name,
     wakeMinutes = wake?.let { it.hour * 60 + it.minute },
     name = labelOfCategory(category)
   )
-  return withoutDay(day) + ovr
+  return withoutRange(from, to) + ovr
 }
 
-/** Убрать все правки, покрывающие [day] («вернуть по графику»). */
-private fun List<AlarmOverride>.withoutDay(day: LocalDate): List<AlarmOverride> {
-  val epoch = day.toEpochDay()
-  return filterNot { it.fromEpochDay <= epoch && it.toEpochDay >= epoch }
+/** Убрать все правки, пересекающие [from]..[to] («вернуть по графику»). */
+private fun List<AlarmOverride>.withoutRange(from: LocalDate, to: LocalDate): List<AlarmOverride> {
+  val lo = from.toEpochDay()
+  val hi = to.toEpochDay()
+  return filterNot { it.fromEpochDay <= hi && it.toEpochDay >= lo }
 }
 
 /**
- * Диалог правки одного дня: выбрать смену (Утро/День/Ночь), сделать выходным или вернуть по графику.
- * Времена звонка — по категории ([defaultAlarmFor]); точную минуту можно будет доводить позже.
+ * Диалог правки дня/диапазона: выбрать смену (Утро/День/Ночь), сделать выходным или вернуть по
+ * графику. [title] — дата или «дата — дата». Времена звонка — по категории ([defaultAlarmFor]);
+ * точную минуту можно будет доводить позже.
  */
 @Composable
 private fun DayOverrideDialog(
-  date: LocalDate,
+  title: String,
   onPickCategory: (ShiftCategory) -> Unit,
   onClear: () -> Unit,
   onDismiss: () -> Unit
 ) {
   AlertDialog(
     onDismissRequest = onDismiss,
-    title = { Text(date.localized()) },
+    title = { Text(title) },
     text = {
       Column {
         Text("Чем сделать этот день?", style = MaterialTheme.typography.bodyMedium)
