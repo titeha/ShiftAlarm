@@ -123,9 +123,54 @@ object AlarmTimes {
     val anchor = LocalDate.ofEpochDay(alarm.anchorEpochDay)
     alarm.cycleSpec?.let { spec ->
       val slots = ShiftCycleCodec.decode(spec)
-      if (slots.isNotEmpty()) return ShiftPattern(slots, anchor)
+
+      if (slots.isNotEmpty()) {
+        return ShiftPattern(normalizeCustomNightAlarms(slots), anchor)
+      }
     }
     return ShiftPresets.byId(alarm.presetId)?.build(anchor)?.base
+  }
+
+  /**
+   * Приводит пользовательский цикл к календарной модели движка.
+   *
+   * В редакторе пользователь задаёт время будильника у самой ночной смены:
+   * «Ночь, 21:00». Для движка это должно означать звонок накануне,
+   * потому что ночная смена отмечена днём её отработки, а будить нужно вечером
+   * предыдущего календарного дня.
+   *
+   * Пример:
+   *   Выходной, Ночь(21:00), Ночь(21:00), Ночь(21:00), Выходной
+   *
+   * превращается в:
+   *   Выходной(21:00), Ночь(21:00), Ночь(21:00), Ночь без звонка, Выходной
+   *
+   * Если предыдущий слот уже содержит звонок, мы его не перезаписываем:
+   * текущая модель поддерживает только один звонок на календарный день.
+   */
+  private fun normalizeCustomNightAlarms(slots: List<ShiftType>): List<ShiftType> {
+    if (slots.isEmpty()) return slots
+    if (slots.none { it.category == ShiftCategory.NIGHT && it.wakeTime != null }) return slots
+
+    val normalized = slots.toMutableList()
+
+    for (index in slots.indices) {
+      val slot = slots[index]
+
+      if (slot.category != ShiftCategory.NIGHT || slot.wakeTime == null) {
+        continue
+      }
+
+      val previousIndex = if (index == 0) slots.lastIndex else index - 1
+      val previousSlot = normalized[previousIndex]
+
+      if (previousSlot.wakeTime == null) {
+        normalized[previousIndex] = previousSlot.copy(wakeTime = slot.wakeTime)
+        normalized[index] = normalized[index].copy(wakeTime = null)
+      }
+    }
+
+    return normalized
   }
 
   /**
