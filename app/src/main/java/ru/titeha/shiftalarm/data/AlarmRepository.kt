@@ -15,7 +15,23 @@ class AlarmRepository(context: Context) {
 
   suspend fun enabled(): List<AlarmEntity> = dao.enabled()
   suspend fun byId(id: Long): AlarmEntity? = dao.byId(id)
-  suspend fun upsert(alarm: AlarmEntity): Long = dao.upsert(alarm)
+  /**
+   * Сохраняет будильник без использования SQLite REPLACE.
+   *
+   * Для новой записи выполняется INSERT.
+   * Для существующей записи выполняется UPDATE, чтобы не удалить связанные периоды
+   * и правки календаря через каскадное удаление.
+   *
+   * Название upsert оставлено для совместимости с текущими вызовами в UI и планировщике.
+   */
+  suspend fun upsert(alarm: AlarmEntity): Long {
+    return if (alarm.id == 0L) {
+      dao.insert(alarm)
+    } else {
+      dao.update(alarm)
+      alarm.id
+    }
+  }
   suspend fun update(alarm: AlarmEntity) = dao.update(alarm)
   suspend fun delete(alarm: AlarmEntity) = dao.delete(alarm)
   suspend fun deleteById(id: Long) = dao.deleteById(id)

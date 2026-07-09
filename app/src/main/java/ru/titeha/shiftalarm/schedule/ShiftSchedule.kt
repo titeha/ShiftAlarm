@@ -142,7 +142,11 @@ object ShiftEngine {
     fun shiftOn(date: LocalDate, schedule: ShiftSchedule): ShiftType {
         schedule.exceptions[date]?.let { return it }
         schedule.swaps.firstOrNull { it.covers(date) }?.let { return it.shift }
-        if (schedule.offPeriods.any { it.covers(date) }) return ShiftType.off()
+
+        if (schedule.offPeriods.any { it.covers(date) }) {
+            return ShiftType.off()
+        }
+
         return baseShiftOn(date, schedule)
     }
 
@@ -159,15 +163,8 @@ object ShiftEngine {
      * звонок вечером D может относиться к ночной смене, отмеченной в календаре на D+1. Поэтому
      * периоды без будильника проверяются по дню обслуживаемой смены, а не только по дню звонка.
      */
-    fun wakeTimeOn(date: LocalDate, schedule: ShiftSchedule): LocalTime? {
-        val shift = shiftOnIgnoringOffPeriods(date, schedule)
-        val wakeTime = shift.wakeTime ?: return null
-        val servedDate = servedDateForAlarmOn(date, schedule)
-
-        if (schedule.offPeriods.any { it.covers(servedDate) }) return null
-
-        return wakeTime
-    }
+    fun wakeTimeOn(date: LocalDate, schedule: ShiftSchedule): LocalTime? =
+        shiftOn(date, schedule).wakeTime
 
     /**
      * Ближайший момент звонка строго после [from] по расписанию [schedule].
