@@ -261,7 +261,7 @@ private fun ShiftEditor(
         },
         freezeCycleDuringOff = draft.freezeCycleDuringOff
       ),
-      overrides.map { o -> o.toDayOverride() }
+      overrides.mapNotNull { o -> o.toDayOverrideOrNull() }
     )
   }
   TextButton(onClick = { showCalendar = !showCalendar }) {

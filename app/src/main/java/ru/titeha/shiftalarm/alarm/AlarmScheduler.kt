@@ -128,7 +128,7 @@ object AlarmScheduler {
     alarm: AlarmEntity
   ): List<ScheduleOverrides.DayOverride> {
     return if (alarm.mode == AlarmEntity.MODE_SHIFT) {
-      repo.overridesList(alarm.id).map { it.toDayOverride() }
+      repo.overridesList(alarm.id).mapNotNull { it.toDayOverrideOrNull() }
     } else {
       emptyList()
     }

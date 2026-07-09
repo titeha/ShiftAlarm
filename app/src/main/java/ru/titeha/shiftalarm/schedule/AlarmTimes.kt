@@ -117,17 +117,22 @@ object AlarmTimes {
 
   /**
    * Базовая ротация будильника-смены: произвольный цикл из [AlarmEntity.cycleSpec], если он задан
-   * и непустой, иначе встроенный пресет [AlarmEntity.presetId]. null — цикл задать нечем.
+   * и корректен, иначе встроенный пресет [AlarmEntity.presetId]. null — цикл задать нечем.
+   *
+   * Повреждённый `cycleSpec` не должен ронять планировщик. В таком случае откатываемся
+   * на пресет, если он задан.
    */
   fun shiftBase(alarm: AlarmEntity): ShiftPattern? {
     val anchor = LocalDate.ofEpochDay(alarm.anchorEpochDay)
-    alarm.cycleSpec?.let { spec ->
-      val slots = ShiftCycleCodec.decode(spec)
 
-      if (slots.isNotEmpty()) {
+    alarm.cycleSpec?.let { spec ->
+      val slots = ShiftCycleCodec.decodeOrNull(spec)
+
+      if (!slots.isNullOrEmpty()) {
         return ShiftPattern(normalizeCustomNightAlarms(slots), anchor)
       }
     }
+
     return ShiftPresets.byId(alarm.presetId)?.build(anchor)?.base
   }
 

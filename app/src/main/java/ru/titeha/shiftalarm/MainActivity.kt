@@ -227,8 +227,12 @@ private val DOW_SHORT = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "
 
 private fun describe(alarm: AlarmEntity): String {
   if (alarm.mode == AlarmEntity.MODE_SHIFT) {
-    alarm.cycleSpec?.let {
-      return "Смены: свой цикл (${ShiftCycleCodec.decode(it).size} дн.)"
+    alarm.cycleSpec?.let { spec ->
+      val slots = ShiftCycleCodec.decodeOrNull(spec)
+
+      if (!slots.isNullOrEmpty()) {
+        return "Смены: свой цикл (${slots.size} дн.)"
+      }
     }
     val title = ShiftPresets.byId(alarm.presetId)?.title ?: alarm.presetId
     return "Смены: $title"
