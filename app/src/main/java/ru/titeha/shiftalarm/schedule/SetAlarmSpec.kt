@@ -5,29 +5,45 @@ import java.time.DayOfWeek
 import java.util.Calendar
 
 /**
- * Чистый (без Android) перевод параметров системного действия `ACTION_SET_ALARM`
- * (постановка будильника Ассистентом/сторонним приложением) в запись [AlarmEntity].
+ * Чистый перевод параметров системного действия `ACTION_SET_ALARM`
+ * в запись [AlarmEntity].
  *
- * Логика вынесена за шов, чтобы покрыть её юнит-тестами без Intent и БД. Android-обвязка
- * (чтение extras, сохранение, планирование) — тонкая и живёт в activity-обработчике.
+ * Данные приходят из внешнего intent, поэтому здесь выполняется базовая валидация:
+ * час, минуты, дни повтора и подпись будильника приводятся к безопасному виду.
+ *
+ * Android-обвязка живёт в activity-обработчике, а эта логика не зависит от Android API
+ * и покрывается обычными unit-тестами.
  */
 object SetAlarmSpec {
+  private const val MAX_LABEL_LENGTH = 120
 
   /**
-   * @param hour час срабатывания; null — часа в интенте нет (вызывающий открывает редактор),
-   *   поэтому возвращаем null — создавать нечего.
-   * @param minute минуты (0, если не заданы).
+   * Создаёт будильник по параметрам `ACTION_SET_ALARM`.
+   *
+   * @param hour час срабатывания; null означает, что часа в intent нет и создавать нечего.
+   * @param minute минуты срабатывания.
    * @param message подпись будильника.
-   * @param calendarDays дни повтора в константах [java.util.Calendar] (ВС=1 … СБ=7), как их
-   *   передаёт `ACTION_SET_ALARM`; пустой список — разовый будильник (маска 0). Неизвестные
-   *   значения игнорируются.
-   * @return готовый включённый будильник режима «по дням недели» или null, если часа нет.
+   * @param calendarDays дни повтора в константах [Calendar]: ВС=1 … СБ=7.
+   *
+   * @return готовый включённый будильник или null, если параметры недостаточны
+   * или некорректны.
    */
-  fun toAlarm(hour: Int?, minute: Int, message: String, calendarDays: List<Int>): AlarmEntity? {
+  fun toAlarm(
+    hour: Int?,
+    minute: Int,
+    message: String,
+    calendarDays: List<Int>
+  ): AlarmEntity? {
     if (hour == null) return null
-    val mask = calendarDays.mapNotNull(::dayOfWeekOf).fold(0) { acc, d -> acc or AlarmTimes.bitOf(d) }
+    if (hour !in 0..23) return null
+    if (minute !in 0..59) return null
+
+    val mask = calendarDays
+      .mapNotNull(::dayOfWeekOf)
+      .fold(0) { acc, day -> acc or AlarmTimes.bitOf(day) }
+
     return AlarmEntity(
-      label = message,
+      label = normalizeLabel(message),
       hour = hour,
       minute = minute,
       mode = AlarmEntity.MODE_WEEKLY,
@@ -36,15 +52,26 @@ object SetAlarmSpec {
     )
   }
 
-  /** День недели из константы [java.util.Calendar]; null — значение вне диапазона ВС..СБ. */
-  private fun dayOfWeekOf(calendarDay: Int): DayOfWeek? = when (calendarDay) {
-    Calendar.MONDAY -> DayOfWeek.MONDAY
-    Calendar.TUESDAY -> DayOfWeek.TUESDAY
-    Calendar.WEDNESDAY -> DayOfWeek.WEDNESDAY
-    Calendar.THURSDAY -> DayOfWeek.THURSDAY
-    Calendar.FRIDAY -> DayOfWeek.FRIDAY
-    Calendar.SATURDAY -> DayOfWeek.SATURDAY
-    Calendar.SUNDAY -> DayOfWeek.SUNDAY
-    else -> null
+  /**
+   * Приводит подпись будильника к безопасному размеру.
+   *
+   * Пустая строка допустима: пользователь увидит будильник без подписи.
+   */
+  private fun normalizeLabel(message: String): String {
+    return message.trim().take(MAX_LABEL_LENGTH)
+  }
+
+  /** День недели из константы [Calendar]; null — значение вне диапазона ВС..СБ. */
+  private fun dayOfWeekOf(calendarDay: Int): DayOfWeek? {
+    return when (calendarDay) {
+      Calendar.MONDAY -> DayOfWeek.MONDAY
+      Calendar.TUESDAY -> DayOfWeek.TUESDAY
+      Calendar.WEDNESDAY -> DayOfWeek.WEDNESDAY
+      Calendar.THURSDAY -> DayOfWeek.THURSDAY
+      Calendar.FRIDAY -> DayOfWeek.FRIDAY
+      Calendar.SATURDAY -> DayOfWeek.SATURDAY
+      Calendar.SUNDAY -> DayOfWeek.SUNDAY
+      else -> null
+    }
   }
 }
