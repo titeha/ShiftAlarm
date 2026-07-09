@@ -21,18 +21,28 @@ import java.time.ZoneId
  * поэтому несколько будильников не затирают друг друга.
  */
 object AlarmScheduler {
-
   const val EXTRA_ALARM_ID = "alarm_id"
-  const val NO_ID = -1L
+  const val EXTRA_TRIGGER_AT_MILLIS = "trigger_at_millis"
 
-  /** Запланировать, подгрузив периоды отпуска и правки календаря из репозитория (для смен). */
+  const val NO_ID = -1L
+  const val NO_TRIGGER_AT_MILLIS = AlarmFireValidator.MISSING_TRIGGER_AT_MILLIS
+
+  /**
+   * Запланировать, подгрузив периоды отпуска и правки календаря из репозитория.
+   */
   suspend fun reschedule(context: Context, repo: AlarmRepository, alarm: AlarmEntity) {
-    reschedule(context, alarm, offPeriodsFor(repo, alarm), overridesFor(repo, alarm))
+    reschedule(
+      context = context,
+      alarm = alarm,
+      periods = offPeriodsFor(repo, alarm),
+      overrides = overridesFor(repo, alarm)
+    )
   }
 
   /**
-   * Запланировать (или отменить, если выключен/нечего ставить) с уже известными периодами и
-   * правками календаря. Чистый I/O по AlarmManager — без обращений к БД.
+   * Запланировать или отменить будильник.
+   *
+   * Если будильник выключен или ближайшего срабатывания нет, системный сигнал снимается.
    */
   fun reschedule(
     context: Context,
@@ -40,56 +50,112 @@ object AlarmScheduler {
     periods: List<AlarmPeriod> = emptyList(),
     overrides: List<ScheduleOverrides.DayOverride> = emptyList()
   ) {
-    val next =
-      if (alarm.enabled) AlarmTimes.next(alarm, periods, overrides, LocalDateTime.now()) else null
+    val next = if (alarm.enabled) {
+      AlarmTimes.next(alarm, periods, overrides, LocalDateTime.now())
+    } else {
+      null
+    }
+
     if (next == null) {
       cancel(context, alarm.id)
     } else {
-      scheduleAt(context, alarm.id, next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
+      scheduleAt(
+        context = context,
+        alarmId = alarm.id,
+        triggerAtMillis = next
+          .atZone(ZoneId.systemDefault())
+          .toInstant()
+          .toEpochMilli()
+      )
     }
   }
 
-  /** Перепланировать набор будильников (после загрузки или массового изменения). */
+  /**
+   * Перепланировать набор будильников после загрузки, перезагрузки устройства
+   * или массового изменения настроек.
+   */
   suspend fun rescheduleAll(context: Context, repo: AlarmRepository, alarms: List<AlarmEntity>) {
-    alarms.forEach { reschedule(context, repo, it) }
+    alarms.forEach { alarm ->
+      reschedule(context, repo, alarm)
+    }
   }
-
-  /** Периоды отпуска нужны только сменам; «по дням недели» их не использует. */
-  private suspend fun offPeriodsFor(repo: AlarmRepository, alarm: AlarmEntity): List<AlarmPeriod> =
-    if (alarm.mode == AlarmEntity.MODE_SHIFT) repo.periodsList(alarm.id) else emptyList()
-
-  /** Правки календаря (подмены/исключения) нужны только сменам. */
-  private suspend fun overridesFor(
-    repo: AlarmRepository,
-    alarm: AlarmEntity
-  ): List<ScheduleOverrides.DayOverride> =
-    if (alarm.mode == AlarmEntity.MODE_SHIFT)
-      repo.overridesList(alarm.id).map { it.toDayOverride() }
-    else emptyList()
 
   fun scheduleAt(context: Context, alarmId: Long, triggerAtMillis: Long) {
     val alarmManager = context.getSystemService(AlarmManager::class.java)
+
     val show = PendingIntent.getActivity(
-      context, showRequest(alarmId),
+      context,
+      showRequest(alarmId),
       Intent(context, AlarmActivity::class.java),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
+
     val info = AlarmManager.AlarmClockInfo(triggerAtMillis, show)
-    alarmManager.setAlarmClock(info, firePendingIntent(context, alarmId))
+
+    alarmManager.setAlarmClock(
+      info,
+      firePendingIntent(
+        context = context,
+        alarmId = alarmId,
+        triggerAtMillis = triggerAtMillis
+      )
+    )
   }
 
   fun cancel(context: Context, alarmId: Long) {
-    context.getSystemService(AlarmManager::class.java).cancel(firePendingIntent(context, alarmId))
+    context.getSystemService(AlarmManager::class.java).cancel(
+      firePendingIntent(
+        context = context,
+        alarmId = alarmId,
+        triggerAtMillis = NO_TRIGGER_AT_MILLIS
+      )
+    )
   }
 
-  private fun firePendingIntent(context: Context, alarmId: Long): PendingIntent =
-    PendingIntent.getBroadcast(
-      context, fireRequest(alarmId),
-      Intent(context, AlarmReceiver::class.java).putExtra(EXTRA_ALARM_ID, alarmId),
+  private suspend fun offPeriodsFor(
+    repo: AlarmRepository,
+    alarm: AlarmEntity
+  ): List<AlarmPeriod> {
+    return if (alarm.mode == AlarmEntity.MODE_SHIFT) {
+      repo.periodsList(alarm.id)
+    } else {
+      emptyList()
+    }
+  }
+
+  private suspend fun overridesFor(
+    repo: AlarmRepository,
+    alarm: AlarmEntity
+  ): List<ScheduleOverrides.DayOverride> {
+    return if (alarm.mode == AlarmEntity.MODE_SHIFT) {
+      repo.overridesList(alarm.id).map { it.toDayOverride() }
+    } else {
+      emptyList()
+    }
+  }
+
+  private fun firePendingIntent(
+    context: Context,
+    alarmId: Long,
+    triggerAtMillis: Long
+  ): PendingIntent {
+    val intent = Intent(context, AlarmReceiver::class.java)
+      .putExtra(EXTRA_ALARM_ID, alarmId)
+      .putExtra(EXTRA_TRIGGER_AT_MILLIS, triggerAtMillis)
+
+    return PendingIntent.getBroadcast(
+      context,
+      fireRequest(alarmId),
+      intent,
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
+  }
 
-  // Разные коды запроса для «звонка» и «показа», уникальные по id будильника.
+  /*
+   * Разные requestCode для «сработать» и «показать экран».
+   * Они уникальны по id будильника, чтобы несколько будильников не затирали друг друга.
+   */
   private fun fireRequest(id: Long): Int = (id * 2).toInt()
+
   private fun showRequest(id: Long): Int = (id * 2 + 1).toInt()
 }
