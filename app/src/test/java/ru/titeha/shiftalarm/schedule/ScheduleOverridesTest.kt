@@ -133,4 +133,19 @@ class ScheduleOverridesTest {
     assertEquals(ShiftCategory.OFF, ShiftEngine.shiftOn(anchor.plusDays(1), schedule).category)
     assertEquals(ShiftCategory.OFF, ShiftEngine.shiftOn(anchor.plusDays(2), schedule).category)
   }
+
+  @Test
+  fun offPeriod_onNightDay_silencesServingAlarm() {
+    // Регресс: отпуск на ДЕНЬ НОЧИ должен глушить звонок предыдущего дня, обслуживающий эту ночь.
+    val schedule = nightSchedule() // [depart(21), night(21), nightLast(—), off, off] от anchor
+    val from = anchor.atTime(6, 0)
+
+    // Без отпуска: первый звонок — вечер anchor (depart 21:00), будит на ночь anchor+1.
+    assertEquals(anchor.atTime(21, 0), ShiftEngine.nextAlarm(from, schedule))
+
+    // Отпуск на день ночи (anchor+1) снимает звонок anchor (он обслуживал именно эту ночь);
+    // ближайший звонок — вечер anchor+1, будящий на СЛЕДУЮЩУЮ ночь anchor+2 (не в отпуске).
+    val onLeave = schedule.copy(offPeriods = listOf(OffPeriod(anchor.plusDays(1), anchor.plusDays(1))))
+    assertEquals(anchor.plusDays(1).atTime(21, 0), ShiftEngine.nextAlarm(from, onLeave))
+  }
 }

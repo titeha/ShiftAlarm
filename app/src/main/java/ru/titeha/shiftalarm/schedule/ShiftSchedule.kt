@@ -169,8 +169,11 @@ object ShiftEngine {
     /**
      * Ближайший момент звонка строго после [from] по расписанию [schedule].
      *
-     * Если задан [calendar], нерабочие дни глушат звонки. Для ночных смен календарь проверяется
-     * по дню обслуживаемой смены, а не по дню вечернего звонка.
+     * И праздники ([calendar]), и периоды без будильника ([ShiftSchedule.offPeriods]) глушат звонок
+     * по дню ОБСЛУЖИВАЕМОЙ смены ([servedDateForAlarmOn]), а не по дню вечернего звонка. Для ночного
+     * блока Варианта Б это важно: звонок вечером D-1 обслуживает ночь, помеченную на D, поэтому отпуск
+     * (и праздник) на D должны глушить именно этот звонок. Само время звонка берётся из слота дня
+     * (без вычёркивания периодом), чтобы период не стирал слот, обслуживающий следующую ночь.
      */
     fun nextAlarm(
         from: LocalDateTime,
@@ -182,9 +185,11 @@ object ShiftEngine {
 
         repeat(searchDays) {
             val servedDate = servedDateForAlarmOn(date, schedule)
+            val calendarWorking = calendar == null || calendar.isWorking(servedDate)
+            val onLeave = schedule.offPeriods.any { it.covers(servedDate) }
 
-            if (calendar == null || calendar.isWorking(servedDate)) {
-                val wake = wakeTimeOn(date, schedule)
+            if (calendarWorking && !onLeave) {
+                val wake = shiftOnIgnoringOffPeriods(date, schedule).wakeTime
                 if (wake != null) {
                     val candidate = date.atTime(wake)
                     if (candidate.isAfter(from)) return candidate
