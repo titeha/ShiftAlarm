@@ -51,6 +51,7 @@ import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.ui.AlarmEditorScreen
+import ru.titeha.shiftalarm.ui.AlarmReadinessBanner
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -165,6 +166,9 @@ private fun AlarmListScreen(
 
       Button(onClick = onAdd) { Text("+ Будильник") }
       Spacer(Modifier.height(12.dp))
+
+      // Предупреждение о разрешениях, мешающих звонку (показывается только при проблемах).
+      AlarmReadinessBanner(Modifier.padding(bottom = 12.dp))
 
       if (alarms.isEmpty()) {
         Text("Список пуст. Добавьте будильник.", style = MaterialTheme.typography.bodyMedium)
