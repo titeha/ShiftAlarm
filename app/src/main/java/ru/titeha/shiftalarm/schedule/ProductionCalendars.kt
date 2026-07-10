@@ -51,6 +51,22 @@ object ProductionCalendars {
     if (country.equals("RU", ignoreCase = true)) RU_2026 else null
 
   /**
+   * Внешний источник календарей (локальный кэш, обновляемый с офиц. ресурса). Устанавливается
+   * Android-слоем при старте приложения. По умолчанию null — движок работает на встроенных данных
+   * (и остаётся чисто тестируемым). Читается из фонового планировщика, поэтому `@Volatile`.
+   */
+  @Volatile
+  var source: ((country: String, year: Int) -> ProductionCalendar?)? = null
+
+  /**
+   * Календарь для [country]/[year]: сперва внешний источник (кэш), затем встроенные данные года,
+   * затем базовый встроенный набор страны. null — данных нет вовсе. Синхронно и оффлайн-безопасно
+   * (сеть тут не трогается — только уже сохранённые данные).
+   */
+  fun resolve(country: String, year: Int): ProductionCalendar? =
+    source?.invoke(country, year) ?: of(country, year) ?: bundled(country)
+
+  /**
    * Парсер ответа isDayOff.ru (`GET https://isdayoff.ru/api/getdata?year=YYYY&cc=ru`): строка из
    * цифр по одной на КАЖДЫЙ день года по порядку (1 января → 31 декабря). Коды: `0` рабочий,
    * `1` нерабочий (выходной/праздник), `2` сокращённый предпраздничный (рабочий), `4` рабочий день

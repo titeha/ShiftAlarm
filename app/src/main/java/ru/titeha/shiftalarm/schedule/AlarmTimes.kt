@@ -56,9 +56,9 @@ object AlarmTimes {
     overrides: List<ScheduleOverrides.DayOverride>,
     from: LocalDateTime
   ): LocalDateTime? {
-    // Производственный календарь — только если будильник просит его учитывать. Страна пока РФ
-    // (мультистрана и онлайн-источник — отдельный слой).
-    val calendar = if (alarm.honorHolidays) ProductionCalendars.bundled("RU") else null
+    // Производственный календарь — только если будильник просит его учитывать. Страна пока РФ.
+    // resolve() берёт локальный кэш (обновляемый с офиц. источника), иначе встроенные данные.
+    val calendar = if (alarm.honorHolidays) ProductionCalendars.resolve("RU", from.toLocalDate().year) else null
 
     // Полярность REST («буди по выходным»): звонок в hh:mm на нерабочих днях, независимо от
     // режима и маски — календарь задаёт дни (выходные/праздники/переносы).

@@ -1,14 +1,21 @@
 package ru.titeha.shiftalarm.schedule
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalTime
 
 class ProductionCalendarTest {
+
+  @After
+  fun resetSource() {
+    ProductionCalendars.source = null // не протекать между тестами (глобальный источник)
+  }
 
   @Test
   fun weekend_isNonWorking_byDefault() {
@@ -102,6 +109,24 @@ class ProductionCalendarTest {
   @Test(expected = IllegalArgumentException::class)
   fun fromIsDayOff_rejectsWrongLength() {
     ProductionCalendars.fromIsDayOff(2026, "010101") // не 365 цифр
+  }
+
+  @Test
+  fun resolve_withoutSource_fallsBackToBundled() {
+    assertSame(ProductionCalendars.RU_2026, ProductionCalendars.resolve("RU", 2026))
+    assertNull(ProductionCalendars.resolve("US", 2026)) // данных нет
+  }
+
+  @Test
+  fun resolve_prefersSource_thenFallsBack() {
+    val fromSource = ProductionCalendar(holidays = setOf(LocalDate.of(2026, 7, 6)))
+    ProductionCalendars.source = { country, year ->
+      if (country == "RU" && year == 2026) fromSource else null
+    }
+    // Источник знает RU/2026 → берём его.
+    assertSame(fromSource, ProductionCalendars.resolve("RU", 2026))
+    // Источник не знает другой год → откат на встроенные (bundled даёт RU_2026 как последний набор).
+    assertSame(ProductionCalendars.RU_2026, ProductionCalendars.resolve("RU", 2030))
   }
 
   @Test
