@@ -52,6 +52,7 @@ import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.ui.AlarmEditorScreen
 import ru.titeha.shiftalarm.ui.AlarmReadinessBanner
+import ru.titeha.shiftalarm.ui.DiagnosticsScreen
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -73,6 +74,7 @@ class MainActivity : ComponentActivity() {
         var editing by remember {
           mutableStateOf<Triple<AlarmEntity, List<AlarmPeriod>, List<AlarmOverride>>?>(null)
         }
+        var showDiagnostics by remember { mutableStateOf(false) }
 
         RequestNotificationPermission()
 
@@ -108,30 +110,40 @@ class MainActivity : ComponentActivity() {
         }
 
         val current = editing
-        if (current != null) {
-          BackHandler { editing = null }
-          AlarmEditorScreen(
-            initial = current.first,
-            initialPeriods = current.second,
-            initialOverrides = current.third,
-            onSave = { alarm, periods, overrides ->
-              saveFromEditor(alarm, periods, overrides); editing = null
-            },
-            onCancel = { editing = null }
-          )
-        } else {
-          AlarmListScreen(
-            alarms = alarms,
-            periodsByAlarm = periodsByAlarm,
-            onAdd = { editing = Triple(defaultAlarm(), emptyList(), emptyList()) },
-            onEdit = { alarm ->
-              scope.launch {
-                editing = Triple(alarm, repo.periodsList(alarm.id), repo.overridesList(alarm.id))
-              }
-            },
-            onToggle = { alarm, on -> saveAndSchedule(alarm.copy(enabled = on)) },
-            onDelete = { remove(it) }
-          )
+        when {
+          showDiagnostics -> {
+            BackHandler { showDiagnostics = false }
+            DiagnosticsScreen(onBack = { showDiagnostics = false })
+          }
+
+          current != null -> {
+            BackHandler { editing = null }
+            AlarmEditorScreen(
+              initial = current.first,
+              initialPeriods = current.second,
+              initialOverrides = current.third,
+              onSave = { alarm, periods, overrides ->
+                saveFromEditor(alarm, periods, overrides); editing = null
+              },
+              onCancel = { editing = null }
+            )
+          }
+
+          else -> {
+            AlarmListScreen(
+              alarms = alarms,
+              periodsByAlarm = periodsByAlarm,
+              onAdd = { editing = Triple(defaultAlarm(), emptyList(), emptyList()) },
+              onEdit = { alarm ->
+                scope.launch {
+                  editing = Triple(alarm, repo.periodsList(alarm.id), repo.overridesList(alarm.id))
+                }
+              },
+              onToggle = { alarm, on -> saveAndSchedule(alarm.copy(enabled = on)) },
+              onDelete = { remove(it) },
+              onOpenDiagnostics = { showDiagnostics = true }
+            )
+          }
         }
       }
     }
@@ -152,7 +164,8 @@ private fun AlarmListScreen(
   onAdd: () -> Unit,
   onEdit: (AlarmEntity) -> Unit,
   onToggle: (AlarmEntity, Boolean) -> Unit,
-  onDelete: (AlarmEntity) -> Unit
+  onDelete: (AlarmEntity) -> Unit,
+  onOpenDiagnostics: () -> Unit
 ) {
   Scaffold { padding ->
     Column(
@@ -161,7 +174,14 @@ private fun AlarmListScreen(
         .padding(padding)
         .padding(16.dp)
     ) {
-      Text("Будильники", style = MaterialTheme.typography.headlineSmall)
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+      ) {
+        Text("Будильники", style = MaterialTheme.typography.headlineSmall)
+        TextButton(onClick = onOpenDiagnostics) { Text("Диагностика") }
+      }
       Spacer(Modifier.height(12.dp))
 
       Button(onClick = onAdd) { Text("+ Будильник") }
