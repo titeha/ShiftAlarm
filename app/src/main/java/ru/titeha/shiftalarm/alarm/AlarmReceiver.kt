@@ -6,6 +6,8 @@ import android.content.Intent
 import android.util.Log
 import kotlinx.coroutines.runBlocking
 import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.data.AlarmEventLog
+import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
@@ -70,10 +72,18 @@ class AlarmReceiver : BroadcastReceiver() {
     )
 
     if (!shouldRing) {
+      AlarmEventLog(context).record(
+        AlarmEventType.SKIPPED,
+        "id=$alarmId (устаревшее срабатывание или будильник выключен)",
+        System.currentTimeMillis()
+      )
       AlarmScheduler.reschedule(context, repo, alarm)
       return
     }
 
+    AlarmEventLog(context).record(
+      AlarmEventType.FIRED, "id=$alarmId «${alarm.label}»", System.currentTimeMillis()
+    )
     AlarmService.start(context)
 
     when {

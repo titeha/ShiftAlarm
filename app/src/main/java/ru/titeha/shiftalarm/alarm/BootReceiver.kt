@@ -8,6 +8,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import ru.titeha.shiftalarm.data.AlarmEventLog
+import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmRepository
 
 /**
@@ -38,6 +40,12 @@ class BootReceiver : BroadcastReceiver() {
           context = appContext,
           repo = repo,
           alarms = alarms
+        )
+
+        AlarmEventLog(appContext).record(
+          AlarmEventType.RESCHEDULED,
+          "$reason, будильников: ${alarms.size}",
+          System.currentTimeMillis()
         )
 
         Log.i(

@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import ru.titeha.shiftalarm.AlarmActivity
 import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.data.AlarmEventLog
+import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.schedule.AlarmTimes
@@ -66,6 +68,13 @@ object AlarmScheduler {
           .atZone(ZoneId.systemDefault())
           .toInstant()
           .toEpochMilli()
+      )
+      AlarmEventLog(context).record(
+        AlarmEventType.SCHEDULED,
+        "id=${alarm.id} → %02d.%02d %02d:%02d".format(
+          next.dayOfMonth, next.monthValue, next.hour, next.minute
+        ),
+        System.currentTimeMillis()
       )
     }
   }
