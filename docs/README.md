@@ -37,6 +37,7 @@
 
 | Документ | О чём |
 |----------|-------|
+| [ALARM_PERMISSIONS.md](ALARM_PERMISSIONS.md) | Разрешения и готовность: проверка точных будильников / уведомлений / энергосбережения + баннер с переходом в настройки. |
 | [ALARM_RECEIVER_SAFETY.md](ALARM_RECEIVER_SAFETY.md) | Защита от ложного звонка: `AlarmReceiver` проверяет актуальность срабатывания до запуска сигнала. |
 | [ALARM_SIGNAL_FALLBACK.md](ALARM_SIGNAL_FALLBACK.md) | Вибрация как запасной канал сигнала. |
 | [SYSTEM_RESCHEDULE.md](SYSTEM_RESCHEDULE.md) | Перепланирование будильников после reboot / обновления приложения / смены времени и часового пояса. |
