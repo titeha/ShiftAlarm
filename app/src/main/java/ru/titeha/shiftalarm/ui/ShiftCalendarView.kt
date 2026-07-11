@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import ru.titeha.shiftalarm.schedule.ShiftCalendar
@@ -40,8 +41,11 @@ import java.util.Locale
 
 private val WEEKDAYS = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 
-/** Цвет ячейки по типу дня (палитра Фазы 1, выводится из времени подъёма). */
-private fun colorOf(kind: DayKind): Color = when (kind) {
+/**
+ * Цвет ячейки по типу дня. Хью сохраняются (семантика цвета смен узнаваема), но на тёмной теме
+ * берутся более глубокие варианты, чтобы гармонировать с фоном и держать контраст с белым текстом.
+ */
+private fun colorOf(kind: DayKind, dark: Boolean): Color = if (!dark) when (kind) {
   DayKind.MORNING -> Color(0xFFFFD54F)  // утро — жёлтый
   DayKind.DAY -> Color(0xFFFF9800)      // день — оранжевый
   DayKind.NIGHT -> Color(0xFF42A5F5)    // ночь — синий
@@ -50,7 +54,19 @@ private fun colorOf(kind: DayKind): Color = when (kind) {
   DayKind.SICK -> Color(0xFF7C8A3E)     // больничный — болотный
   DayKind.DAYOFF -> Color(0xFF4DB6AC)   // отгул — бирюзовый
   DayKind.UNPAID -> Color(0xFF9575CD)   // за свой счёт — сиреневый
+} else when (kind) {
+  DayKind.MORNING -> Color(0xFF6D5A16)
+  DayKind.DAY -> Color(0xFF8A5200)
+  DayKind.NIGHT -> Color(0xFF1E4A6E)
+  DayKind.OFF -> Color(0xFF7A3B3B)
+  DayKind.VACATION -> Color(0xFF33612F)
+  DayKind.SICK -> Color(0xFF444C22)
+  DayKind.DAYOFF -> Color(0xFF2A6560)
+  DayKind.UNPAID -> Color(0xFF4E3E73)
 }
+
+/** Цвет текста/точки на цветной ячейке: чёрный на светлой теме, белый на тёмной. */
+private fun onCellColor(dark: Boolean): Color = if (dark) Color.White else Color.Black
 
 private fun labelOf(kind: DayKind): String = when (kind) {
   DayKind.MORNING -> "Утро"
@@ -85,6 +101,8 @@ fun ShiftCalendarView(
   val holidayCal = remember(month, honorHolidays) {
     if (honorHolidays) ProductionCalendars.merged("RU", month.year) else null
   }
+  // Фактическая тема (учитывает выбор пользователя, не только систему) — по яркости поверхности.
+  val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
   Column(modifier = modifier.fillMaxWidth()) {
     // Заголовок: ‹ Месяц Год ›
@@ -128,6 +146,7 @@ fun ShiftCalendarView(
             rings = date != null && ShiftEngine.wakeTimeOn(date, schedule, holidayCal) != null,
             isToday = date == today,
             isHighlighted = date != null && date == highlightDay,
+            dark = dark,
             onClick = if (date != null && onDayClick != null) {
               { onDayClick(date) }
             } else null,
@@ -138,7 +157,7 @@ fun ShiftCalendarView(
     }
 
     Spacer(Modifier.height(8.dp))
-    Legend()
+    Legend(dark)
     Spacer(Modifier.height(4.dp))
     Text("• — в этот день звонит будильник", style = MaterialTheme.typography.labelSmall)
   }
@@ -151,6 +170,7 @@ private fun DayCell(
   rings: Boolean,
   isToday: Boolean,
   isHighlighted: Boolean,
+  dark: Boolean,
   onClick: (() -> Unit)?,
   modifier: Modifier
 ) {
@@ -160,11 +180,12 @@ private fun DayCell(
     isToday -> 2.dp to MaterialTheme.colorScheme.onSurface
     else -> null
   }
+  val onCell = onCellColor(dark)
   Box(
     modifier = modifier
       .aspectRatio(1f)
       .padding(2.dp)
-      .then(if (kind != null) Modifier.background(colorOf(kind), RoundedCornerShape(6.dp)) else Modifier)
+      .then(if (kind != null) Modifier.background(colorOf(kind, dark), RoundedCornerShape(6.dp)) else Modifier)
       .then(
         if (border != null) Modifier.border(border.first, border.second, RoundedCornerShape(6.dp))
         else Modifier
@@ -176,7 +197,7 @@ private fun DayCell(
       Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
           "${date.dayOfMonth}",
-          color = Color.Black,
+          color = onCell,
           fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
           style = MaterialTheme.typography.bodySmall
         )
@@ -185,7 +206,7 @@ private fun DayCell(
           Box(
             Modifier
               .size(5.dp)
-              .background(Color.Black, RoundedCornerShape(50))
+              .background(onCell, RoundedCornerShape(50))
           )
         }
       }
@@ -194,14 +215,14 @@ private fun DayCell(
 }
 
 @Composable
-private fun Legend() {
+private fun Legend(dark: Boolean) {
   FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
     DayKind.entries.forEach { kind ->
       Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
           Modifier
             .size(14.dp)
-            .background(colorOf(kind), RoundedCornerShape(3.dp))
+            .background(colorOf(kind, dark), RoundedCornerShape(3.dp))
         )
         Spacer(Modifier.size(4.dp))
         Text(labelOf(kind), style = MaterialTheme.typography.labelSmall)

@@ -41,7 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,12 +90,12 @@ class MainActivity : ComponentActivity() {
         val context = LocalContext.current
         val repo = remember { AlarmRepository(context.applicationContext) }
         val scope = rememberCoroutineScope()
-        val alarms by repo.all.collectAsState(initial = emptyList())
+        val alarms by repo.all.collectAsStateWithLifecycle(initialValue = emptyList())
         // Периоды отпуска всех будильников — чтобы превью «след:» в списке глушило отпускные дни.
-        val periodsAll by repo.allPeriods.collectAsState(initial = emptyList())
+        val periodsAll by repo.allPeriods.collectAsStateWithLifecycle(initialValue = emptyList())
         val periodsByAlarm = remember(periodsAll) { periodsAll.groupBy { it.alarmId } }
         // Правки календаря всех будильников — чтобы превью «след:» учитывало подмены/исключения.
-        val overridesAll by repo.allOverrides.collectAsState(initial = emptyList())
+        val overridesAll by repo.allOverrides.collectAsStateWithLifecycle(initialValue = emptyList())
         val overridesByAlarm = remember(overridesAll) { overridesAll.groupBy { it.alarmId } }
 
         // null — список; иначе редактор: (будильник, его периоды отпуска, его правки календаря).
