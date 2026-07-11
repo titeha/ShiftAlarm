@@ -32,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import dev.analog.AnalogTimePicker
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
@@ -146,15 +145,33 @@ fun AlarmEditorScreen(
 
 @Composable
 private fun WeeklyEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
-  AnalogTimePicker(
-    time = LocalTime.of(draft.hour, draft.minute),
-    onTimeChange = { t -> onChange(draft.copy(hour = t.hour, minute = t.minute)) },
-    snapLabel = "5 минут",
-    nowLabel = "Сейчас"
-  )
+  var pickingTime by remember { mutableStateOf(false) }
+
+  // Время компактно: крупная кнопка-время открывает пикер по тапу (как в редакторе смен),
+  // а не занимает пол-экрана всегда.
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    Text("Время:", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.width(8.dp))
+    TextButton(onClick = { pickingTime = true }) {
+      Text("%02d:%02d".format(draft.hour, draft.minute), style = MaterialTheme.typography.displaySmall)
+    }
+  }
   Spacer(Modifier.height(16.dp))
 
   Text("Дни повтора:", style = MaterialTheme.typography.titleMedium)
+  Spacer(Modifier.height(8.dp))
+  // Быстрые пресеты дней (пока базовые Пн–Пт / Сб–Вс; учёт стран/праздников — позже).
+  val allDays = AlarmTimes.maskOf(*DayOfWeek.entries.toTypedArray())
+  val weekdays = AlarmTimes.maskOf(
+    DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
+  )
+  val weekends = AlarmTimes.maskOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
+  FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    OutlinedButton(onClick = { onChange(draft.copy(daysMask = allDays)) }) { Text("Все") }
+    OutlinedButton(onClick = { onChange(draft.copy(daysMask = weekdays)) }) { Text("Будни") }
+    OutlinedButton(onClick = { onChange(draft.copy(daysMask = weekends)) }) { Text("Выходные") }
+    OutlinedButton(onClick = { onChange(draft.copy(daysMask = 0)) }) { Text("Очистить") }
+  }
   Spacer(Modifier.height(8.dp))
   FlowRow(
     modifier = Modifier.fillMaxWidth(),
@@ -188,6 +205,14 @@ private fun WeeklyEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
       Spacer(Modifier.width(8.dp))
       Text("Удалить после срабатывания", style = MaterialTheme.typography.bodyMedium)
     }
+  }
+
+  if (pickingTime) {
+    TimePickerDialog(
+      time = LocalTime.of(draft.hour, draft.minute),
+      onPick = { t -> onChange(draft.copy(hour = t.hour, minute = t.minute)) },
+      onDismiss = { pickingTime = false }
+    )
   }
 }
 

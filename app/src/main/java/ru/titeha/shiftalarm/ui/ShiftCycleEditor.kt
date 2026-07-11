@@ -219,7 +219,7 @@ private fun RunCard(
   }
 
   if (pickingTime && wt != null) {
-    SlotTimeDialog(
+    TimePickerDialog(
       time = wt,
       onPick = { onChangeSlot(slot.copy(wakeTime = it)) },
       onDismiss = { pickingTime = false }
@@ -227,8 +227,9 @@ private fun RunCard(
   }
 }
 
+/** Диалог выбора времени (аналоговый пикер по тапу). Переиспользуется в недельном редакторе. */
 @Composable
-private fun SlotTimeDialog(time: LocalTime, onPick: (LocalTime) -> Unit, onDismiss: () -> Unit) {
+internal fun TimePickerDialog(time: LocalTime, onPick: (LocalTime) -> Unit, onDismiss: () -> Unit) {
   androidx.compose.material3.AlertDialog(
     onDismissRequest = onDismiss,
     confirmButton = { TextButton(onClick = onDismiss) { Text("Готово") } },
