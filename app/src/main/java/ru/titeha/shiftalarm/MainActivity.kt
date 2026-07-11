@@ -42,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,18 +54,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
-import ru.titeha.shiftalarm.alarm.AlarmScheduler
 import ru.titeha.shiftalarm.data.AlarmEntity
-import ru.titeha.shiftalarm.data.AlarmEventLog
-import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
-import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.ui.AlarmEditorScreen
+import ru.titeha.shiftalarm.ui.AlarmListViewModel
 import ru.titeha.shiftalarm.ui.AlarmReadinessBanner
 import ru.titeha.shiftalarm.ui.DiagnosticsScreen
 import ru.titeha.shiftalarm.ui.SettingsScreen
@@ -87,16 +85,9 @@ class MainActivity : ComponentActivity() {
         ThemeMode.DARK -> true
       }
       AppTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
-        val context = LocalContext.current
-        val repo = remember { AlarmRepository(context.applicationContext) }
+        val vm: AlarmListViewModel = viewModel()
+        val state by vm.uiState.collectAsStateWithLifecycle()
         val scope = rememberCoroutineScope()
-        val alarms by repo.all.collectAsStateWithLifecycle(initialValue = emptyList())
-        // Периоды отпуска всех будильников — чтобы превью «след:» в списке глушило отпускные дни.
-        val periodsAll by repo.allPeriods.collectAsStateWithLifecycle(initialValue = emptyList())
-        val periodsByAlarm = remember(periodsAll) { periodsAll.groupBy { it.alarmId } }
-        // Правки календаря всех будильников — чтобы превью «след:» учитывало подмены/исключения.
-        val overridesAll by repo.allOverrides.collectAsStateWithLifecycle(initialValue = emptyList())
-        val overridesByAlarm = remember(overridesAll) { overridesAll.groupBy { it.alarmId } }
 
         // null — список; иначе редактор: (будильник, его периоды отпуска, его правки календаря).
         var editing by remember {
@@ -106,36 +97,6 @@ class MainActivity : ComponentActivity() {
         var showSettings by remember { mutableStateOf(false) }
 
         RequestNotificationPermission()
-
-        // Включение/выключение, тест — периоды не трогаем (они уже в БД).
-        fun saveAndSchedule(alarm: AlarmEntity) {
-          scope.launch {
-            val id = repo.upsert(alarm)
-            AlarmScheduler.reschedule(context, repo, alarm.copy(id = id))
-          }
-        }
-
-        // Сохранение из редактора — пересохраняем периоды отпуска и правки календаря вместе с будильником.
-        fun saveFromEditor(
-          alarm: AlarmEntity,
-          periods: List<AlarmPeriod>,
-          overrides: List<AlarmOverride>
-        ) {
-          scope.launch {
-            val id = repo.saveWithChildren(alarm, periods, overrides)
-            AlarmScheduler.reschedule(context, repo, alarm.copy(id = id))
-          }
-        }
-
-        fun remove(alarm: AlarmEntity) {
-          scope.launch {
-            AlarmScheduler.cancel(context, alarm.id)
-            AlarmEventLog(context).record(
-              AlarmEventType.CANCELLED, "id=${alarm.id} (удалён)", System.currentTimeMillis()
-            )
-            repo.delete(alarm)
-          }
-        }
 
         val current = editing
         when {
@@ -162,7 +123,7 @@ class MainActivity : ComponentActivity() {
               initialPeriods = current.second,
               initialOverrides = current.third,
               onSave = { alarm, periods, overrides ->
-                saveFromEditor(alarm, periods, overrides); editing = null
+                vm.save(alarm, periods, overrides); editing = null
               },
               onCancel = { editing = null }
             )
@@ -170,17 +131,18 @@ class MainActivity : ComponentActivity() {
 
           else -> {
             AlarmListScreen(
-              alarms = alarms,
-              periodsByAlarm = periodsByAlarm,
-              overridesByAlarm = overridesByAlarm,
+              alarms = state.alarms,
+              periodsByAlarm = state.periodsByAlarm,
+              overridesByAlarm = state.overridesByAlarm,
               onAdd = { editing = Triple(defaultAlarm(), emptyList(), emptyList()) },
               onEdit = { alarm ->
                 scope.launch {
-                  editing = Triple(alarm, repo.periodsList(alarm.id), repo.overridesList(alarm.id))
+                  val (periods, overrides) = vm.childrenFor(alarm)
+                  editing = Triple(alarm, periods, overrides)
                 }
               },
-              onToggle = { alarm, on -> saveAndSchedule(alarm.copy(enabled = on)) },
-              onDelete = { remove(it) },
+              onToggle = { alarm, on -> vm.setEnabled(alarm, on) },
+              onDelete = { vm.delete(it) },
               onOpenDiagnostics = { showDiagnostics = true },
               onOpenSettings = { showSettings = true }
             )
