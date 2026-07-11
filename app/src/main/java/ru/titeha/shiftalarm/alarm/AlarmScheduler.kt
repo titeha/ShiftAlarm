@@ -60,6 +60,11 @@ object AlarmScheduler {
 
     if (next == null) {
       cancel(context, alarm.id)
+      AlarmEventLog(context).record(
+        AlarmEventType.CANCELLED,
+        "id=${alarm.id} (выключен или нет ближайшего срабатывания)",
+        System.currentTimeMillis()
+      )
     } else {
       scheduleAt(
         context = context,

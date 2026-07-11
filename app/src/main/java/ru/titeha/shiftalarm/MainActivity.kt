@@ -44,6 +44,8 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import ru.titeha.shiftalarm.alarm.AlarmScheduler
 import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.data.AlarmEventLog
+import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
@@ -104,6 +106,9 @@ class MainActivity : ComponentActivity() {
         fun remove(alarm: AlarmEntity) {
           scope.launch {
             AlarmScheduler.cancel(context, alarm.id)
+            AlarmEventLog(context).record(
+              AlarmEventType.CANCELLED, "id=${alarm.id} (удалён)", System.currentTimeMillis()
+            )
             repo.delete(alarm)
           }
         }
