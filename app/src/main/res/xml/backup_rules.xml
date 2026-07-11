@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Правила резервного копирования (Android 12+).
+
+  Бэкапим личные данные пользователя (будильники, смены, периоды, правки календаря — БД Room),
+  чтобы они переносились на новое устройство. Исключаем device-специфичное и легко восстановимое:
+    - alarm_event_log — диагностический журнал этого устройства;
+    - holiday_calendar_cache — кэш производственного календаря (подтягивается заново с источника).
+
+  Разрешения (точные будильники, уведомления, полноэкранные, энергосбережение) НЕ переносятся
+  системой — после восстановления пользователь увидит баннер готовности и настроит их заново.
+  Будильники после restore перепланируются при первом запуске приложения (см. ShiftAlarmApp).
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="alarm_event_log.xml" />
+        <exclude domain="sharedpref" path="holiday_calendar_cache.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="alarm_event_log.xml" />
+        <exclude domain="sharedpref" path="holiday_calendar_cache.xml" />
+    </device-transfer>
+</data-extraction-rules>

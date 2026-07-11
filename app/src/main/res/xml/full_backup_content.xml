@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Правила автобэкапа для Android 11 и ниже (fullBackupContent). Смысл тот же, что в backup_rules.xml:
+  бэкапим БД будильников, исключаем диагностический журнал и кэш праздников.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="alarm_event_log.xml" />
+    <exclude domain="sharedpref" path="holiday_calendar_cache.xml" />
+</full-backup-content>

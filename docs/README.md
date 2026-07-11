@@ -32,6 +32,7 @@
 |----------|-------|
 | [ALARM_DATA_INTEGRITY.md](ALARM_DATA_INTEGRITY.md) | Целостность данных: почему `@Insert(REPLACE)` был опасен (каскадное удаление периодов/правок) и как заменён на INSERT/UPDATE. |
 | [STORED_SCHEDULE_DATA_SAFETY.md](STORED_SCHEDULE_DATA_SAFETY.md) | Защитное чтение сохранённых расписаний/правок (устойчивость к повреждённым `cycleSpec`/enum-строкам). |
+| [BACKUP_AND_RESTORE.md](BACKUP_AND_RESTORE.md) | Политика резервного копирования: что бэкапится/исключено, поведение после restore, приватность. |
 
 ## Надёжность будильника и Android-интеграция
 

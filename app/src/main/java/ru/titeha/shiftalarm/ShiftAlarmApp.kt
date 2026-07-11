@@ -26,11 +26,17 @@ class ShiftAlarmApp : Application() {
     val holidays = HolidayCalendarRepository(this)
     holidays.install() // движок теперь читает календарь из кэша (иначе — встроенные данные)
 
-    // Фоновое обновление кэша. Ошибка/оффлайн — тихо, планировщик работает на кэше/встроенном.
     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-      val year = LocalDate.now().year
-      if (holidays.refresh("RU", year)) {
-        val alarms = AlarmRepository(this@ShiftAlarmApp)
+      val alarms = AlarmRepository(this@ShiftAlarmApp)
+
+      // Перепланировать при каждом старте: AlarmManager не хранит расписание между процессами и
+      // устройствами, поэтому это покрывает восстановление из backup, обновление приложения и
+      // первый запуск — будильники из БД снова попадают в систему.
+      AlarmScheduler.rescheduleAll(this@ShiftAlarmApp, alarms, alarms.enabled())
+
+      // Фоновое обновление календаря праздников; если данные пришли — перепланировать с их учётом.
+      // Ошибка/оффлайн — тихо, планировщик уже работает на кэше/встроенном.
+      if (holidays.refresh("RU", LocalDate.now().year)) {
         AlarmScheduler.rescheduleAll(this@ShiftAlarmApp, alarms, alarms.enabled())
       }
     }
