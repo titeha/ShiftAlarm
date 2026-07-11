@@ -12,17 +12,26 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -173,7 +182,22 @@ private fun AlarmListScreen(
   onDelete: (AlarmEntity) -> Unit,
   onOpenDiagnostics: () -> Unit
 ) {
-  Scaffold { padding ->
+  Scaffold(
+    floatingActionButton = {
+      // Плавающая кнопка «+»: правый нижний угол, поверх списка, чуть крупнее стандартной, круглая.
+      FloatingActionButton(
+        onClick = onAdd,
+        modifier = Modifier.size(64.dp),
+        shape = CircleShape
+      ) {
+        Icon(
+          Icons.Filled.Add,
+          contentDescription = "Добавить будильник",
+          modifier = Modifier.size(30.dp)
+        )
+      }
+    }
+  ) { padding ->
     Column(
       modifier = Modifier
         .fillMaxSize()
@@ -190,16 +214,17 @@ private fun AlarmListScreen(
       }
       Spacer(Modifier.height(12.dp))
 
-      Button(onClick = onAdd) { Text("+ Будильник") }
-      Spacer(Modifier.height(12.dp))
-
       // Предупреждение о разрешениях, мешающих звонку (показывается только при проблемах).
       AlarmReadinessBanner(Modifier.padding(bottom = 12.dp))
 
       if (alarms.isEmpty()) {
         Text("Список пуст. Добавьте будильник.", style = MaterialTheme.typography.bodyMedium)
       } else {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+          // Нижний отступ, чтобы последний будильник не прятался за плавающей кнопкой.
+          contentPadding = PaddingValues(bottom = 88.dp)
+        ) {
           items(alarms, key = { it.id }) { alarm ->
             AlarmRow(
               alarm = alarm,
@@ -225,6 +250,8 @@ private fun AlarmRow(
   onToggle: (Boolean) -> Unit,
   onDelete: () -> Unit
 ) {
+  var confirmOff by remember { mutableStateOf(false) }
+
   Card(
     modifier = Modifier
       .fillMaxWidth()
@@ -249,10 +276,30 @@ private fun AlarmRow(
           }
         }
       }
-      Switch(checked = alarm.enabled, onCheckedChange = onToggle)
-      Spacer(Modifier.width(8.dp))
-      TextButton(onClick = onDelete) { Text("Удалить") }
+      // Выключение — с подтверждением (чтобы не отключить случайно); включение — сразу.
+      Switch(
+        checked = alarm.enabled,
+        onCheckedChange = { on -> if (on) onToggle(true) else confirmOff = true }
+      )
+      Spacer(Modifier.width(4.dp))
+      IconButton(onClick = onDelete) {
+        Icon(Icons.Filled.Delete, contentDescription = "Удалить будильник")
+      }
     }
+  }
+
+  if (confirmOff) {
+    AlertDialog(
+      onDismissRequest = { confirmOff = false },
+      title = { Text("Выключить будильник?") },
+      text = { Text("Он не будет звонить, пока снова не включишь.") },
+      confirmButton = {
+        TextButton(onClick = { onToggle(false); confirmOff = false }) { Text("Выключить") }
+      },
+      dismissButton = {
+        TextButton(onClick = { confirmOff = false }) { Text("Отмена") }
+      }
+    )
   }
 }
 
