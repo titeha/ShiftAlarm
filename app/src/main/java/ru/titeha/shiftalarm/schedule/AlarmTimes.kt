@@ -57,14 +57,15 @@ object AlarmTimes {
     from: LocalDateTime
   ): LocalDateTime? {
     // Производственный календарь — только если будильник просит его учитывать. Страна пока РФ.
-    // resolve() берёт локальный кэш (обновляемый с офиц. источника), иначе встроенные данные.
-    val calendar = if (alarm.honorHolidays) ProductionCalendars.resolve("RU", from.toLocalDate().year) else null
+    // merged() покрывает текущий и следующий год (поиск может уйти за границу года); берёт из кэша
+    // (обновляемого с офиц. источника), иначе встроенные данные. Год без данных → лишь Сб/Вс.
+    val calendar = if (alarm.honorHolidays) ProductionCalendars.merged("RU", from.toLocalDate().year) else null
 
-    // Полярность REST («буди по выходным»): звонок в hh:mm на нерабочих днях, независимо от
-    // режима и маски — календарь задаёт дни (выходные/праздники/переносы).
-    if (calendar != null && alarm.polarity == AlarmEntity.POLARITY_REST) {
+    // Полярность REST («буди по выходным»): звонок в hh:mm на нерабочих днях, независимо от режима
+    // и маски. Без данных календаря — хотя бы обычные Сб/Вс (пустой ProductionCalendar).
+    if (alarm.honorHolidays && alarm.polarity == AlarmEntity.POLARITY_REST) {
       return HolidayAlarms.next(
-        from, LocalTime.of(alarm.hour, alarm.minute), AlarmPolarity.REST, calendar
+        from, LocalTime.of(alarm.hour, alarm.minute), AlarmPolarity.REST, calendar ?: ProductionCalendar()
       )
     }
 

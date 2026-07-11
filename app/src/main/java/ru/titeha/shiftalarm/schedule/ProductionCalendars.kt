@@ -43,14 +43,6 @@ object ProductionCalendars {
   }
 
   /**
-   * Встроенный календарь по коду страны (последний доступный набор данных). Пока только РФ.
-   * Даты вне известных годов трактуются лишь по правилу Сб/Вс (без праздников) — доводка данных
-   * и онлайн-обновление придут отдельным слоем.
-   */
-  fun bundled(country: String): ProductionCalendar? =
-    if (country.equals("RU", ignoreCase = true)) RU_2026 else null
-
-  /**
    * Внешний источник календарей (локальный кэш, обновляемый с офиц. ресурса). Устанавливается
    * Android-слоем при старте приложения. По умолчанию null — движок работает на встроенных данных
    * (и остаётся чисто тестируемым). Читается из фонового планировщика, поэтому `@Volatile`.
@@ -59,12 +51,28 @@ object ProductionCalendars {
   var source: ((country: String, year: Int) -> ProductionCalendar?)? = null
 
   /**
-   * Календарь для [country]/[year]: сперва внешний источник (кэш), затем встроенные данные года,
-   * затем базовый встроенный набор страны. null — данных нет вовсе. Синхронно и оффлайн-безопасно
-   * (сеть тут не трогается — только уже сохранённые данные).
+   * Календарь ИМЕННО для [country]/[year]: внешний источник (кэш) → встроенные данные этого года.
+   * null — данных для этого года нет (НЕ подставляем календарь другого года — праздники не совпадут).
+   * Синхронно и оффлайн-безопасно (сеть не трогается).
    */
   fun resolve(country: String, year: Int): ProductionCalendar? =
-    source?.invoke(country, year) ?: of(country, year) ?: bundled(country)
+    source?.invoke(country, year) ?: of(country, year)
+
+  /**
+   * Календарь, покрывающий [fromYear] и следующий год — для поиска ближайшего звонка, который может
+   * уйти за границу года (декабрь → январь). Объединяет holidays/workingWeekends доступных лет (даты
+   * разных лет не пересекаются, поэтому объединение корректно). Год без данных → его даты трактуются
+   * лишь по обычным Сб/Вс. null — данных нет ни на один из двух лет.
+   */
+  fun merged(country: String, fromYear: Int): ProductionCalendar? {
+    val a = resolve(country, fromYear)
+    val b = resolve(country, fromYear + 1)
+    return when {
+      a != null && b != null ->
+        ProductionCalendar(a.holidays + b.holidays, a.workingWeekends + b.workingWeekends)
+      else -> a ?: b
+    }
+  }
 
   /**
    * Парсер ответа isDayOff.ru (`GET https://isdayoff.ru/api/getdata?year=YYYY&cc=ru`): строка из
@@ -84,6 +92,11 @@ object ProductionCalendars {
     val daysInYear = if (start.isLeapYear) 366 else 365
     require(digits.length == daysInYear) {
       "isDayOff: ожидалось $daysInYear цифр для $year, пришло ${digits.length}"
+    }
+    // Каждый символ — код дня (0 рабочий, 1 нерабочий, 2 сокращённый, 4 перенос). Иначе это не
+    // календарь, а мусор/код ошибки нужной длины — отвергаем, чтобы не принять его за данные.
+    require(digits.all { it in "0124" }) {
+      "isDayOff: недопустимые символы в ответе для $year"
     }
     val holidays = mutableSetOf<LocalDate>()
     val workingWeekends = mutableSetOf<LocalDate>()

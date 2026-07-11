@@ -40,14 +40,35 @@ class HolidayCalendarRepository(context: Context) {
     val raw = HolidayApi.fetch(country, year) ?: return false
     return try {
       ProductionCalendars.fromIsDayOff(year, raw) // проверка: корректная строка нужной длины
-      prefs.edit().putString(key(country, year), raw).apply()
+      prefs.edit()
+        .putString(key(country, year), raw)
+        .putLong(stampKey(country, year), System.currentTimeMillis())
+        .apply()
       true
     } catch (_: Exception) {
       false
     }
   }
 
+  /**
+   * Обновить кэш, но НЕ чаще [maxAgeMillis] (по умолчанию раз в сутки) — чтобы не ходить в сеть при
+   * каждом старте. Если кэша ещё нет, троттлинг игнорируется (тянем сразу). Возвращает true, если
+   * кэш реально обновлён (есть смысл перепланировать).
+   */
+  suspend fun refreshIfStale(
+    country: String,
+    year: Int,
+    maxAgeMillis: Long = DAY_MILLIS,
+  ): Boolean {
+    val fresh = System.currentTimeMillis() - prefs.getLong(stampKey(country, year), 0L) < maxAgeMillis
+    if (fresh && cachedCalendar(country, year) != null) return false
+    return refresh(country, year)
+  }
+
+  private fun stampKey(country: String, year: Int) = "at_${key(country, year)}"
+
   private companion object {
     const val PREFS = "holiday_calendar_cache"
+    const val DAY_MILLIS = 24L * 60 * 60 * 1000
   }
 }

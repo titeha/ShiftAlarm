@@ -34,9 +34,12 @@ class ShiftAlarmApp : Application() {
       // первый запуск — будильники из БД снова попадают в систему.
       AlarmScheduler.rescheduleAll(this@ShiftAlarmApp, alarms, alarms.enabled())
 
-      // Фоновое обновление календаря праздников; если данные пришли — перепланировать с их учётом.
+      // Фоновое обновление календаря: текущий И следующий год (поиск звонка уходит за границу года),
+      // но не чаще раза в сутки (throttle). Если данные обновились — перепланировать с их учётом.
       // Ошибка/оффлайн — тихо, планировщик уже работает на кэше/встроенном.
-      if (holidays.refresh("RU", LocalDate.now().year)) {
+      val year = LocalDate.now().year
+      val updated = holidays.refreshIfStale("RU", year) or holidays.refreshIfStale("RU", year + 1)
+      if (updated) {
         AlarmScheduler.rescheduleAll(this@ShiftAlarmApp, alarms, alarms.enabled())
       }
     }

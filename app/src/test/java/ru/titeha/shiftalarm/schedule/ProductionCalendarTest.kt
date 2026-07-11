@@ -111,22 +111,42 @@ class ProductionCalendarTest {
     ProductionCalendars.fromIsDayOff(2026, "010101") // не 365 цифр
   }
 
-  @Test
-  fun resolve_withoutSource_fallsBackToBundled() {
-    assertSame(ProductionCalendars.RU_2026, ProductionCalendars.resolve("RU", 2026))
-    assertNull(ProductionCalendars.resolve("US", 2026)) // данных нет
+  @Test(expected = IllegalArgumentException::class)
+  fun fromIsDayOff_rejectsInvalidChars() {
+    // Правильная длина (365), но недопустимые символы (код ошибки/мусор) — отвергаем.
+    ProductionCalendars.fromIsDayOff(2026, "9".repeat(365))
   }
 
   @Test
-  fun resolve_prefersSource_thenFallsBack() {
+  fun resolve_withoutSource_usesBuiltInYear_elseNull() {
+    assertSame(ProductionCalendars.RU_2026, ProductionCalendars.resolve("RU", 2026))
+    assertNull(ProductionCalendars.resolve("US", 2026)) // страны нет
+    assertNull(ProductionCalendars.resolve("RU", 2030)) // года нет — НЕ подставляем чужой год
+  }
+
+  @Test
+  fun resolve_prefersSource_forItsYearOnly() {
     val fromSource = ProductionCalendar(holidays = setOf(LocalDate.of(2026, 7, 6)))
     ProductionCalendars.source = { country, year ->
       if (country == "RU" && year == 2026) fromSource else null
     }
-    // Источник знает RU/2026 → берём его.
-    assertSame(fromSource, ProductionCalendars.resolve("RU", 2026))
-    // Источник не знает другой год → откат на встроенные (bundled даёт RU_2026 как последний набор).
-    assertSame(ProductionCalendars.RU_2026, ProductionCalendars.resolve("RU", 2030))
+    assertSame(fromSource, ProductionCalendars.resolve("RU", 2026)) // источник знает 2026
+    assertNull(ProductionCalendars.resolve("RU", 2030)) // источник не знает → null (не встроенный чужой год)
+  }
+
+  @Test
+  fun merged_unionsHolidaysOfBothYears() {
+    // Источник даёт разные праздники на 2026 и 2027 — merged покрывает оба.
+    ProductionCalendars.source = { country, year ->
+      when (year) {
+        2026 -> ProductionCalendar(holidays = setOf(LocalDate.of(2026, 12, 31)))
+        2027 -> ProductionCalendar(holidays = setOf(LocalDate.of(2027, 1, 1)))
+        else -> null
+      }
+    }
+    val merged = ProductionCalendars.merged("RU", 2026)!!
+    assertTrue(merged.isNonWorking(LocalDate.of(2026, 12, 31))) // из 2026
+    assertTrue(merged.isNonWorking(LocalDate.of(2027, 1, 1)))   // из 2027 (граница года)
   }
 
   @Test
