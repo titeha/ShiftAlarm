@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -58,12 +60,16 @@ import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
+import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.ui.AlarmEditorScreen
 import ru.titeha.shiftalarm.ui.AlarmReadinessBanner
 import ru.titeha.shiftalarm.ui.DiagnosticsScreen
+import ru.titeha.shiftalarm.ui.SettingsScreen
+import ru.titeha.shiftalarm.ui.theme.AppTheme
+import ru.titeha.shiftalarm.ui.theme.ThemeMode
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -72,7 +78,15 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
-      MaterialTheme {
+      val settings = remember { SettingsStore(applicationContext) }
+      var themeMode by remember { mutableStateOf(settings.themeMode()) }
+      var dynamicColor by remember { mutableStateOf(settings.dynamicColor()) }
+      val darkTheme = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+      }
+      AppTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
         val context = LocalContext.current
         val repo = remember { AlarmRepository(context.applicationContext) }
         val scope = rememberCoroutineScope()
@@ -89,6 +103,7 @@ class MainActivity : ComponentActivity() {
           mutableStateOf<Triple<AlarmEntity, List<AlarmPeriod>, List<AlarmOverride>>?>(null)
         }
         var showDiagnostics by remember { mutableStateOf(false) }
+        var showSettings by remember { mutableStateOf(false) }
 
         RequestNotificationPermission()
 
@@ -124,6 +139,17 @@ class MainActivity : ComponentActivity() {
 
         val current = editing
         when {
+          showSettings -> {
+            BackHandler { showSettings = false }
+            SettingsScreen(
+              themeMode = themeMode,
+              dynamicColor = dynamicColor,
+              onThemeMode = { themeMode = it; settings.setThemeMode(it) },
+              onDynamicColor = { dynamicColor = it; settings.setDynamicColor(it) },
+              onBack = { showSettings = false }
+            )
+          }
+
           showDiagnostics -> {
             BackHandler { showDiagnostics = false }
             DiagnosticsScreen(onBack = { showDiagnostics = false })
@@ -155,7 +181,8 @@ class MainActivity : ComponentActivity() {
               },
               onToggle = { alarm, on -> saveAndSchedule(alarm.copy(enabled = on)) },
               onDelete = { remove(it) },
-              onOpenDiagnostics = { showDiagnostics = true }
+              onOpenDiagnostics = { showDiagnostics = true },
+              onOpenSettings = { showSettings = true }
             )
           }
         }
@@ -180,7 +207,8 @@ private fun AlarmListScreen(
   onEdit: (AlarmEntity) -> Unit,
   onToggle: (AlarmEntity, Boolean) -> Unit,
   onDelete: (AlarmEntity) -> Unit,
-  onOpenDiagnostics: () -> Unit
+  onOpenDiagnostics: () -> Unit,
+  onOpenSettings: () -> Unit
 ) {
   Scaffold(
     floatingActionButton = {
@@ -209,8 +237,15 @@ private fun AlarmListScreen(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
       ) {
-        Text("Будильники", style = MaterialTheme.typography.headlineSmall)
+        Text(
+          "Будильники",
+          style = MaterialTheme.typography.headlineSmall,
+          modifier = Modifier.weight(1f)
+        )
         TextButton(onClick = onOpenDiagnostics) { Text("Диагностика") }
+        IconButton(onClick = onOpenSettings) {
+          Icon(Icons.Filled.Settings, contentDescription = "Настройки")
+        }
       }
       Spacer(Modifier.height(12.dp))
 

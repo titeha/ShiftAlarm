@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -16,12 +17,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import ru.titeha.shiftalarm.alarm.AlarmService
+import ru.titeha.shiftalarm.data.SettingsStore
+import ru.titeha.shiftalarm.ui.theme.AppTheme
+import ru.titeha.shiftalarm.ui.theme.ThemeMode
 
 /** Полноэкранный экран звонка. Сам звук проигрывает [AlarmService]; здесь только текст и «Стоп». */
 class AlarmActivity : ComponentActivity() {
@@ -41,7 +46,13 @@ class AlarmActivity : ComponentActivity() {
     label = intent.getStringExtra(AlarmService.EXTRA_LABEL).orEmpty()
 
     setContent {
-      MaterialTheme {
+      val settings = remember { SettingsStore(applicationContext) }
+      val dark = when (settings.themeMode()) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+      }
+      AppTheme(darkTheme = dark, dynamicColor = settings.dynamicColor()) {
         Column(
           modifier = Modifier
             .fillMaxSize()
