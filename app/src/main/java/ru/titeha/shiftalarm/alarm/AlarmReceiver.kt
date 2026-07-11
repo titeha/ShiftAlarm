@@ -52,6 +52,11 @@ class AlarmReceiver : BroadcastReceiver() {
         )
       } catch (error: Exception) {
         Log.w(TAG, "Не удалось обработать срабатывание будильника", error)
+        AlarmEventLog(appContext).record(
+          AlarmEventType.ERROR,
+          "срабатывание id=$id: ${error.message ?: error.javaClass.simpleName}",
+          System.currentTimeMillis()
+        )
       } finally {
         pending.finish()
       }

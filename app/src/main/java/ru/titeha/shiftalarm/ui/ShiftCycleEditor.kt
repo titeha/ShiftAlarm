@@ -48,7 +48,9 @@ internal fun templateSlotsOf(presetId: String): List<ShiftType> =
 @Composable
 fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   val custom = draft.cycleSpec != null
-  val slots = draft.cycleSpec?.let { ShiftCycleCodec.decode(it) }.orEmpty()
+  // decodeOrNull (не строгий decode): повреждённый cycleSpec не должен ронять открытие редактора —
+  // тогда покажем пустой «свой цикл», а планировщик и так откатывается на пресет.
+  val slots = draft.cycleSpec?.let { ShiftCycleCodec.decodeOrNull(it) }.orEmpty()
 
   fun setSlots(newSlots: List<ShiftType>) =
     onChange(draft.copy(cycleSpec = ShiftCycleCodec.encode(newSlots)))
@@ -106,6 +108,7 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
       run = run,
       isFirst = i == 0,
       isLast = i == runs.lastIndex,
+      canGrow = slots.size < MAX_CUSTOM_CYCLE_DAYS,
       onChangeSlot = { updated -> apply(runs.toMutableList().also { it[i] = run.copy(slot = updated) }) },
       onCount = { n -> apply(runs.toMutableList().also { it[i] = run.copy(count = n) }) },
       onRemove = { apply(runs.toMutableList().also { it.removeAt(i) }) },
@@ -117,7 +120,7 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
 
   Button(
     onClick = { setSlots(slots + ShiftType("c${slots.size}", "Смена", LocalTime.of(7, 0))) },
-    enabled = slots.size < 60
+    enabled = slots.size < MAX_CUSTOM_CYCLE_DAYS
   ) { Text("+ Запись") }
 
   if (slots.isEmpty()) {
@@ -137,6 +140,9 @@ private val CATEGORIES = listOf(
   ShiftCategory.OFF to "Выходной"
 )
 
+/** Общий предел длины произвольного цикла (в днях после развёртки записей ×N). */
+private const val MAX_CUSTOM_CYCLE_DAYS = 60
+
 /** Время будильника по умолчанию при включении тумблера — под категорию (звонок раньше старта). */
 internal fun defaultAlarmFor(category: ShiftCategory): LocalTime = when (category) {
   ShiftCategory.MORNING -> LocalTime.of(5, 0)
@@ -150,6 +156,7 @@ private fun RunCard(
   run: SlotRun,
   isFirst: Boolean,
   isLast: Boolean,
+  canGrow: Boolean,
   onChangeSlot: (ShiftType) -> Unit,
   onCount: (Int) -> Unit,
   onRemove: () -> Unit,
@@ -213,7 +220,8 @@ private fun RunCard(
         Spacer(Modifier.width(8.dp))
         TextButton(onClick = { onCount(run.count - 1) }, enabled = run.count > 1) { Text("−") }
         Text("${run.count}", style = MaterialTheme.typography.titleMedium)
-        TextButton(onClick = { onCount(run.count + 1) }, enabled = run.count < 60) { Text("+") }
+        // Нельзя растить запись, если общий цикл уже достиг лимита дней.
+        TextButton(onClick = { onCount(run.count + 1) }, enabled = canGrow) { Text("+") }
       }
     }
   }

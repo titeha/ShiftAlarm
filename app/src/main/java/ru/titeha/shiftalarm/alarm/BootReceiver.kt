@@ -54,6 +54,11 @@ class BootReceiver : BroadcastReceiver() {
         )
       } catch (error: Exception) {
         Log.w(TAG, "Не удалось перепланировать будильники: $reason", error)
+        AlarmEventLog(appContext).record(
+          AlarmEventType.ERROR,
+          "перепланирование ($reason): ${error.message ?: error.javaClass.simpleName}",
+          System.currentTimeMillis()
+        )
       } finally {
         pending.finish()
       }
