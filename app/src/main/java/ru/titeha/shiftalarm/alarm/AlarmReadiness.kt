@@ -19,10 +19,27 @@ enum class AlarmReadinessIssue {
 }
 
 /**
+ * Насколько критична проблема готовности:
+ *  - [CRITICAL] — без этого будильник реально может не сработать (звонок/экран);
+ *  - [RECOMMENDATION] — желательно настроить для стабильности, но не «красная тревога».
+ */
+enum class AlarmReadinessSeverity { CRITICAL, RECOMMENDATION }
+
+/**
  * Чистая (без Android) логика: по фактическим статусам разрешений вернуть список проблем.
  * Android-обвязка (чтение реальных статусов, интенты в настройки) — в `AlarmPermissions`.
  */
 object AlarmReadiness {
+
+  /**
+   * Критичность проблемы. Точные будильники/уведомления/полноэкранные — критичны (без них звонок
+   * или его экран не отработают). Энергосбережение — рекомендация: на обычном телефоне приложение
+   * почти всегда не в белом списке, поэтому не пугаем красным, а мягко советуем.
+   */
+  fun severityOf(issue: AlarmReadinessIssue): AlarmReadinessSeverity = when (issue) {
+    AlarmReadinessIssue.BATTERY -> AlarmReadinessSeverity.RECOMMENDATION
+    else -> AlarmReadinessSeverity.CRITICAL
+  }
 
   /**
    * @param canScheduleExact точные будильники разрешены (на Android < 12 всегда true).

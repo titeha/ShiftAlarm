@@ -27,7 +27,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import ru.titeha.shiftalarm.alarm.AlarmPermissions
+import ru.titeha.shiftalarm.alarm.AlarmReadiness
 import ru.titeha.shiftalarm.alarm.AlarmReadinessIssue
+import ru.titeha.shiftalarm.alarm.AlarmReadinessSeverity
 
 /**
  * Предупреждение вверху списка: что мешает будильнику надёжно сработать (точные будильники,
@@ -52,19 +54,46 @@ fun AlarmReadinessBanner(modifier: Modifier = Modifier) {
 
   if (issues.isEmpty()) return
 
+  val critical = issues.filter { AlarmReadiness.severityOf(it) == AlarmReadinessSeverity.CRITICAL }
+  val recommended = issues.filter { AlarmReadiness.severityOf(it) == AlarmReadinessSeverity.RECOMMENDATION }
+
+  Column(modifier.fillMaxWidth()) {
+    if (critical.isNotEmpty()) {
+      IssueCard(
+        title = "Будильник может не сработать",
+        container = MaterialTheme.colorScheme.errorContainer,
+        content = MaterialTheme.colorScheme.onErrorContainer,
+        issues = critical,
+        context = context,
+      )
+    }
+    if (critical.isNotEmpty() && recommended.isNotEmpty()) Spacer(Modifier.height(8.dp))
+    if (recommended.isNotEmpty()) {
+      IssueCard(
+        title = "Рекомендуется настроить",
+        container = MaterialTheme.colorScheme.secondaryContainer,
+        content = MaterialTheme.colorScheme.onSecondaryContainer,
+        issues = recommended,
+        context = context,
+      )
+    }
+  }
+}
+
+@Composable
+private fun IssueCard(
+  title: String,
+  container: androidx.compose.ui.graphics.Color,
+  content: androidx.compose.ui.graphics.Color,
+  issues: List<AlarmReadinessIssue>,
+  context: android.content.Context,
+) {
   Card(
-    modifier = modifier.fillMaxWidth(),
-    colors = CardDefaults.cardColors(
-      containerColor = MaterialTheme.colorScheme.errorContainer,
-      contentColor = MaterialTheme.colorScheme.onErrorContainer,
-    ),
+    modifier = Modifier.fillMaxWidth(),
+    colors = CardDefaults.cardColors(containerColor = container, contentColor = content),
   ) {
     Column(Modifier.padding(12.dp)) {
-      Text(
-        "Будильник может не сработать",
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Bold,
-      )
+      Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
       issues.forEach { issue ->
         Spacer(Modifier.height(8.dp))
         Row(

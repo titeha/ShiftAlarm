@@ -45,6 +45,14 @@ class AlarmReadinessTest {
   }
 
   @Test
+  fun severity_batteryIsRecommendation_othersCritical() {
+    assertEquals(AlarmReadinessSeverity.RECOMMENDATION, AlarmReadiness.severityOf(AlarmReadinessIssue.BATTERY))
+    assertEquals(AlarmReadinessSeverity.CRITICAL, AlarmReadiness.severityOf(AlarmReadinessIssue.EXACT_ALARM))
+    assertEquals(AlarmReadinessSeverity.CRITICAL, AlarmReadiness.severityOf(AlarmReadinessIssue.NOTIFICATIONS))
+    assertEquals(AlarmReadinessSeverity.CRITICAL, AlarmReadiness.severityOf(AlarmReadinessIssue.FULL_SCREEN))
+  }
+
+  @Test
   fun onlyFullScreen_missing() {
     assertEquals(
       listOf(AlarmReadinessIssue.FULL_SCREEN),
