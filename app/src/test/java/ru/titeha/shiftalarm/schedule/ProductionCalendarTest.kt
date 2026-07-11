@@ -150,6 +150,23 @@ class ProductionCalendarTest {
   }
 
   @Test
+  fun wakeTimeOn_withCalendar_hidesRingOnHoliday() {
+    val anchor = LocalDate.of(2026, 6, 10)
+    val everyDay = ShiftSchedule(
+      ShiftPattern(listOf(ShiftType("w", "Работа", LocalTime.of(7, 0))), anchor)
+    )
+    val holiday = LocalDate.of(2026, 6, 12)
+    val cal = ProductionCalendar(holidays = setOf(holiday))
+
+    // Без календаря звонок есть в любой день.
+    assertEquals(LocalTime.of(7, 0), ShiftEngine.wakeTimeOn(holiday, everyDay, null))
+    // С календарём в праздник звонок «скрыт» (совпадает с реальным планировщиком).
+    assertNull(ShiftEngine.wakeTimeOn(holiday, everyDay, cal))
+    // В обычный рабочий день звонок остаётся.
+    assertEquals(LocalTime.of(7, 0), ShiftEngine.wakeTimeOn(LocalDate.of(2026, 6, 15), everyDay, cal))
+  }
+
+  @Test
   fun nextAlarm_withoutCalendar_unchanged() {
     val anchor = LocalDate.of(2026, 6, 10)
     val everyDay = ShiftSchedule(

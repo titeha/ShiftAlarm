@@ -167,6 +167,21 @@ object ShiftEngine {
         shiftOn(date, schedule).wakeTime
 
     /**
+     * Как [wakeTimeOn], но с учётом производственного календаря: звонок «скрывается», если
+     * ОБСЛУЖИВАЕМЫЙ день ([servedDateForAlarmOn]) нерабочий. Нужно календарю редактора, чтобы
+     * точка-звонок совпадала с тем, что реально запланирует будильник при «Учитывать праздники».
+     */
+    fun wakeTimeOn(
+        date: LocalDate,
+        schedule: ShiftSchedule,
+        calendar: ProductionCalendar?,
+    ): LocalTime? {
+        val wake = wakeTimeOn(date, schedule) ?: return null
+        if (calendar != null && !calendar.isWorking(servedDateForAlarmOn(date, schedule))) return null
+        return wake
+    }
+
+    /**
      * Ближайший момент звонка строго после [from] по расписанию [schedule].
      *
      * И праздники ([calendar]), и периоды без будильника ([ShiftSchedule.offPeriods]) глушат звонок

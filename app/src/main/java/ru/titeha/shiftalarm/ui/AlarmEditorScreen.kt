@@ -323,7 +323,8 @@ private fun ShiftEditor(
             }
           }
         },
-        highlightDay = rangeStart
+        highlightDay = rangeStart,
+        honorHolidays = draft.honorHolidays
       )
     } else {
       Text("Не удалось построить график для календаря.", style = MaterialTheme.typography.bodySmall)

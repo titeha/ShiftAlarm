@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import ru.titeha.shiftalarm.schedule.ShiftCalendar
 import ru.titeha.shiftalarm.schedule.ShiftCalendar.DayKind
+import ru.titeha.shiftalarm.schedule.ProductionCalendars
 import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
 import java.time.LocalDate
@@ -74,10 +75,16 @@ fun ShiftCalendarView(
   schedule: ShiftSchedule,
   modifier: Modifier = Modifier,
   onDayClick: ((LocalDate) -> Unit)? = null,
-  highlightDay: LocalDate? = null
+  highlightDay: LocalDate? = null,
+  honorHolidays: Boolean = false
 ) {
   var month by remember { mutableStateOf(YearMonth.now()) }
   val today = LocalDate.now()
+  // Календарь праздников для точки-звонка — только если будильник учитывает праздники. Так точка
+  // совпадает с тем, что реально запланирует планировщик (не рисуем звонок на празднике).
+  val holidayCal = remember(month, honorHolidays) {
+    if (honorHolidays) ProductionCalendars.merged("RU", month.year) else null
+  }
 
   Column(modifier = modifier.fillMaxWidth()) {
     // Заголовок: ‹ Месяц Год ›
@@ -118,7 +125,7 @@ fun ShiftCalendarView(
           DayCell(
             date = date,
             kind = date?.let { ShiftCalendar.kindOf(it, schedule) },
-            rings = date != null && ShiftEngine.wakeTimeOn(date, schedule) != null,
+            rings = date != null && ShiftEngine.wakeTimeOn(date, schedule, holidayCal) != null,
             isToday = date == today,
             isHighlighted = date != null && date == highlightDay,
             onClick = if (date != null && onDayClick != null) {
