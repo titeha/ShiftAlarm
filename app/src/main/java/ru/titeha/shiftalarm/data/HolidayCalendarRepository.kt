@@ -33,6 +33,13 @@ class HolidayCalendarRepository(context: Context) {
   }
 
   /**
+   * Когда кэш [country]/[year] последний раз обновлялся с источника (epoch millis), или null — с
+   * источника не загружался (движок использует встроенные данные). Для показа пользователю.
+   */
+  fun lastUpdated(country: String, year: Int): Long? =
+    prefs.getLong(stampKey(country, year), 0L).takeIf { it > 0L }
+
+  /**
    * Обновить кэш для [country]/[year] с офиц. источника. Валидирует ответ парсером перед записью —
    * мусор/коды ошибок не попадут в кэш. true — кэш обновлён. Оффлайн/ошибка — false, старый кэш цел.
    */

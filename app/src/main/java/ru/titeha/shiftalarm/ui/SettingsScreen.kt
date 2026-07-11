@@ -17,10 +17,17 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import ru.titeha.shiftalarm.data.HolidayCalendarRepository
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * Экран настроек приложения. Пока тема (режим + динамические цвета). Сюда будут добавляться
@@ -85,6 +92,34 @@ fun SettingsScreen(
           }
         }
       }
+
+      Spacer(Modifier.height(24.dp))
+      Text("Праздничный календарь", style = MaterialTheme.typography.titleMedium)
+      Spacer(Modifier.height(8.dp))
+      val context = LocalContext.current
+      val holidayInfo = remember {
+        val repo = HolidayCalendarRepository(context)
+        val y = LocalDate.now().year
+        listOf(y, y + 1).map { yr -> yr to repo.lastUpdated("RU", yr) }
+      }
+      Text(
+        "Источник: isdayoff.ru (РФ), обновляется в фоне при запуске.",
+        style = MaterialTheme.typography.bodySmall
+      )
+      Spacer(Modifier.height(4.dp))
+      holidayInfo.forEach { (yr, ts) ->
+        Text(
+          if (ts != null) "$yr — обновлён ${formatStamp(ts)}" else "$yr — встроенные данные",
+          style = MaterialTheme.typography.bodyMedium
+        )
+      }
     }
   }
 }
+
+private val STAMP_FMT: DateTimeFormatter =
+  DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
+
+/** Метка времени (epoch millis) → «дд.мм.гггг чч:мм» в часовом поясе устройства. */
+private fun formatStamp(millis: Long): String =
+  Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(STAMP_FMT)
