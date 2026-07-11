@@ -22,6 +22,9 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -31,6 +34,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -46,6 +51,7 @@ import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.schedule.AlarmTimes
+import ru.titeha.shiftalarm.schedule.CycleAnchor
 import ru.titeha.shiftalarm.schedule.PeriodKind
 import ru.titeha.shiftalarm.schedule.ProductionCalendars
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
@@ -53,6 +59,7 @@ import ru.titeha.shiftalarm.schedule.ShiftCategory
 import ru.titeha.shiftalarm.schedule.ShiftCycle
 import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
+import ru.titeha.shiftalarm.schedule.ShiftType
 import ru.titeha.shiftalarm.schedule.VacationSick
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -169,11 +176,8 @@ fun AlarmEditorScreen(
       EditMethod.WEEKLY -> WeeklyDaysContent(draft) { draft = it }
       EditMethod.SHIFT -> {
         ShiftCycleEditor(draft = draft, onChange = { draft = it })
-        Spacer(Modifier.height(8.dp))
-        Text(
-          "Отсчёт цикла — с ${LocalDate.ofEpochDay(draft.anchorEpochDay).localized()} (день 1).",
-          style = MaterialTheme.typography.bodySmall
-        )
+        Spacer(Modifier.height(12.dp))
+        CycleAnchorQuestion(draft) { draft = it }
       }
     }
 
@@ -474,6 +478,174 @@ private fun OccurrenceRow(occ: ru.titeha.shiftalarm.schedule.AlarmOccurrence) {
   val time = "%02d:%02d".format(occ.ringAt.hour, occ.ringAt.minute)
   val alarm = if (occ.eveningBefore) "звонок накануне, $time" else "звонок $time"
   Text("$dow ${occ.servedDate.dayOfMonth} · $label · $alarm", style = MaterialTheme.typography.bodySmall)
+}
+
+/** День развёрнутого цикла: индекс + слот + порядковый номер внутри своего блока. */
+private data class CycleDay(
+  val index: Int,
+  val slot: ShiftType,
+  val ordinalInBlock: Int,
+  val blockSize: Int
+)
+
+/** Развернуть слоты в дни с метаданными блока (порядковый номер дня внутри блока). */
+private fun cycleDaysOf(slots: List<ShiftType>): List<CycleDay> {
+  val result = mutableListOf<CycleDay>()
+  var idx = 0
+  ShiftCycle.group(slots).forEach { run ->
+    for (o in 0 until run.count) {
+      result.add(CycleDay(idx, run.slot, o + 1, run.count))
+      idx++
+    }
+  }
+  return result
+}
+
+/** Дата вопроса-якоря: «ср 15 июля» (день недели + число + месяц в родительном формате). */
+private val QUESTION_DATE_FMT = DateTimeFormatter.ofPattern("EEE d MMMM", Locale.getDefault())
+private fun LocalDate.questionFormat(): String = format(QUESTION_DATE_FMT)
+
+/**
+ * Якорь цикла через вопрос «Сегодня, ... — какая смена?». Пользователь выбирает тип, а при
+ * неоднозначности (тип встречается несколько раз) — конкретный день цикла. Хранение — [CycleAnchor]:
+ * опорная дата = сегодня − индекс выбранного дня, инвариант «сегодня резолвится в выбранный день».
+ * Для существующего будильника показывается summary из текущего anchor.
+ */
+@Composable
+private fun CycleAnchorQuestion(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
+  val today = remember { LocalDate.now() }
+  val slots = remember(draft.cycleSpec, draft.presetId) { AlarmTimes.shiftBase(draft)?.slots ?: emptyList() }
+  if (slots.isEmpty()) {
+    Text("Цикл не задан.", style = MaterialTheme.typography.bodySmall)
+    return
+  }
+  val days = remember(slots) { cycleDaysOf(slots) }
+  val currentIndex = CycleAnchor.todayIndex(today, LocalDate.ofEpochDay(draft.anchorEpochDay), slots.size)
+  val anchorDate = LocalDate.ofEpochDay(draft.anchorEpochDay)
+  val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
+  var picking by remember { mutableStateOf(false) }
+  var chosenCat by remember { mutableStateOf<ShiftCategory?>(null) }
+  var pickingDate by remember { mutableStateOf(false) }
+  var showAdvanced by remember { mutableStateOf(false) }
+
+  fun applyIndex(idx: Int) {
+    onChange(draft.copy(anchorEpochDay = CycleAnchor.anchorDateForToday(today, idx).toEpochDay()))
+    picking = false
+    chosenCat = null
+  }
+
+  if (!picking) {
+    val cur = days.getOrNull(currentIndex) ?: days.first()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Text(
+        "Сегодня: ${labelOfCategory(cur.slot.category)} (${cur.ordinalInBlock}-й из ${cur.blockSize})",
+        style = MaterialTheme.typography.bodyMedium
+      )
+      Spacer(Modifier.weight(1f))
+      TextButton(onClick = { picking = true; chosenCat = null }) { Text("Изменить") }
+    }
+    return
+  }
+
+  Text("Сегодня, ${today.questionFormat()} — какая смена?", style = MaterialTheme.typography.bodyMedium)
+  Spacer(Modifier.height(6.dp))
+  val cats = remember(days) { days.map { it.slot.category }.distinct() }
+  FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    cats.forEach { cat ->
+      ModeChip(labelOfCategory(cat), chosenCat == cat) {
+        val candidates = days.filter { it.slot.category == cat }
+        if (candidates.size == 1) applyIndex(candidates.first().index) else chosenCat = cat
+      }
+    }
+  }
+
+  // Дизамбигуация: тип встречается несколько раз → показать дни, выбрать конкретный.
+  chosenCat?.let { cat ->
+    if (days.count { it.slot.category == cat } > 1) {
+      Spacer(Modifier.height(8.dp))
+      Text("Который из этих дней — сегодня?", style = MaterialTheme.typography.bodyMedium)
+      Spacer(Modifier.height(4.dp))
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+      ) {
+        days.forEach { di ->
+          val isCandidate = di.slot.category == cat
+          DaySquare(di, isCandidate, dark) { applyIndex(di.index) }
+        }
+      }
+    }
+  }
+
+  // Дополнительно — альтернатива для вахты: «Начало цикла с даты» (день 1 = эта дата, можно будущую).
+  Spacer(Modifier.height(8.dp))
+  TextButton(onClick = { showAdvanced = !showAdvanced }) {
+    Text(if (showAdvanced) "Скрыть дополнительно" else "Дополнительно")
+  }
+  if (showAdvanced) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Text("Начало цикла с даты:", style = MaterialTheme.typography.bodySmall)
+      Spacer(Modifier.width(8.dp))
+      TextButton(onClick = { pickingDate = true }) { Text(anchorDate.localized()) }
+    }
+    Text("День 1 цикла — эта дата (можно будущую: «заезд с …»).", style = MaterialTheme.typography.labelSmall)
+  }
+  TextButton(onClick = { picking = false; chosenCat = null }) { Text("Отмена") }
+
+  if (pickingDate) {
+    StartDatePickerDialog(
+      initial = anchorDate,
+      onPick = { d ->
+        onChange(draft.copy(anchorEpochDay = d.toEpochDay()))
+        picking = false
+        chosenCat = null
+      },
+      onDismiss = { pickingDate = false }
+    )
+  }
+}
+
+/** Квадратик дня цикла: цвет типа + номер дня; кандидат — с подписью «N-й», прочие приглушены. */
+@Composable
+private fun DaySquare(day: CycleDay, active: Boolean, dark: Boolean, onClick: () -> Unit) {
+  val onCell = onCellColor(dark)
+  Column(
+    modifier = Modifier
+      .width(40.dp)
+      .then(if (!active) Modifier.alpha(0.4f) else Modifier)
+      .background(colorOf(categoryToDayKind(day.slot.category), dark), RoundedCornerShape(6.dp))
+      .then(if (active) Modifier.clickable { onClick() } else Modifier)
+      .padding(vertical = 4.dp),
+    horizontalAlignment = Alignment.CenterHorizontally
+  ) {
+    Text("${day.index + 1}", color = onCell, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+    Text(
+      if (active) "${day.ordinalInBlock}-й" else "",
+      color = onCell,
+      style = MaterialTheme.typography.labelSmall,
+      maxLines = 1
+    )
+  }
+}
+
+/** Диалог выбора даты начала цикла (Material3). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StartDatePickerDialog(initial: LocalDate, onPick: (LocalDate) -> Unit, onDismiss: () -> Unit) {
+  val state = rememberDatePickerState(initialSelectedDateMillis = initial.toEpochDay() * 86_400_000L)
+  DatePickerDialog(
+    onDismissRequest = onDismiss,
+    confirmButton = {
+      TextButton(onClick = {
+        state.selectedDateMillis?.let { onPick(LocalDate.ofEpochDay(it / 86_400_000L)) }
+        onDismiss()
+      }) { Text("Готово") }
+    },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
+  ) { DatePicker(state = state) }
 }
 
 /**
