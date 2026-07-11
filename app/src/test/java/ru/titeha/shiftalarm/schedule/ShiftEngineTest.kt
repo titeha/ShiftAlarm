@@ -256,4 +256,36 @@ class ShiftEngineTest {
     assertEquals("Ночь", ShiftEngine.shiftOn(anchor.plusDays(1), s).name)
     assertNull(ShiftEngine.wakeTimeOn(anchor.plusDays(2), s))
   }
+
+  // --- nextAlarms (превью «Проверка») ---
+
+  @Test
+  fun next_alarms_morning_not_evening_before() {
+    val s = ShiftSchedule(ShiftPattern.workRest(2, 2, work, anchor))
+    val occ = ShiftEngine.nextAlarms(anchor.atStartOfDay(), s, count = 1)
+    assertEquals(1, occ.size)
+    assertEquals(anchor.atTime(7, 0), occ[0].ringAt)
+    assertEquals(anchor, occ[0].servedDate)
+    assertFalse(occ[0].eveningBefore) // дневной звонок в тот же день
+  }
+
+  @Test
+  fun next_alarms_night_rings_evening_before() {
+    // Слот-канун со звонком 21:00 (категория Выходной) обслуживает ночь следующего дня (Вариант Б).
+    val eve = ShiftType("e", "Выходной", LocalTime.of(21, 0), ShiftCategory.OFF)
+    val nightSilent = ShiftType("n", "Ночь", null, ShiftCategory.NIGHT)
+    val off = ShiftType.off()
+    val s = ShiftSchedule(ShiftPattern(listOf(eve, nightSilent, off, off), anchor))
+
+    val occ = ShiftEngine.nextAlarms(anchor.atStartOfDay(), s, count = 2)
+    assertEquals(2, occ.size)
+    // Первый звонок — вечером кануна, обслуживает ночь на следующий день.
+    assertEquals(anchor.atTime(21, 0), occ[0].ringAt)
+    assertEquals(anchor.plusDays(1), occ[0].servedDate)
+    assertEquals(ShiftCategory.NIGHT, occ[0].shift.category)
+    assertTrue(occ[0].eveningBefore)
+    // Второй — через полный цикл (4 дня).
+    assertEquals(anchor.plusDays(4).atTime(21, 0), occ[1].ringAt)
+    assertTrue(occ[1].eveningBefore)
+  }
 }

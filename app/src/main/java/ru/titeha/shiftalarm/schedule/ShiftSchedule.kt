@@ -125,6 +125,18 @@ data class ShiftSchedule(
     val freezeCycleDuringOff: Boolean = false,
 )
 
+/**
+ * Одно срабатывание будильника смены (для превью «Проверка»): [ringAt] — момент звонка;
+ * [servedDate] — день обслуживаемой смены (для ночного блока Варианта Б — следующий день после
+ * вечернего звонка); [shift] — сама смена; [eveningBefore] — звонок звенит накануне обслуживаемого дня.
+ */
+data class AlarmOccurrence(
+    val ringAt: LocalDateTime,
+    val servedDate: LocalDate,
+    val shift: ShiftType,
+    val eveningBefore: Boolean,
+)
+
 /** Чистый (без UI и I/O) движок резолва смены и ближайшего звонка. */
 object ShiftEngine {
     /** Какая смена выпадает на [date] по графику [pattern]. Работает и для дат до опорной. */
@@ -215,6 +227,31 @@ object ShiftEngine {
         }
 
         return null
+    }
+
+    /**
+     * Ближайшие [count] срабатываний строго после [from] — для превью «Проверка». Каждое несёт момент
+     * звонка, обслуживаемую смену и признак «накануне». Тот же путь, что [nextAlarm], поэтому превью
+     * совпадает с реальным планированием (периоды, правки, праздники учитываются одинаково).
+     */
+    fun nextAlarms(
+        from: LocalDateTime,
+        schedule: ShiftSchedule,
+        count: Int,
+        calendar: ProductionCalendar? = null,
+    ): List<AlarmOccurrence> {
+        val result = mutableListOf<AlarmOccurrence>()
+        var cursor = from
+        while (result.size < count) {
+            val ring = nextAlarm(cursor, schedule, calendar = calendar) ?: break
+            val served = servedDateForAlarmOn(ring.toLocalDate(), schedule)
+            val shift = shiftOnIgnoringOffPeriods(served, schedule)
+            result.add(
+                AlarmOccurrence(ring, served, shift, eveningBefore = served != ring.toLocalDate())
+            )
+            cursor = ring
+        }
+        return result
     }
 
     /** Базовая ротация с учётом «заморозки» цикла на время периодов без будильника. */

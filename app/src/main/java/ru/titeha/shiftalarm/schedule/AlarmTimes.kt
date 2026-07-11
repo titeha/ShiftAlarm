@@ -138,6 +138,28 @@ object AlarmTimes {
   }
 
   /**
+   * Расписание смены из будильника + периодов отпуска + пер-дневных правок — общий сборщик для
+   * превью «Проверка» и календаря редактора. Периоды → [OffPeriod] (движок глушит по дню
+   * обслуживаемой смены), правки применяются поверх. null — цикл задать нечем. Тот же материал,
+   * что использует [next] для смен, поэтому превью совпадает с реальным планированием.
+   */
+  fun shiftScheduleOf(
+    alarm: AlarmEntity,
+    periods: List<AlarmPeriod>,
+    overrides: List<ScheduleOverrides.DayOverride>,
+  ): ShiftSchedule? = shiftBase(alarm)?.let { base ->
+    ScheduleOverrides.apply(
+      ShiftSchedule(base).copy(
+        offPeriods = periods.map {
+          OffPeriod(LocalDate.ofEpochDay(it.fromEpochDay), LocalDate.ofEpochDay(it.toEpochDay), it.reason)
+        },
+        freezeCycleDuringOff = alarm.freezeCycleDuringOff
+      ),
+      overrides
+    )
+  }
+
+  /**
    * Приводит пользовательский цикл к календарной модели движка.
    *
    * В редакторе пользователь задаёт время будильника у самой ночной смены:

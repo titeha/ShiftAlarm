@@ -1,6 +1,8 @@
 package ru.titeha.shiftalarm.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -10,14 +12,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -31,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -38,8 +46,8 @@ import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.schedule.AlarmTimes
-import ru.titeha.shiftalarm.schedule.OffPeriod
 import ru.titeha.shiftalarm.schedule.PeriodKind
+import ru.titeha.shiftalarm.schedule.ProductionCalendars
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 import ru.titeha.shiftalarm.schedule.ShiftCategory
 import ru.titeha.shiftalarm.schedule.ShiftCycle
@@ -188,7 +196,7 @@ fun AlarmEditorScreen(
 
     // ── Проверка ──
     SectionHeader("Проверка")
-    NextRingLine(effective(draft, method), periods, overrides)
+    SchedulePreview(effective(draft, method), periods, overrides)
     if (method == EditMethod.SHIFT) {
       Spacer(Modifier.height(8.dp))
       ShiftCalendarAndOverrides(
@@ -359,6 +367,116 @@ private fun NextRingLine(alarm: AlarmEntity, periods: List<AlarmPeriod>, overrid
 }
 
 /**
+ * Превью «Проверка»: строка «Следующий звонок» + для графика мини-лента 14 дней (цвет типа +
+ * колокольчик) и строки ближайших звонков (с «накануне» для ночей); для «по дням недели» — ближайшие
+ * 3 срабатывания. Всё считается движком ([AlarmTimes]/[ShiftEngine]) — совпадает с реальным звонком.
+ */
+@Composable
+private fun SchedulePreview(alarm: AlarmEntity, periods: List<AlarmPeriod>, overrides: List<AlarmOverride>) {
+  val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+  val now = remember { LocalDateTime.now() }
+  val today = remember { now.toLocalDate() }
+  val dayOverrides = remember(overrides) { overrides.mapNotNull { it.toDayOverrideOrNull() } }
+
+  NextRingLine(alarm, periods, overrides)
+
+  if (alarm.mode == AlarmEntity.MODE_SHIFT) {
+    val calendar = remember(alarm.honorHolidays, today) {
+      if (alarm.honorHolidays) ProductionCalendars.merged("RU", today.year) else null
+    }
+    val schedule = remember(alarm, periods, dayOverrides) {
+      AlarmTimes.shiftScheduleOf(alarm, periods, dayOverrides)
+    }
+    if (schedule == null) {
+      Text("Не удалось построить график для превью.", style = MaterialTheme.typography.bodySmall)
+    } else {
+      Spacer(Modifier.height(8.dp))
+      Text("Ближайшие дни", style = MaterialTheme.typography.labelMedium)
+      Spacer(Modifier.height(4.dp))
+      PreviewStrip(schedule, calendar, today, days = 14, dark = dark)
+      Spacer(Modifier.height(8.dp))
+      val occ = remember(schedule, calendar, now) { ShiftEngine.nextAlarms(now, schedule, count = 6, calendar = calendar) }
+      if (occ.isEmpty()) {
+        Text("Ближайших звонков нет.", style = MaterialTheme.typography.bodySmall)
+      } else {
+        occ.forEach { OccurrenceRow(it) }
+      }
+    }
+  } else if (alarm.daysMask != 0) {
+    // «По дням недели» — ближайшие 3 срабатывания (разовый показываем только строкой выше).
+    val firings = remember(alarm, periods, dayOverrides, now) {
+      buildList {
+        var cursor = now
+        repeat(3) {
+          val f = AlarmTimes.next(alarm, periods, dayOverrides, cursor) ?: return@buildList
+          add(f)
+          cursor = f
+        }
+      }
+    }
+    if (firings.isNotEmpty()) {
+      Spacer(Modifier.height(4.dp))
+      Text("Ближайшие дни", style = MaterialTheme.typography.labelMedium)
+      firings.forEach {
+        Text(
+          "• ${it.toLocalDate().localized()} · %02d:%02d".format(it.hour, it.minute),
+          style = MaterialTheme.typography.bodySmall
+        )
+      }
+    }
+  }
+}
+
+/** Мини-лента ближайших [days] дней: цвет типа смены + число + колокольчик, если звонит. */
+@Composable
+private fun PreviewStrip(
+  schedule: ShiftSchedule,
+  calendar: ru.titeha.shiftalarm.schedule.ProductionCalendar?,
+  start: LocalDate,
+  days: Int,
+  dark: Boolean
+) {
+  val onCell = onCellColor(dark)
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .horizontalScroll(rememberScrollState()),
+    horizontalArrangement = Arrangement.spacedBy(3.dp)
+  ) {
+    for (k in 0 until days) {
+      val d = start.plusDays(k.toLong())
+      val cat = ShiftEngine.shiftOn(d, schedule).category
+      val rings = ShiftEngine.wakeTimeOn(d, schedule, calendar) != null
+      Column(
+        modifier = Modifier
+          .width(34.dp)
+          .background(colorOf(categoryToDayKind(cat), dark), RoundedCornerShape(6.dp))
+          .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+      ) {
+        Text(DOW_SHORT[d.dayOfWeek.value - 1], color = onCell, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        Text("${d.dayOfMonth}", color = onCell, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        if (rings) {
+          Icon(Icons.Filled.Notifications, contentDescription = null, tint = onCell, modifier = Modifier.size(11.dp))
+        } else {
+          Spacer(Modifier.height(11.dp))
+        }
+      }
+    }
+  }
+}
+
+/** Строка ближайшего звонка смены: «Пн 13 · Утро · звонок 05:30» (для ночи — «звонок накануне»). */
+@Composable
+private fun OccurrenceRow(occ: ru.titeha.shiftalarm.schedule.AlarmOccurrence) {
+  val dow = DOW_SHORT[occ.servedDate.dayOfWeek.value - 1]
+  val label = labelOfCategory(occ.shift.category)
+  val time = "%02d:%02d".format(occ.ringAt.hour, occ.ringAt.minute)
+  val alarm = if (occ.eveningBefore) "звонок накануне, $time" else "звонок $time"
+  Text("$dow ${occ.servedDate.dayOfMonth} · $label · $alarm", style = MaterialTheme.typography.bodySmall)
+}
+
+/**
  * Сворачиваемый блок «Календарь и правки» (по умолчанию свёрнут): наглядный календарь резолва смен
  * от текущего черновика + диалог подмены смены/периода на день или диапазон. Только для графика.
  */
@@ -378,23 +496,7 @@ private fun ShiftCalendarAndOverrides(
   // Ожидающая правки цель (диалог открыт): from..to; один день = from == to.
   var pending by remember { mutableStateOf<Pair<LocalDate, LocalDate>?>(null) }
   // Текущее расписание с применёнными правками — общее для календаря и обработчика правок.
-  val base = AlarmTimes.shiftBase(draft)
-  val schedule = base?.let {
-    ScheduleOverrides.apply(
-      ShiftSchedule(
-        base = it,
-        offPeriods = periods.map { p ->
-          OffPeriod(
-            LocalDate.ofEpochDay(p.fromEpochDay),
-            LocalDate.ofEpochDay(p.toEpochDay),
-            p.reason
-          )
-        },
-        freezeCycleDuringOff = draft.freezeCycleDuringOff
-      ),
-      overrides.mapNotNull { o -> o.toDayOverrideOrNull() }
-    )
-  }
+  val schedule = AlarmTimes.shiftScheduleOf(draft, periods, overrides.mapNotNull { it.toDayOverrideOrNull() })
   TextButton(onClick = { showCalendar = !showCalendar }) {
     Text(if (showCalendar) "Скрыть: календарь и правки" else "Календарь и правки")
   }
