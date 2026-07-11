@@ -690,6 +690,10 @@ private fun ShiftCalendarAndOverrides(
         },
         style = MaterialTheme.typography.bodySmall
       )
+      Text(
+        "Или зажми день и веди пальцем — выделит диапазон в этом месяце.",
+        style = MaterialTheme.typography.labelSmall
+      )
       Spacer(Modifier.height(4.dp))
       ShiftCalendarView(
         schedule,
@@ -707,7 +711,8 @@ private fun ShiftCalendarAndOverrides(
           }
         },
         highlightDay = rangeStart,
-        honorHolidays = draft.honorHolidays
+        honorHolidays = draft.honorHolidays,
+        onRangeSelected = { from, to -> pending = from to to; rangeStart = null }
       )
     } else {
       Text("Не удалось построить график для календаря.", style = MaterialTheme.typography.bodySmall)

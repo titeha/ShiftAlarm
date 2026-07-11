@@ -3,6 +3,7 @@ package ru.titeha.shiftalarm.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,9 +29,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import ru.titeha.shiftalarm.schedule.ShiftCalendar
 import ru.titeha.shiftalarm.schedule.ShiftCalendar.DayKind
@@ -96,7 +103,8 @@ private fun labelOf(kind: DayKind): String = when (kind) {
  * Тип дня берётся из [ShiftCalendar.kindOf] по переданному расписанию [schedule].
  *
  * Если задан [onDayClick] — ячейки кликабельны (тап по дню → подмена/исключение в редакторе);
- * без него календарь read-only.
+ * без него календарь read-only. Если задан [onRangeSelected] — доступен жест long-press + drag для
+ * выделения диапазона в пределах видимого месяца (поверх тап-тап, для одной руки/быстрого выбора).
  */
 @Composable
 fun ShiftCalendarView(
@@ -104,7 +112,8 @@ fun ShiftCalendarView(
   modifier: Modifier = Modifier,
   onDayClick: ((LocalDate) -> Unit)? = null,
   highlightDay: LocalDate? = null,
-  honorHolidays: Boolean = false
+  honorHolidays: Boolean = false,
+  onRangeSelected: ((LocalDate, LocalDate) -> Unit)? = null
 ) {
   var month by remember { mutableStateOf(YearMonth.now()) }
   val today = LocalDate.now()
@@ -148,22 +157,76 @@ fun ShiftCalendarView(
     val lead = firstDay.dayOfWeek.value - 1
     val cells: List<LocalDate?> =
       List(lead) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
-    cells.chunked(7).forEach { week ->
-      Row(Modifier.fillMaxWidth()) {
-        for (i in 0 until 7) {
-          val date = week.getOrNull(i)
-          DayCell(
-            date = date,
-            kind = date?.let { ShiftCalendar.kindOf(it, schedule) },
-            rings = date != null && ShiftEngine.wakeTimeOn(date, schedule, holidayCal) != null,
-            isToday = date == today,
-            isHighlighted = date != null && date == highlightDay,
-            dark = dark,
-            onClick = if (date != null && onDayClick != null) {
-              { onDayClick(date) }
-            } else null,
-            modifier = Modifier.weight(1f)
-          )
+    val weeks = cells.chunked(7)
+    val rows = weeks.size
+
+    // Выделение диапазона жестом long-press + drag (поверх тап-тап, не заменяя его). Позиция пальца
+    // → ячейка по размеру сетки; за пределами месяца — clamp к ближайшему дню. Хаптика на смене границы.
+    var gridSize by remember { mutableStateOf(IntSize.Zero) }
+    var dragStart by remember { mutableStateOf<LocalDate?>(null) }
+    var dragEnd by remember { mutableStateOf<LocalDate?>(null) }
+    val haptic = LocalHapticFeedback.current
+
+    fun dayAt(pos: Offset): LocalDate {
+      val cw = if (gridSize.width > 0) gridSize.width / 7f else 1f
+      val ch = if (rows > 0 && gridSize.height > 0) gridSize.height / rows.toFloat() else 1f
+      val col = (pos.x / cw).toInt().coerceIn(0, 6)
+      val row = (pos.y / ch).toInt().coerceIn(0, rows - 1)
+      val day = (row * 7 + col - lead + 1).coerceIn(1, month.lengthOfMonth())
+      return month.atDay(day)
+    }
+
+    val dragRange: ClosedRange<LocalDate>? = dragStart?.let { s ->
+      dragEnd?.let { e -> minOf(s, e)..maxOf(s, e) }
+    }
+
+    Column(
+      Modifier
+        .fillMaxWidth()
+        .onSizeChanged { gridSize = it }
+        .then(
+          if (onRangeSelected != null) Modifier.pointerInput(rows, lead, month) {
+            detectDragGesturesAfterLongPress(
+              onDragStart = { off ->
+                val d = dayAt(off)
+                dragStart = d; dragEnd = d
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+              },
+              onDrag = { change, _ ->
+                val d = dayAt(change.position)
+                if (d != dragEnd) {
+                  dragEnd = d
+                  haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                }
+              },
+              onDragEnd = {
+                val s = dragStart; val e = dragEnd
+                if (s != null && e != null) onRangeSelected(minOf(s, e), maxOf(s, e))
+                dragStart = null; dragEnd = null
+              },
+              onDragCancel = { dragStart = null; dragEnd = null }
+            )
+          } else Modifier
+        )
+    ) {
+      weeks.forEach { week ->
+        Row(Modifier.fillMaxWidth()) {
+          for (i in 0 until 7) {
+            val date = week.getOrNull(i)
+            DayCell(
+              date = date,
+              kind = date?.let { ShiftCalendar.kindOf(it, schedule) },
+              rings = date != null && ShiftEngine.wakeTimeOn(date, schedule, holidayCal) != null,
+              isToday = date == today,
+              isHighlighted = date != null && date == highlightDay,
+              isInDragRange = date != null && dragRange != null && date in dragRange,
+              dark = dark,
+              onClick = if (date != null && onDayClick != null) {
+                { onDayClick(date) }
+              } else null,
+              modifier = Modifier.weight(1f)
+            )
+          }
         }
       }
     }
@@ -186,13 +249,15 @@ private fun DayCell(
   rings: Boolean,
   isToday: Boolean,
   isHighlighted: Boolean,
+  isInDragRange: Boolean,
   dark: Boolean,
   onClick: (() -> Unit)?,
   modifier: Modifier
 ) {
-  // Якорь диапазона выделяем толстой рамкой основного цвета; сегодня — тонкой контрастной.
+  // Якорь диапазона / дни выделяемого drag-диапазона — рамкой основного цвета; сегодня — контрастной.
   val border = when {
     isHighlighted -> 3.dp to MaterialTheme.colorScheme.primary
+    isInDragRange -> 2.dp to MaterialTheme.colorScheme.primary
     isToday -> 2.dp to MaterialTheme.colorScheme.onSurface
     else -> null
   }
