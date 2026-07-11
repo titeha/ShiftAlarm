@@ -17,6 +17,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmOverride
@@ -45,6 +47,7 @@ import ru.titeha.shiftalarm.schedule.ShiftSchedule
 import ru.titeha.shiftalarm.schedule.VacationSick
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -60,6 +63,26 @@ internal fun LocalDate.localized(): String =
  * Экран добавления/редактирования одного будильника.
  * Возвращает результат через [onSave] (с уже подготовленной записью) или [onCancel].
  */
+/** Способ расписания, выбранный чипом. Хранится в UI-состоянии, в entity маппится при сохранении. */
+private enum class EditMethod { ONCE, WEEKLY, SHIFT }
+
+/** Способ по данным существующей записи: смены → SHIFT, пустая маска → ONCE, иначе WEEKLY. */
+private fun methodOf(alarm: AlarmEntity): EditMethod = when {
+  alarm.mode == AlarmEntity.MODE_SHIFT -> EditMethod.SHIFT
+  alarm.daysMask == 0 -> EditMethod.ONCE
+  else -> EditMethod.WEEKLY
+}
+
+/**
+ * Черновик, приведённый к активному способу — сохраняется и уходит в превью только он.
+ * Черновики других способов живут в [draft] (маска дней, цикл, deleteAfterFiring) и не теряются.
+ */
+private fun effective(draft: AlarmEntity, method: EditMethod): AlarmEntity = when (method) {
+  EditMethod.ONCE -> draft.copy(mode = AlarmEntity.MODE_WEEKLY, daysMask = 0)
+  EditMethod.WEEKLY -> draft.copy(mode = AlarmEntity.MODE_WEEKLY)
+  EditMethod.SHIFT -> draft.copy(mode = AlarmEntity.MODE_SHIFT)
+}
+
 @Composable
 fun AlarmEditorScreen(
   initial: AlarmEntity,
@@ -71,6 +94,7 @@ fun AlarmEditorScreen(
   var draft by remember { mutableStateOf(initial) }
   var periods by remember { mutableStateOf(initialPeriods) }
   var overrides by remember { mutableStateOf(initialOverrides) }
+  var method by remember { mutableStateOf(methodOf(initial)) }
   val isNew = initial.id == 0L
 
   Column(
@@ -78,14 +102,17 @@ fun AlarmEditorScreen(
       .fillMaxSize()
       .verticalScroll(rememberScrollState())
       .padding(16.dp),
-    horizontalAlignment = Alignment.CenterHorizontally
+    horizontalAlignment = Alignment.Start
   ) {
     Text(
       if (isNew) "Новый будильник" else "Будильник",
-      style = MaterialTheme.typography.headlineSmall
+      style = MaterialTheme.typography.headlineSmall,
+      textAlign = TextAlign.Center,
+      modifier = Modifier.fillMaxWidth()
     )
-    Spacer(Modifier.height(12.dp))
 
+    // ── Основное ──
+    SectionHeader("Основное")
     OutlinedTextField(
       value = draft.label,
       onValueChange = { draft = draft.copy(label = it) },
@@ -93,40 +120,86 @@ fun AlarmEditorScreen(
       singleLine = true,
       modifier = Modifier.fillMaxWidth()
     )
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(8.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Switch(checked = draft.enabled, onCheckedChange = { draft = draft.copy(enabled = it) })
+      Spacer(Modifier.width(8.dp))
+      Text("Включён", style = MaterialTheme.typography.bodyMedium)
+    }
 
-    // Режим
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      ModeChip("По дням недели", draft.mode == AlarmEntity.MODE_WEEKLY) {
-        draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY)
+    // ── Когда звонить ──
+    SectionHeader("Когда звонить")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      ModeChip("Разово", method == EditMethod.ONCE) {
+        if (method != EditMethod.ONCE) {
+          method = EditMethod.ONCE
+          // Разовый по умолчанию удаляется после срабатывания (для нового способа — вкл).
+          draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY, deleteAfterFiring = true)
+        }
       }
-      ModeChip("Смены", draft.mode == AlarmEntity.MODE_SHIFT) {
-        draft = draft.copy(
-          mode = AlarmEntity.MODE_SHIFT,
-          anchorEpochDay = if (draft.anchorEpochDay == 0L)
-            LocalDate.now().toEpochDay() else draft.anchorEpochDay
+      ModeChip("По дням недели", method == EditMethod.WEEKLY) {
+        if (method != EditMethod.WEEKLY) {
+          method = EditMethod.WEEKLY
+          draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY)
+        }
+      }
+      ModeChip("По графику", method == EditMethod.SHIFT) {
+        if (method != EditMethod.SHIFT) {
+          method = EditMethod.SHIFT
+          draft = draft.copy(
+            mode = AlarmEntity.MODE_SHIFT,
+            anchorEpochDay = if (draft.anchorEpochDay == 0L)
+              LocalDate.now().toEpochDay() else draft.anchorEpochDay
+          )
+        }
+      }
+    }
+    Spacer(Modifier.height(12.dp))
+    when (method) {
+      EditMethod.ONCE -> OnceContent(draft) { draft = it }
+      EditMethod.WEEKLY -> WeeklyDaysContent(draft) { draft = it }
+      EditMethod.SHIFT -> {
+        ShiftCycleEditor(draft = draft, onChange = { draft = it })
+        Spacer(Modifier.height(8.dp))
+        Text(
+          "Отсчёт цикла — с ${LocalDate.ofEpochDay(draft.anchorEpochDay).localized()} (день 1).",
+          style = MaterialTheme.typography.bodySmall
         )
       }
     }
-    Spacer(Modifier.height(16.dp))
 
-    if (draft.mode == AlarmEntity.MODE_WEEKLY) {
-      WeeklyEditor(draft) { draft = it }
+    // ── Когда не звонить ──
+    SectionHeader("Когда не звонить")
+    HolidaySection(draft) { draft = it }
+    if (method == EditMethod.SHIFT) {
+      Spacer(Modifier.height(16.dp))
+      VacationSection(
+        alarmId = draft.id,
+        periods = periods,
+        onAdd = { periods = periods + it },
+        onRemove = { p -> periods = periods - p }
+      )
+      Spacer(Modifier.height(16.dp))
+      FreezeCycleToggle(draft) { draft = it }
     } else {
-      ShiftEditor(
+      // TODO: periods for weekly (AlarmTimes) — движок weekly периоды пока не умеет (non-goals ТЗ).
+    }
+
+    // ── Проверка ──
+    SectionHeader("Проверка")
+    NextRingLine(effective(draft, method), periods, overrides)
+    if (method == EditMethod.SHIFT) {
+      Spacer(Modifier.height(8.dp))
+      ShiftCalendarAndOverrides(
         draft = draft,
         periods = periods,
         overrides = overrides,
-        onChange = { draft = it },
         onAddPeriod = { periods = periods + it },
         onRemovePeriod = { p -> periods = periods - p },
         onPeriodsChange = { periods = it },
         onOverridesChange = { overrides = it }
       )
     }
-
-    Spacer(Modifier.height(16.dp))
-    HolidaySection(draft) { draft = it }
 
     Spacer(Modifier.height(24.dp))
 
@@ -136,19 +209,30 @@ fun AlarmEditorScreen(
     ) {
       OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Отмена") }
       Button(
-        onClick = { onSave(draft, periods, overrides) },
+        onClick = { onSave(effective(draft, method), periods, overrides) },
         modifier = Modifier.weight(1f)
       ) { Text("Сохранить") }
     }
   }
 }
 
+/** Заголовок секции формы (тонкая линия-разделитель + акцентный подзаголовок). */
 @Composable
-private fun WeeklyEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
-  var pickingTime by remember { mutableStateOf(false) }
+private fun SectionHeader(text: String) {
+  Spacer(Modifier.height(20.dp))
+  Text(
+    text,
+    style = MaterialTheme.typography.titleSmall,
+    color = MaterialTheme.colorScheme.primary,
+    fontWeight = FontWeight.Bold
+  )
+  HorizontalDivider(Modifier.padding(top = 4.dp, bottom = 8.dp))
+}
 
-  // Время компактно: крупная кнопка-время открывает пикер по тапу (как в редакторе смен),
-  // а не занимает пол-экрана всегда.
+/** Крупная кнопка-время: открывает компактный пикер по тапу (общая для «Разово» и «По дням недели»). */
+@Composable
+private fun TimeButton(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
+  var pickingTime by remember { mutableStateOf(false) }
   Row(verticalAlignment = Alignment.CenterVertically) {
     Text("Время:", style = MaterialTheme.typography.titleMedium)
     Spacer(Modifier.width(8.dp))
@@ -156,6 +240,39 @@ private fun WeeklyEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
       Text("%02d:%02d".format(draft.hour, draft.minute), style = MaterialTheme.typography.displaySmall)
     }
   }
+  if (pickingTime) {
+    TimePickerDialog(
+      time = LocalTime.of(draft.hour, draft.minute),
+      onPick = { t -> onChange(draft.copy(hour = t.hour, minute = t.minute)) },
+      onDismiss = { pickingTime = false }
+    )
+  }
+}
+
+/** Способ «Разово»: время + тумблер «Удалить после срабатывания». */
+@Composable
+private fun OnceContent(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
+  TimeButton(draft, onChange)
+  Spacer(Modifier.height(8.dp))
+  Text(
+    "Прозвонит один раз в ближайшее наступление этого времени.",
+    style = MaterialTheme.typography.bodySmall
+  )
+  Spacer(Modifier.height(8.dp))
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    Switch(
+      checked = draft.deleteAfterFiring,
+      onCheckedChange = { onChange(draft.copy(deleteAfterFiring = it)) }
+    )
+    Spacer(Modifier.width(8.dp))
+    Text("Удалить после срабатывания", style = MaterialTheme.typography.bodyMedium)
+  }
+}
+
+/** Способ «По дням недели»: время + пресеты дней + чекбоксы дней. */
+@Composable
+private fun WeeklyDaysContent(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
+  TimeButton(draft, onChange)
   Spacer(Modifier.height(16.dp))
 
   Text("Дни повтора:", style = MaterialTheme.typography.titleMedium)
@@ -192,57 +309,18 @@ private fun WeeklyEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
       }
     }
   }
-  Spacer(Modifier.height(8.dp))
-
   if (draft.daysMask == 0) {
-    Text("Без выбранных дней — разовый будильник.", style = MaterialTheme.typography.bodySmall)
     Spacer(Modifier.height(8.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-      Switch(
-        checked = draft.deleteAfterFiring,
-        onCheckedChange = { onChange(draft.copy(deleteAfterFiring = it)) }
-      )
-      Spacer(Modifier.width(8.dp))
-      Text("Удалить после срабатывания", style = MaterialTheme.typography.bodyMedium)
-    }
-  }
-
-  if (pickingTime) {
-    TimePickerDialog(
-      time = LocalTime.of(draft.hour, draft.minute),
-      onPick = { t -> onChange(draft.copy(hour = t.hour, minute = t.minute)) },
-      onDismiss = { pickingTime = false }
+    Text(
+      "Дни не выбраны — выбери дни повтора или воспользуйся пресетами.",
+      style = MaterialTheme.typography.bodySmall
     )
   }
 }
 
+/** Тумблер «Заморозить цикл на время отпуска» (только для графика). */
 @Composable
-private fun ShiftEditor(
-  draft: AlarmEntity,
-  periods: List<AlarmPeriod>,
-  overrides: List<AlarmOverride>,
-  onChange: (AlarmEntity) -> Unit,
-  onAddPeriod: (AlarmPeriod) -> Unit,
-  onRemovePeriod: (AlarmPeriod) -> Unit,
-  onPeriodsChange: (List<AlarmPeriod>) -> Unit,
-  onOverridesChange: (List<AlarmOverride>) -> Unit
-) {
-  ShiftCycleEditor(draft = draft, onChange = onChange)
-  Spacer(Modifier.height(8.dp))
-  Text(
-    "Отсчёт цикла — с ${LocalDate.ofEpochDay(draft.anchorEpochDay).localized()} (день 1).",
-    style = MaterialTheme.typography.bodySmall
-  )
-
-  Spacer(Modifier.height(16.dp))
-  VacationSection(
-    alarmId = draft.id,
-    periods = periods,
-    onAdd = onAddPeriod,
-    onRemove = onRemovePeriod
-  )
-
-  Spacer(Modifier.height(16.dp))
+private fun FreezeCycleToggle(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   Row(
     modifier = Modifier.fillMaxWidth(),
     verticalAlignment = Alignment.CenterVertically
@@ -263,9 +341,36 @@ private fun ShiftEditor(
       )
     }
   }
+}
 
-  // Наглядный календарь резолва смен — от текущего черновика, с применёнными правками.
-  Spacer(Modifier.height(16.dp))
+/** Строка «Следующий звонок: дата · время» — из боевого расчёта [AlarmTimes.next] (тот же движок). */
+@Composable
+private fun NextRingLine(alarm: AlarmEntity, periods: List<AlarmPeriod>, overrides: List<AlarmOverride>) {
+  val dayOverrides = remember(overrides) { overrides.mapNotNull { it.toDayOverrideOrNull() } }
+  val next = remember(alarm, periods, dayOverrides) {
+    AlarmTimes.next(alarm, periods, dayOverrides, LocalDateTime.now())
+  }
+  Text(
+    next?.let { "Следующий звонок: ${it.toLocalDate().localized()} · %02d:%02d".format(it.hour, it.minute) }
+      ?: "Следующий звонок: не запланирован",
+    style = MaterialTheme.typography.bodyMedium
+  )
+}
+
+/**
+ * Сворачиваемый блок «Календарь и правки» (по умолчанию свёрнут): наглядный календарь резолва смен
+ * от текущего черновика + диалог подмены смены/периода на день или диапазон. Только для графика.
+ */
+@Composable
+private fun ShiftCalendarAndOverrides(
+  draft: AlarmEntity,
+  periods: List<AlarmPeriod>,
+  overrides: List<AlarmOverride>,
+  onAddPeriod: (AlarmPeriod) -> Unit,
+  onRemovePeriod: (AlarmPeriod) -> Unit,
+  onPeriodsChange: (List<AlarmPeriod>) -> Unit,
+  onOverridesChange: (List<AlarmOverride>) -> Unit
+) {
   var showCalendar by remember { mutableStateOf(false) }
   var rangeMode by remember { mutableStateOf(false) }
   var rangeStart by remember { mutableStateOf<LocalDate?>(null) }
@@ -290,7 +395,7 @@ private fun ShiftEditor(
     )
   }
   TextButton(onClick = { showCalendar = !showCalendar }) {
-    Text(if (showCalendar) "Скрыть календарь" else "Показать календарь смен")
+    Text(if (showCalendar) "Скрыть: календарь и правки" else "Календарь и правки")
   }
   if (showCalendar) {
     if (schedule != null) {
