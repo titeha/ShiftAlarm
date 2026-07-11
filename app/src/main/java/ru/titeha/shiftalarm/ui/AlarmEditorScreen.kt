@@ -42,6 +42,7 @@ import ru.titeha.shiftalarm.schedule.OffPeriod
 import ru.titeha.shiftalarm.schedule.PeriodKind
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 import ru.titeha.shiftalarm.schedule.ShiftCategory
+import ru.titeha.shiftalarm.schedule.ShiftCycle
 import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
 import ru.titeha.shiftalarm.schedule.VacationSick
@@ -525,7 +526,7 @@ private fun List<AlarmOverride>.withOverrideRange(
   category: ShiftCategory
 ): List<AlarmOverride> = withExactOverride(
   alarmId, from, to, category,
-  if (category == ShiftCategory.OFF) null else defaultAlarmFor(category),
+  if (category == ShiftCategory.OFF) null else ShiftCycle.defaultAlarmFor(category),
   labelOfCategory(category)
 )
 
@@ -584,7 +585,7 @@ private fun DayOverrideDialog(
             modifier = Modifier.fillMaxWidth()
           ) {
             val suffix = if (cat == ShiftCategory.OFF) "" else
-              " (${defaultAlarmFor(cat).format(DateTimeFormatter.ofPattern("HH:mm"))})"
+              " (${ShiftCycle.defaultAlarmFor(cat).format(DateTimeFormatter.ofPattern("HH:mm"))})"
             Text(labelOfCategory(cat) + suffix, modifier = Modifier.fillMaxWidth())
           }
         }

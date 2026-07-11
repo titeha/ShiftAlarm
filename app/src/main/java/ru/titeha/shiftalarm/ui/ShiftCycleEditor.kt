@@ -1,18 +1,36 @@
 package ru.titeha.shiftalarm.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -23,6 +41,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.analog.AnalogTimePicker
 import ru.titeha.shiftalarm.data.AlarmEntity
@@ -55,22 +75,33 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   fun setSlots(newSlots: List<ShiftType>) =
     onChange(draft.copy(cycleSpec = ShiftCycleCodec.encode(newSlots)))
 
+  val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
   Text("График:", style = MaterialTheme.typography.titleMedium)
   Spacer(Modifier.height(8.dp))
 
+  // Пресеты как точка входа: «возьми шаблон и поправь». Под чипом — мини-полоска цветов цикла.
   FlowRow(
     modifier = Modifier.fillMaxWidth(),
     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
   ) {
     ShiftPresets.all.forEach { preset ->
-      ModeChip(preset.title, !custom && draft.presetId == preset.id) {
-        onChange(
-          draft.copy(
-            presetId = preset.id,
-            cycleSpec = null,
-            anchorEpochDay = LocalDate.now().toEpochDay()
+      val presetSlots = remember(preset.id) { templateSlotsOf(preset.id) }
+      Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(92.dp)
+      ) {
+        ModeChip(preset.title, !custom && draft.presetId == preset.id) {
+          onChange(
+            draft.copy(
+              presetId = preset.id,
+              cycleSpec = null,
+              anchorEpochDay = LocalDate.now().toEpochDay()
+            )
           )
-        )
+        }
+        Spacer(Modifier.height(3.dp))
+        MiniCycleStrip(presetSlots, dark, Modifier.fillMaxWidth().padding(horizontal = 4.dp))
       }
     }
     // Переход в режим своего цикла: за основу берём слоты текущего пресета.
@@ -91,45 +122,89 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
     return
   }
 
-  // --- Редактор произвольного цикла (компактно: одинаковые дни подряд — одной записью «×N») ---
+  // --- Сегментная лента блоков цикла; редактирование выбранного блока — в bottom sheet ---
   val runs = ShiftCycle.group(slots)
   Spacer(Modifier.height(12.dp))
   Text(
-    "Цикл ${slots.size} дн. (${runs.size} зап.): повторяется по кругу. Запись — несколько " +
-      "одинаковых дней подряд (тип + будильник + количество).",
+    "Цикл ${slots.size} дн. (${runs.size} бл.): повторяется по кругу. Блок — несколько одинаковых " +
+      "дней подряд. Тап по блоку — правка типа, количества, будильника.",
     style = MaterialTheme.typography.bodySmall
   )
   Spacer(Modifier.height(8.dp))
 
-  runs.forEachIndexed { i, run ->
-    fun apply(newRuns: List<SlotRun>) = setSlots(ShiftCycle.expand(newRuns))
-    RunCard(
-      index = i,
-      run = run,
-      isFirst = i == 0,
-      isLast = i == runs.lastIndex,
-      canGrow = slots.size < MAX_CUSTOM_CYCLE_DAYS,
-      onChangeSlot = { updated -> apply(runs.toMutableList().also { it[i] = run.copy(slot = updated) }) },
-      onCount = { n -> apply(runs.toMutableList().also { it[i] = run.copy(count = n) }) },
-      onRemove = { apply(runs.toMutableList().also { it.removeAt(i) }) },
-      onMoveUp = { apply(runs.toMutableList().also { it.add(i - 1, it.removeAt(i)) }) },
-      onMoveDown = { apply(runs.toMutableList().also { it.add(i + 1, it.removeAt(i)) }) }
-    )
-    Spacer(Modifier.height(8.dp))
-  }
+  // selected — подсветка блока в ленте; editing — индекс блока, для которого открыт sheet.
+  var selected by remember { mutableStateOf<Int?>(null) }
+  var editing by remember { mutableStateOf<Int?>(null) }
+
+  CycleStrip(
+    runs = runs,
+    selectedIndex = selected,
+    dark = dark,
+    onSelect = { selected = it; editing = it }
+  )
+  Spacer(Modifier.height(8.dp))
 
   Button(
-    onClick = { setSlots(slots + ShiftType("c${slots.size}", "Смена", LocalTime.of(7, 0))) },
+    onClick = {
+      // «+ блок»: умный тип, отличный от соседей (не сольётся при нормализации), после выбранного.
+      // Блок добавляется и сразу открывается в sheet для правки; ✕ откатит к дефолтному «умному»
+      // блоку (он уже в цикле), ✓ сохранит правки, «Удалить» — уберёт.
+      val at = ((selected ?: runs.lastIndex) + 1).coerceIn(0, runs.size)
+      val neighbours = setOfNotNull(
+        runs.getOrNull(at - 1)?.slot?.category,
+        runs.getOrNull(at)?.slot?.category
+      )
+      val cat = ShiftCycle.distinctCategoryFrom(neighbours)
+      val newRuns = runs.toMutableList().also { it.add(at, SlotRun(ShiftCycle.blockOf(cat), 1)) }
+      setSlots(ShiftCycle.expand(newRuns))
+      selected = at
+      editing = at
+    },
     enabled = slots.size < MAX_CUSTOM_CYCLE_DAYS
-  ) { Text("+ Запись") }
+  ) { Text("+ блок") }
 
   if (slots.isEmpty()) {
     Spacer(Modifier.height(8.dp))
     Text(
-      "Цикл пуст — добавьте хотя бы один день, иначе будет использован пресет.",
+      "Цикл пуст — добавьте хотя бы один блок, иначе будет использован пресет.",
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.error
     )
+  }
+
+  editing?.let { idx ->
+    if (runs.isNotEmpty()) {
+      val i = idx.coerceIn(0, runs.lastIndex)
+      fun applyRuns(newRuns: List<SlotRun>) = setSlots(ShiftCycle.expand(newRuns))
+      BlockSheet(
+        block = runs[i],
+        isFirst = i == 0,
+        isLast = i == runs.lastIndex,
+        canGrow = slots.size < MAX_CUSTOM_CYCLE_DAYS,
+        canRemove = runs.size > 1,
+        onCommit = { edited ->
+          applyRuns(runs.toMutableList().also { it[i] = edited })
+          editing = null
+        },
+        onCancel = { editing = null },
+        onMoveLeft = { edited ->
+          applyRuns(runs.toMutableList().also { it[i] = edited; it.add(i - 1, it.removeAt(i)) })
+          selected = i - 1; editing = i - 1
+        },
+        onMoveRight = { edited ->
+          applyRuns(runs.toMutableList().also { it[i] = edited; it.add(i + 1, it.removeAt(i)) })
+          selected = i + 1; editing = i + 1
+        },
+        onDuplicate = { edited ->
+          applyRuns(runs.toMutableList().also { it[i] = edited; it.add(i + 1, edited) })
+          selected = i + 1; editing = i + 1
+        },
+        onRemove = {
+          applyRuns(runs.toMutableList().also { it.removeAt(i) })
+          selected = null; editing = null
+        }
+      )
+    }
   }
 }
 
@@ -143,85 +218,208 @@ private val CATEGORIES = listOf(
 /** Общий предел длины произвольного цикла (в днях после развёртки записей ×N). */
 private const val MAX_CUSTOM_CYCLE_DAYS = 60
 
-/** Время будильника по умолчанию при включении тумблера — под категорию (звонок раньше старта). */
-internal fun defaultAlarmFor(category: ShiftCategory): LocalTime = when (category) {
-  ShiftCategory.MORNING -> LocalTime.of(5, 0)
-  ShiftCategory.DAY -> LocalTime.of(13, 0)
-  ShiftCategory.NIGHT, ShiftCategory.OFF -> LocalTime.of(21, 0)
+/** Односимвольная метка типа для сегмента ленты («У/Д/Н/В»). */
+private fun shortLabel(category: ShiftCategory): String = when (category) {
+  ShiftCategory.MORNING -> "У"
+  ShiftCategory.DAY -> "Д"
+  ShiftCategory.NIGHT -> "Н"
+  ShiftCategory.OFF -> "В"
 }
 
+/** Тонкая цветная полоска цикла (превью пресета): ширина сегмента ∝ числу дней, без подписей. */
 @Composable
-private fun RunCard(
-  index: Int,
-  run: SlotRun,
+private fun MiniCycleStrip(slots: List<ShiftType>, dark: Boolean, modifier: Modifier = Modifier) {
+  val runs = ShiftCycle.group(slots)
+  if (runs.isEmpty()) return
+  Row(modifier.height(6.dp), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+    runs.forEach { run ->
+      Box(
+        Modifier
+          .weight(run.count.toFloat())
+          .fillMaxHeight()
+          .background(colorOf(categoryToDayKind(run.slot.category), dark), RoundedCornerShape(2.dp))
+      )
+    }
+  }
+}
+
+/**
+ * Сегментная лента цикла: горизонтальный ряд блоков, ширина ∝ числу дней. Внутри «У ×3» + колокольчик
+ * (если звонит); цвет фона — палитра типов из календаря. Выбранный блок в рамке-акценте. Тап = выбор.
+ */
+@Composable
+private fun CycleStrip(runs: List<SlotRun>, selectedIndex: Int?, dark: Boolean, onSelect: (Int) -> Unit) {
+  if (runs.isEmpty()) return
+  Row(
+    modifier = Modifier.fillMaxWidth().height(52.dp),
+    horizontalArrangement = Arrangement.spacedBy(3.dp)
+  ) {
+    runs.forEachIndexed { i, run ->
+      val slot = run.slot
+      val onCell = onCellColor(dark)
+      val selected = i == selectedIndex
+      Box(
+        modifier = Modifier
+          .weight(run.count.toFloat())
+          .widthIn(min = 28.dp)
+          .fillMaxHeight()
+          .background(colorOf(categoryToDayKind(slot.category), dark), RoundedCornerShape(6.dp))
+          .then(
+            if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
+            else Modifier
+          )
+          .clickable { onSelect(i) }
+          .padding(2.dp),
+        contentAlignment = Alignment.Center
+      ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+          Text(
+            "${shortLabel(slot.category)} ×${run.count}",
+            color = onCell,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1
+          )
+          if (slot.wakeTime != null) {
+            Icon(Icons.Filled.Notifications, contentDescription = null, tint = onCell, modifier = Modifier.size(12.dp))
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Редактирование блока в bottom sheet. Правки копятся ЛОКАЛЬНО и применяются только по ✓ (onCommit);
+ * ✕ или смахивание вниз — откат (onCancel). Тип (сегменты), «Дней подряд» (степпер), будильник
+ * (тумблер + время), название в «Дополнительно», действия (сдвиг/дублировать/удалить — с фиксацией
+ * текущих правок блока).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BlockSheet(
+  block: SlotRun,
   isFirst: Boolean,
   isLast: Boolean,
   canGrow: Boolean,
-  onChangeSlot: (ShiftType) -> Unit,
-  onCount: (Int) -> Unit,
-  onRemove: () -> Unit,
-  onMoveUp: () -> Unit,
-  onMoveDown: () -> Unit
+  canRemove: Boolean,
+  onCommit: (SlotRun) -> Unit,
+  onCancel: () -> Unit,
+  onMoveLeft: (SlotRun) -> Unit,
+  onMoveRight: (SlotRun) -> Unit,
+  onDuplicate: (SlotRun) -> Unit,
+  onRemove: () -> Unit
 ) {
-  val slot = run.slot
+  // Локальный черновик блока: правки не трогают цикл, пока не нажата ✓. re-seed при смене блока.
+  var slot by remember(block) { mutableStateOf(block.slot) }
+  var count by remember(block) { mutableStateOf(block.count) }
   var pickingTime by remember { mutableStateOf(false) }
+  var showAdvanced by remember(block) { mutableStateOf(false) }
   val wt = slot.wakeTime
+  val staged = SlotRun(slot, count)
 
-  Card(modifier = Modifier.fillMaxWidth()) {
-    Column(modifier = Modifier.padding(12.dp)) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Запись ${index + 1}", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.weight(1f))
-        TextButton(onClick = onMoveUp, enabled = !isFirst) { Text("↑") }
-        TextButton(onClick = onMoveDown, enabled = !isLast) { Text("↓") }
-        TextButton(onClick = onRemove) { Text("Удалить") }
-      }
-
-      OutlinedTextField(
-        value = slot.name,
-        onValueChange = { onChangeSlot(slot.copy(name = it)) },
-        label = { Text("Название") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth()
-      )
-      Spacer(Modifier.height(8.dp))
-
-      // Тип дня — задаёт цвет на календаре, не зависит от будильника.
-      Text("Тип (цвет в календаре):", style = MaterialTheme.typography.labelMedium)
-      FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        CATEGORIES.forEach { (cat, label) ->
-          ModeChip(label, slot.category == cat) { onChangeSlot(slot.copy(category = cat)) }
+  ModalBottomSheet(onDismissRequest = onCancel) {
+    Column(
+      Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 20.dp)
+        .padding(bottom = 24.dp)
+    ) {
+      // Шапка: ✕ отмена — «Блок» — ✓ фиксация.
+      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        IconButton(onClick = onCancel) {
+          Icon(Icons.Filled.Close, contentDescription = "Отмена")
+        }
+        Text(
+          "Блок",
+          style = MaterialTheme.typography.titleMedium,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.weight(1f)
+        )
+        IconButton(onClick = { onCommit(staged) }) {
+          Icon(
+            Icons.Filled.Check,
+            contentDescription = "Готово",
+            tint = MaterialTheme.colorScheme.primary
+          )
         }
       }
       Spacer(Modifier.height(8.dp))
 
-      // Будильник — отдельно: ночь можно без звонка, выходной — со звонком (уход в ночь вечером).
+      // Тип — сегментированные кнопки. Смена типа переименовывает авто-имя и правит будильник.
+      SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        CATEGORIES.forEachIndexed { idx, entry ->
+          val (cat, label) = entry
+          SegmentedButton(
+            selected = slot.category == cat,
+            onClick = { slot = ShiftCycle.retype(slot, cat) },
+            shape = SegmentedButtonDefaults.itemShape(idx, CATEGORIES.size)
+          ) { Text(label) }
+        }
+      }
+      Spacer(Modifier.height(12.dp))
+
+      // Дней подряд — степпер 1..30.
       Row(verticalAlignment = Alignment.CenterVertically) {
-        Switch(
-          checked = wt != null,
-          onCheckedChange = { on ->
-            onChangeSlot(slot.copy(wakeTime = if (on) defaultAlarmFor(slot.category) else null))
-          }
-        )
+        Text("Дней подряд:", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.weight(1f))
+        TextButton(onClick = { if (count > 1) count-- }, enabled = count > 1) {
+          Text("−", style = MaterialTheme.typography.titleLarge)
+        }
+        Text("$count", style = MaterialTheme.typography.titleMedium)
+        TextButton(onClick = { count++ }, enabled = canGrow && count < 30) {
+          Text("+", style = MaterialTheme.typography.titleLarge)
+        }
+      }
+      Spacer(Modifier.height(4.dp))
+
+      // Будильник — тумблер + время. Ночь можно без звонка, выходной — со звонком.
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = wt != null, onCheckedChange = { slot = ShiftCycle.setAlarm(slot, it) })
         Spacer(Modifier.width(8.dp))
         Text("Будильник", style = MaterialTheme.typography.bodyMedium)
         if (wt != null) {
-          Spacer(Modifier.width(8.dp))
+          Spacer(Modifier.weight(1f))
           TextButton(onClick = { pickingTime = true }) {
-            Text("%02d:%02d".format(wt.hour, wt.minute))
+            Text("%02d:%02d".format(wt.hour, wt.minute), style = MaterialTheme.typography.titleMedium)
           }
+        }
+      }
+      // Подпись-смысл (часть смысла, не подсказка): ночь звонит накануне, выходной со звонком.
+      if (wt != null) {
+        val hint = when (slot.category) {
+          ShiftCategory.NIGHT -> "Звонок накануне вечером, в %02d:%02d".format(wt.hour, wt.minute)
+          ShiftCategory.OFF -> "Выходной со звонком"
+          else -> null
+        }
+        if (hint != null) {
+          Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         }
       }
       Spacer(Modifier.height(8.dp))
 
-      // Сколько таких дней подряд (свёртка повторов).
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Дней подряд:", style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.width(8.dp))
-        TextButton(onClick = { onCount(run.count - 1) }, enabled = run.count > 1) { Text("−") }
-        Text("${run.count}", style = MaterialTheme.typography.titleMedium)
-        // Нельзя растить запись, если общий цикл уже достиг лимита дней.
-        TextButton(onClick = { onCount(run.count + 1) }, enabled = canGrow) { Text("+") }
+      // Дополнительно — пользовательское название блока (по умолчанию — по типу).
+      TextButton(onClick = { showAdvanced = !showAdvanced }) {
+        Text(if (showAdvanced) "Скрыть дополнительно" else "Дополнительно")
+      }
+      if (showAdvanced) {
+        OutlinedTextField(
+          value = slot.name,
+          onValueChange = { slot = slot.copy(name = it) },
+          label = { Text("Название блока") },
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(4.dp))
+        Text("По умолчанию — по типу («Утро», «День»…).", style = MaterialTheme.typography.labelSmall)
+      }
+      Spacer(Modifier.height(12.dp))
+
+      // Действия над блоком — фиксируют текущие правки блока, затем структурная операция.
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextButton(onClick = { onMoveLeft(staged) }, enabled = !isFirst) { Text("Сдвинуть влево") }
+        TextButton(onClick = { onMoveRight(staged) }, enabled = !isLast) { Text("Сдвинуть вправо") }
+        TextButton(onClick = { onDuplicate(staged) }, enabled = canGrow) { Text("Дублировать") }
+        TextButton(onClick = onRemove, enabled = canRemove) { Text("Удалить") }
       }
     }
   }
@@ -229,7 +427,7 @@ private fun RunCard(
   if (pickingTime && wt != null) {
     TimePickerDialog(
       time = wt,
-      onPick = { onChangeSlot(slot.copy(wakeTime = it)) },
+      onPick = { slot = slot.copy(wakeTime = it) },
       onDismiss = { pickingTime = false }
     )
   }
