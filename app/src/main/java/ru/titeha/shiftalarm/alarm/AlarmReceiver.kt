@@ -4,7 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
@@ -38,18 +41,20 @@ class AlarmReceiver : BroadcastReceiver() {
     val pending = goAsync()
     val appContext = context.applicationContext
 
-    try {
-      runBlocking {
+    // Асинхронно, чтобы не блокировать broadcast-поток. goAsync() держит процесс живым до finish()
+    // (до ~10 c) — на загрузку из БД и запуск сервиса звонка этого хватает.
+    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+      try {
         handleAlarm(
           context = appContext,
           alarmId = id,
           scheduledTriggerAtMillis = scheduledTriggerAtMillis
         )
+      } catch (error: Exception) {
+        Log.w(TAG, "Не удалось обработать срабатывание будильника", error)
+      } finally {
+        pending.finish()
       }
-    } catch (error: Exception) {
-      Log.w(TAG, "Не удалось обработать срабатывание будильника", error)
-    } finally {
-      pending.finish()
     }
   }
 
