@@ -7,6 +7,7 @@ enum class AlarmEventType {
   SKIPPED,     // срабатывание отклонено (устаревшее/выключен)
   CANCELLED,   // снят
   RESCHEDULED, // перепланирование после системного события (reboot/time/timezone/обновление)
+  SIGNAL_DEGRADED, // звук не удалось запустить — сигнал только вибрацией
 }
 
 /** Одна запись журнала: когда ([atMillis]), что ([type]) и детали ([detail], напр. id и время). */

@@ -13,13 +13,21 @@ object SystemRescheduleActions {
   const val TIMEZONE_CHANGED = "android.intent.action.TIMEZONE_CHANGED"
 
   /**
+   * Изменение разрешения на точные будильники (Android 12+). При выдаче разрешения нужно
+   * перепланировать: система могла отменить неточные/отклонённые срабатывания, пока его не было.
+   */
+  const val EXACT_ALARM_PERMISSION_CHANGED =
+    "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED"
+
+  /**
    * true, если событие требует перепланирования будильников.
    */
   fun shouldReschedule(action: String?): Boolean {
     return action == BOOT_COMPLETED ||
             action == MY_PACKAGE_REPLACED ||
             action == TIME_CHANGED ||
-            action == TIMEZONE_CHANGED
+            action == TIMEZONE_CHANGED ||
+            action == EXACT_ALARM_PERMISSION_CHANGED
   }
 
   /**
@@ -31,6 +39,7 @@ object SystemRescheduleActions {
       MY_PACKAGE_REPLACED -> "обновление приложения"
       TIME_CHANGED -> "изменение системного времени"
       TIMEZONE_CHANGED -> "изменение часового пояса"
+      EXACT_ALARM_PERMISSION_CHANGED -> "изменение разрешения точных будильников"
       else -> "неизвестное событие"
     }
   }

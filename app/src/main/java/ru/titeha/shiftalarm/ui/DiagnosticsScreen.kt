@@ -126,6 +126,7 @@ private fun typeLabel(type: AlarmEventType): String = when (type) {
   AlarmEventType.SKIPPED -> "Пропущен"
   AlarmEventType.CANCELLED -> "Снят"
   AlarmEventType.RESCHEDULED -> "Перепланирован"
+  AlarmEventType.SIGNAL_DEGRADED -> "Сигнал только вибрацией"
 }
 
 private fun readinessLabel(issue: ru.titeha.shiftalarm.alarm.AlarmReadinessIssue): String = when (issue) {

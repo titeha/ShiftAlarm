@@ -14,6 +14,8 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import ru.titeha.shiftalarm.AlarmActivity
+import ru.titeha.shiftalarm.data.AlarmEventLog
+import ru.titeha.shiftalarm.data.AlarmEventType
 
 /**
  * Foreground-сервис, который проигрывает сигнал будильника независимо от UI.
@@ -123,22 +125,31 @@ class AlarmService : Service() {
      * Если MediaPlayer не сможет открыть мелодию, вибрация останется запасным сигналом.
      */
     AlarmVibration.start(this)
-    startSound()
+
+    // Если звук не завёлся (нет мелодии/ошибка) — сигнал остаётся только вибрацией. Фиксируем это
+    // в диагностическом журнале, чтобы «почему тихо» можно было понять постфактум.
+    if (!startSound()) {
+      AlarmEventLog(this).record(
+        AlarmEventType.SIGNAL_DEGRADED,
+        "звук недоступен — сигнал только вибрацией",
+        System.currentTimeMillis()
+      )
+    }
   }
 
-  /** Запустить звуковой сигнал, если системная мелодия доступна. */
-  private fun startSound() {
+  /** Запустить звуковой сигнал; true — играет, false — мелодия недоступна/ошибка (запас — вибрация). */
+  private fun startSound(): Boolean {
     val uri = RingtoneManager.getActualDefaultRingtoneUri(
       this,
       RingtoneManager.TYPE_ALARM
     )
       ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
       ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-      ?: return
+      ?: return false
 
     var createdPlayer: MediaPlayer? = null
 
-    try {
+    return try {
       createdPlayer = MediaPlayer().apply {
         setDataSource(this@AlarmService, uri)
         setAudioAttributes(
@@ -153,6 +164,7 @@ class AlarmService : Service() {
       }
 
       player = createdPlayer
+      true
     } catch (_: Exception) {
       /*
        * Сигнал недоступен. Не падаем: сервис уже держит foreground-уведомление,
@@ -165,6 +177,7 @@ class AlarmService : Service() {
       }
 
       player = null
+      false
     }
   }
 

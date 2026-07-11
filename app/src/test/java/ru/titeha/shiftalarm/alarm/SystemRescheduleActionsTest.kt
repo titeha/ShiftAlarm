@@ -43,6 +43,19 @@ class SystemRescheduleActionsTest {
   }
 
   @Test
+  fun `изменение разрешения точных будильников требует перепланирования`() {
+    assertTrue(
+      SystemRescheduleActions.shouldReschedule(
+        SystemRescheduleActions.EXACT_ALARM_PERMISSION_CHANGED
+      )
+    )
+    assertEquals(
+      "изменение разрешения точных будильников",
+      SystemRescheduleActions.reasonOf(SystemRescheduleActions.EXACT_ALARM_PERMISSION_CHANGED)
+    )
+  }
+
+  @Test
   fun `пустое действие не требует перепланирования`() {
     assertFalse(SystemRescheduleActions.shouldReschedule(null))
   }
