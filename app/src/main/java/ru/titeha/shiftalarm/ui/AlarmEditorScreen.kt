@@ -214,6 +214,9 @@ fun AlarmEditorScreen(
         onPeriodsChange = { periods = it },
         onOverridesChange = { overrides = it }
       )
+    } else if (method == EditMethod.WEEKLY) {
+      Spacer(Modifier.height(8.dp))
+      WeeklyCalendarSection(effective(draft, method))
     }
 
     Spacer(Modifier.height(24.dp))
@@ -293,7 +296,8 @@ private fun WeeklyDaysContent(draft: AlarmEntity, onChange: (AlarmEntity) -> Uni
 
   Text("Дни повтора:", style = MaterialTheme.typography.titleMedium)
   Spacer(Modifier.height(8.dp))
-  // Быстрые пресеты дней (пока базовые Пн–Пт / Сб–Вс; учёт стран/праздников — позже).
+  // Дни повтора — нейтральные (звонок может быть не по работе: тренировка, кружок). «Рабочая неделя»
+  // как понятие движка (work/off + начало недели) — отдельная будущая настройка, см. roadmap.
   val allDays = AlarmTimes.maskOf(*DayOfWeek.entries.toTypedArray())
   val weekdays = AlarmTimes.maskOf(
     DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
@@ -649,6 +653,16 @@ private fun StartDatePickerDialog(initial: LocalDate, onPick: (LocalDate) -> Uni
     },
     dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
   ) { DatePicker(state = state) }
+}
+
+/** Сворачиваемый календарь недельного будильника (наглядно видно эффект «учитывать праздники»). */
+@Composable
+private fun WeeklyCalendarSection(alarm: AlarmEntity) {
+  var show by remember { mutableStateOf(false) }
+  TextButton(onClick = { show = !show }) {
+    Text(if (show) "Скрыть календарь" else "Календарь")
+  }
+  if (show) WeeklyCalendar(alarm)
 }
 
 /**

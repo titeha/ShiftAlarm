@@ -117,6 +117,22 @@ object AlarmTimes {
     next(alarm, periods, emptyList(), from)
 
   /**
+   * Звонит ли weekly-будильник в конкретный календарный день [date] — для наглядной визуализации в
+   * календаре (совпадает с логикой [next]): полярность REST звонит по нерабочим (выходные/праздники),
+   * иначе — по масочным дням, а при [AlarmEntity.honorHolidays] нерабочие глушатся. Разовый (маска 0)
+   * как повтор не показываем.
+   */
+  fun weeklyFiresOn(alarm: AlarmEntity, date: LocalDate, calendar: ProductionCalendar?): Boolean {
+    if (alarm.mode != AlarmEntity.MODE_WEEKLY) return false
+    if (alarm.honorHolidays && alarm.polarity == AlarmEntity.POLARITY_REST) {
+      return calendar != null && !calendar.isWorking(date)
+    }
+    if (alarm.daysMask == 0) return false
+    if (!maskHas(alarm.daysMask, date.dayOfWeek)) return false
+    return calendar == null || calendar.isWorking(date)
+  }
+
+  /**
    * Базовая ротация будильника-смены: произвольный цикл из [AlarmEntity.cycleSpec], если он задан
    * и корректен, иначе встроенный пресет [AlarmEntity.presetId]. null — цикл задать нечем.
    *

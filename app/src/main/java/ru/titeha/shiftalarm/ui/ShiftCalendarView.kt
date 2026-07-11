@@ -40,6 +40,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftCalendar
 import ru.titeha.shiftalarm.schedule.ShiftCalendar.DayKind
 import ru.titeha.shiftalarm.schedule.ProductionCalendars
@@ -99,6 +101,109 @@ private fun labelOf(kind: DayKind): String = when (kind) {
   DayKind.UNPAID -> "Свой счёт"
 }
 
+/** Модификатор: горизонтальный свайп листает месяцы (порог 48dp), в дополнение к стрелкам ‹ ›. */
+internal fun Modifier.monthSwipe(onPrev: () -> Unit, onNext: () -> Unit): Modifier = this.pointerInput(Unit) {
+  var dx = 0f
+  val threshold = 48.dp.toPx()
+  detectHorizontalDragGestures(
+    onDragStart = { dx = 0f },
+    onHorizontalDrag = { _, amount -> dx += amount },
+    onDragEnd = { if (dx > threshold) onPrev() else if (dx < -threshold) onNext() }
+  )
+}
+
+/** Шапка календаря: ‹ Месяц Год ›. */
+@Composable
+internal fun MonthHeader(month: YearMonth, onPrev: () -> Unit, onNext: () -> Unit) {
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.SpaceBetween
+  ) {
+    TextButton(onClick = onPrev) { Text("‹") }
+    val title = month.month.getDisplayName(TextStyle.FULL_STANDALONE, Locale.getDefault())
+      .replaceFirstChar { it.titlecase(Locale.getDefault()) }
+    Text("$title ${month.year}", style = MaterialTheme.typography.titleMedium)
+    TextButton(onClick = onNext) { Text("›") }
+  }
+}
+
+/** Строка дней недели Пн..Вс. */
+@Composable
+internal fun WeekdayHeader() {
+  Row(Modifier.fillMaxWidth()) {
+    WEEKDAYS.forEach { d ->
+      Text(
+        d,
+        modifier = Modifier.weight(1f),
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        style = MaterialTheme.typography.labelSmall
+      )
+    }
+  }
+}
+
+/**
+ * Недельный будильник на календаре (read-only): колокольчик в дни, когда звонит. При «учитывать
+ * праздники» нерабочие дни (выходные/праздники/переносы) подкрашены — видно эффект производственного
+ * календаря на конкретный месяц. Листание — стрелки/свайп.
+ */
+@Composable
+fun WeeklyCalendar(alarm: AlarmEntity, modifier: Modifier = Modifier) {
+  var month by remember { mutableStateOf(YearMonth.now()) }
+  val today = LocalDate.now()
+  val calendar = remember(month, alarm.honorHolidays) {
+    if (alarm.honorHolidays) ProductionCalendars.merged("RU", month.year) else null
+  }
+  val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
+  Column(
+    modifier = modifier
+      .fillMaxWidth()
+      .monthSwipe({ month = month.minusMonths(1) }, { month = month.plusMonths(1) })
+  ) {
+    MonthHeader(month, { month = month.minusMonths(1) }, { month = month.plusMonths(1) })
+    Spacer(Modifier.height(4.dp))
+    WeekdayHeader()
+
+    val lead = month.atDay(1).dayOfWeek.value - 1
+    val cells: List<LocalDate?> =
+      List(lead) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
+    cells.chunked(7).forEach { week ->
+      Row(Modifier.fillMaxWidth()) {
+        for (i in 0 until 7) {
+          val date = week.getOrNull(i)
+          val nonWorking = date != null && calendar != null && !calendar.isWorking(date)
+          DayCell(
+            date = date,
+            kind = if (nonWorking) DayKind.OFF else null,
+            rings = date != null && AlarmTimes.weeklyFiresOn(alarm, date, calendar),
+            isToday = date == today,
+            isHighlighted = false,
+            isInDragRange = false,
+            dark = dark,
+            onClick = null,
+            modifier = Modifier.weight(1f)
+          )
+        }
+      }
+    }
+
+    Spacer(Modifier.height(8.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Icon(Icons.Filled.Notifications, contentDescription = null, modifier = Modifier.size(12.dp))
+      Spacer(Modifier.size(4.dp))
+      Text("— звонит будильник", style = MaterialTheme.typography.labelSmall)
+      if (alarm.honorHolidays) {
+        Spacer(Modifier.size(12.dp))
+        Box(Modifier.size(12.dp).background(colorOf(DayKind.OFF, dark), RoundedCornerShape(3.dp)))
+        Spacer(Modifier.size(4.dp))
+        Text("— нерабочий день", style = MaterialTheme.typography.labelSmall)
+      }
+    }
+  }
+}
+
 /**
  * Наглядный календарь смен: месяц с цветовой меткой типа дня + легенда, листание ←/→.
  * Тип дня берётся из [ShiftCalendar.kindOf] по переданному расписанию [schedule].
@@ -129,46 +234,11 @@ fun ShiftCalendarView(
   Column(
     modifier = modifier
       .fillMaxWidth()
-      // Свайп влево/вправо листает месяцы (в дополнение к стрелкам ‹ ›). Быстрый горизонтальный
-      // жест; выделение диапазона (long-press + drag) срабатывает иначе и поглощает свой жест.
-      .pointerInput(Unit) {
-        var dx = 0f
-        val threshold = 48.dp.toPx()
-        detectHorizontalDragGestures(
-          onDragStart = { dx = 0f },
-          onHorizontalDrag = { _, amount -> dx += amount },
-          onDragEnd = {
-            if (dx > threshold) month = month.minusMonths(1)
-            else if (dx < -threshold) month = month.plusMonths(1)
-          }
-        )
-      }
+      .monthSwipe({ month = month.minusMonths(1) }, { month = month.plusMonths(1) })
   ) {
-    // Заголовок: ‹ Месяц Год ›
-    Row(
-      modifier = Modifier.fillMaxWidth(),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-      TextButton(onClick = { month = month.minusMonths(1) }) { Text("‹") }
-      val title = month.month.getDisplayName(TextStyle.FULL_STANDALONE, Locale.getDefault())
-        .replaceFirstChar { it.titlecase(Locale.getDefault()) }
-      Text("$title ${month.year}", style = MaterialTheme.typography.titleMedium)
-      TextButton(onClick = { month = month.plusMonths(1) }) { Text("›") }
-    }
+    MonthHeader(month, { month = month.minusMonths(1) }, { month = month.plusMonths(1) })
     Spacer(Modifier.height(4.dp))
-
-    // Шапка дней недели
-    Row(Modifier.fillMaxWidth()) {
-      WEEKDAYS.forEach { d ->
-        Text(
-          d,
-          modifier = Modifier.weight(1f),
-          textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-          style = MaterialTheme.typography.labelSmall
-        )
-      }
-    }
+    WeekdayHeader()
 
     // Сетка месяца. Ведущие пустые ячейки — до первого дня (неделя с понедельника).
     val firstDay = month.atDay(1)
