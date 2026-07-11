@@ -114,5 +114,6 @@ private fun typeLabel(type: AlarmEventType): String = when (type) {
 private fun readinessLabel(issue: ru.titeha.shiftalarm.alarm.AlarmReadinessIssue): String = when (issue) {
   ru.titeha.shiftalarm.alarm.AlarmReadinessIssue.EXACT_ALARM -> "точные будильники"
   ru.titeha.shiftalarm.alarm.AlarmReadinessIssue.NOTIFICATIONS -> "уведомления"
+  ru.titeha.shiftalarm.alarm.AlarmReadinessIssue.FULL_SCREEN -> "полноэкранные уведомления"
   ru.titeha.shiftalarm.alarm.AlarmReadinessIssue.BATTERY -> "энергосбережение"
 }

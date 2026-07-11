@@ -88,11 +88,13 @@ fun AlarmReadinessBanner(modifier: Modifier = Modifier) {
 private fun titleOf(issue: AlarmReadinessIssue): String = when (issue) {
   AlarmReadinessIssue.EXACT_ALARM -> "Точные будильники выключены"
   AlarmReadinessIssue.NOTIFICATIONS -> "Уведомления выключены"
+  AlarmReadinessIssue.FULL_SCREEN -> "Полноэкранные уведомления выключены"
   AlarmReadinessIssue.BATTERY -> "Экономия батареи ограничивает приложение"
 }
 
 private fun explainOf(issue: AlarmReadinessIssue): String = when (issue) {
   AlarmReadinessIssue.EXACT_ALARM -> "Иначе звонок может опоздать или не сработать."
   AlarmReadinessIssue.NOTIFICATIONS -> "Без них экран звонка может не показаться."
+  AlarmReadinessIssue.FULL_SCREEN -> "Без них экран «Подъём!» не всплывёт сам поверх блокировки."
   AlarmReadinessIssue.BATTERY -> "Добавьте приложение в исключения, чтобы звонок не задерживался."
 }

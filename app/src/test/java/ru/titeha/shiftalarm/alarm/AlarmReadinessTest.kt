@@ -9,17 +9,24 @@ class AlarmReadinessTest {
   fun allGranted_noIssues() {
     assertEquals(
       emptyList<AlarmReadinessIssue>(),
-      AlarmReadiness.issues(canScheduleExact = true, notificationsAllowed = true, batteryUnrestricted = true)
+      AlarmReadiness.issues(
+        canScheduleExact = true, notificationsAllowed = true,
+        fullScreenAllowed = true, batteryUnrestricted = true
+      )
     )
   }
 
   @Test
-  fun exactAlarmMissing_reportedFirst() {
-    val issues = AlarmReadiness.issues(false, notificationsAllowed = false, batteryUnrestricted = false)
+  fun allMissing_reportedInPriorityOrder() {
+    val issues = AlarmReadiness.issues(
+      canScheduleExact = false, notificationsAllowed = false,
+      fullScreenAllowed = false, batteryUnrestricted = false
+    )
     assertEquals(
       listOf(
         AlarmReadinessIssue.EXACT_ALARM,
         AlarmReadinessIssue.NOTIFICATIONS,
+        AlarmReadinessIssue.FULL_SCREEN,
         AlarmReadinessIssue.BATTERY
       ),
       issues
@@ -30,15 +37,21 @@ class AlarmReadinessTest {
   fun batteryNull_notReported() {
     assertEquals(
       emptyList<AlarmReadinessIssue>(),
-      AlarmReadiness.issues(canScheduleExact = true, notificationsAllowed = true, batteryUnrestricted = null)
+      AlarmReadiness.issues(
+        canScheduleExact = true, notificationsAllowed = true,
+        fullScreenAllowed = true, batteryUnrestricted = null
+      )
     )
   }
 
   @Test
-  fun onlyNotifications_missing() {
+  fun onlyFullScreen_missing() {
     assertEquals(
-      listOf(AlarmReadinessIssue.NOTIFICATIONS),
-      AlarmReadiness.issues(canScheduleExact = true, notificationsAllowed = false, batteryUnrestricted = true)
+      listOf(AlarmReadinessIssue.FULL_SCREEN),
+      AlarmReadiness.issues(
+        canScheduleExact = true, notificationsAllowed = true,
+        fullScreenAllowed = false, batteryUnrestricted = true
+      )
     )
   }
 }

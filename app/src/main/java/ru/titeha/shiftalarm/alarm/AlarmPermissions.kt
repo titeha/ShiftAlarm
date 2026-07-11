@@ -1,6 +1,7 @@
 package ru.titeha.shiftalarm.alarm
 
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -30,6 +31,12 @@ object AlarmPermissions {
     ) == PackageManager.PERMISSION_GRANTED
   }
 
+  /** Полноэкранные уведомления (Android 14+ можно отозвать). На младших версиях — всегда можно. */
+  fun canUseFullScreen(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return true
+    return context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+  }
+
   /** Приложение вне ограничений энергосбережения (в белом списке Doze). */
   fun batteryUnrestricted(context: Context): Boolean {
     val pm = context.getSystemService(PowerManager::class.java)
@@ -40,6 +47,7 @@ object AlarmPermissions {
   fun issues(context: Context): List<AlarmReadinessIssue> = AlarmReadiness.issues(
     canScheduleExact = canScheduleExact(context),
     notificationsAllowed = notificationsAllowed(context),
+    fullScreenAllowed = canUseFullScreen(context),
     batteryUnrestricted = batteryUnrestricted(context),
   )
 
@@ -56,6 +64,15 @@ object AlarmPermissions {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
           Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        else
+          appDetailsIntent(context)
+
+      AlarmReadinessIssue.FULL_SCREEN ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+          Intent(
+            Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+            Uri.parse("package:${context.packageName}")
+          )
         else
           appDetailsIntent(context)
 
