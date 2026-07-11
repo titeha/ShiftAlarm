@@ -11,6 +11,16 @@ enum class AlarmEventType {
   ERROR, // исключение при обработке (ресивер) — чтобы «почему не сработало» было видно в журнале
 }
 
+/**
+ * «Важные» события — то, что напрямую отвечает «почему зазвонил/не зазвонил»: сработал, пропущен,
+ * сигнал деградировал, ошибка. Остальное (запланирован/снят/перепланирован) — техническое, шумит.
+ */
+val AlarmEventType.isImportant: Boolean
+  get() = this == AlarmEventType.FIRED ||
+    this == AlarmEventType.SKIPPED ||
+    this == AlarmEventType.SIGNAL_DEGRADED ||
+    this == AlarmEventType.ERROR
+
 /** Одна запись журнала: когда ([atMillis]), что ([type]) и детали ([detail], напр. id и время). */
 data class AlarmEvent(
   val atMillis: Long,

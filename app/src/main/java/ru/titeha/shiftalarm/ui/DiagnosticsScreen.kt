@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -28,9 +29,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.unit.dp
 import ru.titeha.shiftalarm.alarm.AlarmPermissions
+import ru.titeha.shiftalarm.alarm.AlarmReadinessIssue
 import ru.titeha.shiftalarm.data.AlarmEvent
 import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
+import ru.titeha.shiftalarm.data.isImportant
 import java.time.Instant
 import java.time.ZoneId
 
@@ -44,6 +47,7 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
   val log = remember { AlarmEventLog(context) }
   var events by remember { mutableStateOf(log.recent()) }
   var issues by remember { mutableStateOf(AlarmPermissions.issues(context)) }
+  var importantOnly by remember { mutableStateOf(true) }
 
   // Перечитывать журнал и статус разрешений при каждом возврате на экран (в т.ч. из настроек).
   val activity = context as? ComponentActivity
@@ -75,12 +79,13 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
       }
       Spacer(Modifier.height(12.dp))
 
-      Text(
-        if (issues.isEmpty()) "Разрешения: всё в порядке."
-        else "Не хватает разрешений: " + issues.joinToString { readinessLabel(it) } +
-          " — см. предупреждение на главном экране.",
-        style = MaterialTheme.typography.bodyMedium
-      )
+      // Статус готовности по каждому разрешению (выводим из списка проблем, он свеж на ON_RESUME).
+      Text("Готовность", style = MaterialTheme.typography.titleMedium)
+      Spacer(Modifier.height(4.dp))
+      ReadinessRow("Точные будильники", AlarmReadinessIssue.EXACT_ALARM !in issues)
+      ReadinessRow("Уведомления", AlarmReadinessIssue.NOTIFICATIONS !in issues)
+      ReadinessRow("Полноэкранные уведомления", AlarmReadinessIssue.FULL_SCREEN !in issues)
+      ReadinessRow("Энергосбережение (рекомендация)", AlarmReadinessIssue.BATTERY !in issues)
       Spacer(Modifier.height(16.dp))
 
       Row(
@@ -91,13 +96,23 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
         Text("Журнал событий", style = MaterialTheme.typography.titleMedium)
         TextButton(onClick = { log.clear(); events = emptyList() }) { Text("Очистить") }
       }
+      // Фильтр: скрыть технические события (запланирован/снят/перепланирован), оставить важные.
+      FilterChip(
+        selected = importantOnly,
+        onClick = { importantOnly = !importantOnly },
+        label = { Text("Только важные") }
+      )
       Spacer(Modifier.height(4.dp))
 
-      if (events.isEmpty()) {
-        Text("Событий пока нет.", style = MaterialTheme.typography.bodySmall)
+      val shown = events.filter { !importantOnly || it.type.isImportant }
+      if (shown.isEmpty()) {
+        Text(
+          if (events.isEmpty()) "Событий пока нет." else "Важных событий нет.",
+          style = MaterialTheme.typography.bodySmall
+        )
       } else {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-          items(events) { event -> EventRow(event) }
+          items(shown) { event -> EventRow(event) }
         }
       }
     }
@@ -130,9 +145,17 @@ private fun typeLabel(type: AlarmEventType): String = when (type) {
   AlarmEventType.ERROR -> "Ошибка обработки"
 }
 
-private fun readinessLabel(issue: ru.titeha.shiftalarm.alarm.AlarmReadinessIssue): String = when (issue) {
-  ru.titeha.shiftalarm.alarm.AlarmReadinessIssue.EXACT_ALARM -> "точные будильники"
-  ru.titeha.shiftalarm.alarm.AlarmReadinessIssue.NOTIFICATIONS -> "уведомления"
-  ru.titeha.shiftalarm.alarm.AlarmReadinessIssue.FULL_SCREEN -> "полноэкранные уведомления"
-  ru.titeha.shiftalarm.alarm.AlarmReadinessIssue.BATTERY -> "энергосбережение"
+@Composable
+private fun ReadinessRow(label: String, ok: Boolean) {
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+    Text(
+      if (ok) "OK" else "нет",
+      style = MaterialTheme.typography.bodyMedium,
+      color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+    )
+  }
 }
