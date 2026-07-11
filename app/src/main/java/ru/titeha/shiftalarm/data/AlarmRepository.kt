@@ -1,6 +1,7 @@
 package ru.titeha.shiftalarm.data
 
 import android.content.Context
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 
 /** Тонкая обёртка над DAO — единая точка доступа к будильникам. */
@@ -36,6 +37,26 @@ class AlarmRepository(context: Context) {
   suspend fun delete(alarm: AlarmEntity) = dao.delete(alarm)
   suspend fun deleteById(id: Long) = dao.deleteById(id)
 
+  /**
+   * Сохранить будильник вместе с его периодами и правками календаря ОДНОЙ транзакцией.
+   *
+   * Раньше UI делал это последовательностью upsert → delete → insert → delete → insert; краш или
+   * убийство процесса между delete и insert терял периоды/правки (тот же класс риска, что старый
+   * REPLACE). Транзакция гарантирует «всё или ничего». Возвращает id будильника.
+   */
+  suspend fun saveWithChildren(
+    alarm: AlarmEntity,
+    periods: List<AlarmPeriod>,
+    overrides: List<AlarmOverride>,
+  ): Long = db.withTransaction {
+    val id = upsert(alarm)
+    periodDao.deleteForAlarm(id)
+    periods.forEach { periodDao.upsert(it.copy(id = 0, alarmId = id)) }
+    overrideDao.deleteForAlarm(id)
+    overrides.forEach { overrideDao.upsert(it.copy(id = 0, alarmId = id)) }
+    id
+  }
+
   // --- Периоды без будильника (отпуск/больничный/отгул) ---
 
   /** Периоды будильника для UI (живой поток). */
@@ -55,6 +76,9 @@ class AlarmRepository(context: Context) {
 
   /** Правки будильника для UI (живой поток). */
   fun overrides(alarmId: Long): Flow<List<AlarmOverride>> = overrideDao.observeForAlarm(alarmId)
+
+  /** Все правки всех будильников (живой поток) — для превью «след:» в списке. */
+  val allOverrides: Flow<List<AlarmOverride>> = overrideDao.observeAll()
 
   /** Правки будильника — для расчёта расписания. */
   suspend fun overridesList(alarmId: Long): List<AlarmOverride> = overrideDao.forAlarm(alarmId)

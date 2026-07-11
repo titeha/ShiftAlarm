@@ -14,6 +14,10 @@ interface AlarmOverrideDao {
   @Query("SELECT * FROM alarm_overrides WHERE alarmId = :alarmId ORDER BY fromEpochDay")
   fun observeForAlarm(alarmId: Long): Flow<List<AlarmOverride>>
 
+  /** Все правки всех будильников (живой поток) — для превью «след:» в списке. */
+  @Query("SELECT * FROM alarm_overrides ORDER BY fromEpochDay")
+  fun observeAll(): Flow<List<AlarmOverride>>
+
   /** Правки будильника — для расчёта расписания (перепланирование). */
   @Query("SELECT * FROM alarm_overrides WHERE alarmId = :alarmId ORDER BY fromEpochDay")
   suspend fun forAlarm(alarmId: Long): List<AlarmOverride>

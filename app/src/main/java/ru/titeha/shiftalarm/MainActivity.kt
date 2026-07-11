@@ -69,6 +69,9 @@ class MainActivity : ComponentActivity() {
         // Периоды отпуска всех будильников — чтобы превью «след:» в списке глушило отпускные дни.
         val periodsAll by repo.allPeriods.collectAsState(initial = emptyList())
         val periodsByAlarm = remember(periodsAll) { periodsAll.groupBy { it.alarmId } }
+        // Правки календаря всех будильников — чтобы превью «след:» учитывало подмены/исключения.
+        val overridesAll by repo.allOverrides.collectAsState(initial = emptyList())
+        val overridesByAlarm = remember(overridesAll) { overridesAll.groupBy { it.alarmId } }
 
         // null — список; иначе редактор: (будильник, его периоды отпуска, его правки календаря).
         var editing by remember {
@@ -93,11 +96,7 @@ class MainActivity : ComponentActivity() {
           overrides: List<AlarmOverride>
         ) {
           scope.launch {
-            val id = repo.upsert(alarm)
-            repo.deletePeriodsForAlarm(id)
-            periods.forEach { repo.upsertPeriod(it.copy(id = 0, alarmId = id)) }
-            repo.deleteOverridesForAlarm(id)
-            overrides.forEach { repo.upsertOverride(it.copy(id = 0, alarmId = id)) }
+            val id = repo.saveWithChildren(alarm, periods, overrides)
             AlarmScheduler.reschedule(context, repo, alarm.copy(id = id))
           }
         }
@@ -133,6 +132,7 @@ class MainActivity : ComponentActivity() {
             AlarmListScreen(
               alarms = alarms,
               periodsByAlarm = periodsByAlarm,
+              overridesByAlarm = overridesByAlarm,
               onAdd = { editing = Triple(defaultAlarm(), emptyList(), emptyList()) },
               onEdit = { alarm ->
                 scope.launch {
@@ -161,6 +161,7 @@ private fun defaultAlarm() = AlarmEntity(
 private fun AlarmListScreen(
   alarms: List<AlarmEntity>,
   periodsByAlarm: Map<Long, List<AlarmPeriod>>,
+  overridesByAlarm: Map<Long, List<AlarmOverride>>,
   onAdd: () -> Unit,
   onEdit: (AlarmEntity) -> Unit,
   onToggle: (AlarmEntity, Boolean) -> Unit,
@@ -198,6 +199,7 @@ private fun AlarmListScreen(
             AlarmRow(
               alarm = alarm,
               periods = periodsByAlarm[alarm.id].orEmpty(),
+              overrides = overridesByAlarm[alarm.id].orEmpty(),
               onClick = { onEdit(alarm) },
               onToggle = { on -> onToggle(alarm, on) },
               onDelete = { onDelete(alarm) }
@@ -213,6 +215,7 @@ private fun AlarmListScreen(
 private fun AlarmRow(
   alarm: AlarmEntity,
   periods: List<AlarmPeriod>,
+  overrides: List<AlarmOverride>,
   onClick: () -> Unit,
   onToggle: (Boolean) -> Unit,
   onDelete: () -> Unit
@@ -234,7 +237,8 @@ private fun AlarmRow(
         Text(title, style = MaterialTheme.typography.headlineMedium)
         Text(describe(alarm), style = MaterialTheme.typography.bodyMedium)
         if (alarm.enabled) {
-          val next = AlarmTimes.next(alarm, periods, LocalDateTime.now())
+          val dayOverrides = overrides.mapNotNull { it.toDayOverrideOrNull() }
+          val next = AlarmTimes.next(alarm, periods, dayOverrides, LocalDateTime.now())
           if (next != null) {
             Text("след: ${formatNext(next)}", style = MaterialTheme.typography.bodySmall)
           }
