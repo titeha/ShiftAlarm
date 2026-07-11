@@ -251,6 +251,7 @@ private fun AlarmRow(
   onDelete: () -> Unit
 ) {
   var confirmOff by remember { mutableStateOf(false) }
+  var confirmDelete by remember { mutableStateOf(false) }
 
   Card(
     modifier = Modifier
@@ -282,7 +283,7 @@ private fun AlarmRow(
         onCheckedChange = { on -> if (on) onToggle(true) else confirmOff = true }
       )
       Spacer(Modifier.width(4.dp))
-      IconButton(onClick = onDelete) {
+      IconButton(onClick = { confirmDelete = true }) {
         Icon(Icons.Filled.Delete, contentDescription = "Удалить будильник")
       }
     }
@@ -298,6 +299,20 @@ private fun AlarmRow(
       },
       dismissButton = {
         TextButton(onClick = { confirmOff = false }) { Text("Отмена") }
+      }
+    )
+  }
+
+  if (confirmDelete) {
+    AlertDialog(
+      onDismissRequest = { confirmDelete = false },
+      title = { Text("Удалить будильник?") },
+      text = { Text("Настройки этого будильника будут потеряны безвозвратно.") },
+      confirmButton = {
+        TextButton(onClick = { onDelete(); confirmDelete = false }) { Text("Удалить") }
+      },
+      dismissButton = {
+        TextButton(onClick = { confirmDelete = false }) { Text("Отмена") }
       }
     )
   }
