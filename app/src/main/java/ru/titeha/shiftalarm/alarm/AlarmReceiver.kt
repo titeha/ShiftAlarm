@@ -89,7 +89,7 @@ class AlarmReceiver : BroadcastReceiver() {
     AlarmEventLog(context).record(
       AlarmEventType.FIRED, "id=$alarmId «${alarm.label}»", System.currentTimeMillis()
     )
-    AlarmService.start(context)
+    AlarmService.start(context, alarm.label)
 
     when {
       isOneShot(alarm) && alarm.deleteAfterFiring -> {

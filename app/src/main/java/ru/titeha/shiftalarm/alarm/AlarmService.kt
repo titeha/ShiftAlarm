@@ -30,6 +30,7 @@ import ru.titeha.shiftalarm.data.AlarmEventType
 class AlarmService : Service() {
   private var player: MediaPlayer? = null
   private var signalStarted = false
+  private var alarmLabel: String = ""
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -44,6 +45,7 @@ class AlarmService : Service() {
       return START_NOT_STICKY
     }
 
+    alarmLabel = intent.getStringExtra(EXTRA_LABEL).orEmpty()
     goForeground()
     startRinging()
     launchScreen()
@@ -64,6 +66,7 @@ class AlarmService : Service() {
       startActivity(
         Intent(this, AlarmActivity::class.java)
           .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          .putExtra(EXTRA_LABEL, alarmLabel)
       )
     } catch (_: Exception) {
       // Фоновый запуск Activity заблокирован ОС — звонок глушится из уведомления.
@@ -77,7 +80,8 @@ class AlarmService : Service() {
       this,
       0,
       Intent(this, AlarmActivity::class.java)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        .putExtra(EXTRA_LABEL, alarmLabel),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 
@@ -91,7 +95,7 @@ class AlarmService : Service() {
     val notification = NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
       .setContentTitle("Будильник")
-      .setContentText("Подъём!")
+      .setContentText(displayText(alarmLabel))
       .setPriority(NotificationCompat.PRIORITY_MAX)
       .setCategory(NotificationCompat.CATEGORY_ALARM)
       .setFullScreenIntent(openScreen, true)
@@ -218,10 +222,16 @@ class AlarmService : Service() {
     const val CHANNEL_ID = "alarm_channel"
     const val NOTIFICATION_ID = 1
     const val ACTION_STOP = "ru.titeha.shiftalarm.action.STOP"
+    const val EXTRA_LABEL = "alarm_label"
 
-    /** Запустить звонок. Разрешено из ресивера будильника даже из фона. */
-    fun start(context: Context) {
+    /** Текст на экране/в уведомлении звонка: название будильника, иначе — дефолт. */
+    const val DEFAULT_TEXT = "Подъём!"
+    fun displayText(label: String): String = label.ifBlank { DEFAULT_TEXT }
+
+    /** Запустить звонок с названием будильника [label]. Разрешено из ресивера даже из фона. */
+    fun start(context: Context, label: String = "") {
       val intent = Intent(context, AlarmService::class.java)
+        .putExtra(EXTRA_LABEL, label)
 
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         context.startForegroundService(intent)
