@@ -31,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -113,6 +114,7 @@ fun AlarmEditorScreen(
   var method by remember { mutableStateOf(methodOf(initial)) }
   val isNew = initial.id == 0L
 
+  Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
   Column(
     modifier = Modifier
       .fillMaxSize()
@@ -226,6 +228,7 @@ fun AlarmEditorScreen(
         modifier = Modifier.weight(1f)
       ) { Text("Сохранить") }
     }
+  }
   }
 }
 
