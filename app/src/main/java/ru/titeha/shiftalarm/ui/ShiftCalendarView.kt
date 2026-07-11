@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -125,7 +126,24 @@ fun ShiftCalendarView(
   // Фактическая тема (учитывает выбор пользователя, не только систему) — по яркости поверхности.
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
-  Column(modifier = modifier.fillMaxWidth()) {
+  Column(
+    modifier = modifier
+      .fillMaxWidth()
+      // Свайп влево/вправо листает месяцы (в дополнение к стрелкам ‹ ›). Быстрый горизонтальный
+      // жест; выделение диапазона (long-press + drag) срабатывает иначе и поглощает свой жест.
+      .pointerInput(Unit) {
+        var dx = 0f
+        val threshold = 48.dp.toPx()
+        detectHorizontalDragGestures(
+          onDragStart = { dx = 0f },
+          onHorizontalDrag = { _, amount -> dx += amount },
+          onDragEnd = {
+            if (dx > threshold) month = month.minusMonths(1)
+            else if (dx < -threshold) month = month.plusMonths(1)
+          }
+        )
+      }
+  ) {
     // Заголовок: ‹ Месяц Год ›
     Row(
       modifier = Modifier.fillMaxWidth(),
