@@ -12,6 +12,7 @@
 | [SHIFTALARM_PRODUCT_VISION.md](SHIFTALARM_PRODUCT_VISION.md) | Продуктовое видение: ниша (сменщики/вахтовики/учащиеся), ценность, направление. |
 | [SHIFTALARM_PROJECT_REVIEW_2026-07-08.md](SHIFTALARM_PROJECT_REVIEW_2026-07-08.md) | Технический аудит (ChatGPT/GPT-5.5 Pro): архитектура, риски по приоритетам P0–P3, что уже хорошо. |
 | [SHIFTALARM_ROAD_TO_10.md](SHIFTALARM_ROAD_TO_10.md) | Дорожная карта до production-уровня: CI, данные, надёжность, тесты, релиз, диагностика. |
+| [WORK_WEEK_AND_STUDY.md](WORK_WEEK_AND_STUDY.md) | Будущие weekly-фичи: «рабочая неделя» как понятие движка (N дней + начало недели), учебный профиль (широкая аудитория), чётная/нечётная неделя. |
 
 ## Архитектура
 
