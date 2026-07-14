@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
+import ru.titeha.shiftalarm.data.CalendarRangeEdits
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.CycleAnchor
 import ru.titeha.shiftalarm.schedule.PeriodKind
@@ -209,8 +210,6 @@ fun AlarmEditorScreen(
         draft = draft,
         periods = periods,
         overrides = overrides,
-        onAddPeriod = { periods = periods + it },
-        onRemovePeriod = { p -> periods = periods - p },
         onPeriodsChange = { periods = it },
         onOverridesChange = { overrides = it }
       )
@@ -674,8 +673,6 @@ private fun ShiftCalendarAndOverrides(
   draft: AlarmEntity,
   periods: List<AlarmPeriod>,
   overrides: List<AlarmOverride>,
-  onAddPeriod: (AlarmPeriod) -> Unit,
-  onRemovePeriod: (AlarmPeriod) -> Unit,
   onPeriodsChange: (List<AlarmPeriod>) -> Unit,
   onOverridesChange: (List<AlarmOverride>) -> Unit
 ) {
@@ -736,9 +733,6 @@ private fun ShiftCalendarAndOverrides(
   pending?.let { (from, to) ->
     val title = if (from == to) from.localized() else "${from.localized()} — ${to.localized()}"
     // Периоды, пересекающие выбранный диапазон (для замены/снятия).
-    val overlappingPeriods = periods.filter {
-      it.fromEpochDay <= to.toEpochDay() && it.toEpochDay >= from.toEpochDay()
-    }
     DayOverrideDialog(
       title = title,
       onPickCategory = { category ->
@@ -757,44 +751,110 @@ private fun ShiftCalendarAndOverrides(
         } else {
           onOverridesChange(overrides.withOverrideRange(draft.id, from, to, category))
         }
-        overlappingPeriods.forEach(onRemovePeriod) // смена перекрывает период на этих днях
+        onPeriodsChange(
+          CalendarRangeEdits.removeFromPeriods(
+            periods = periods,
+            fromEpochDay = from.toEpochDay(),
+            toEpochDay = to.toEpochDay()
+          )
+        ) // смена перекрывает период на этих днях
         pending = null
       },
       onPickPeriod = { kind ->
         // Период (без будильника) на день/диапазон; снимаем пересекающие правки-смены.
-        onOverridesChange(overrides.withoutRange(from, to))
+        onOverridesChange(
+          CalendarRangeEdits.removeFromOverrides(
+            overrides = overrides,
+            fromEpochDay = from.toEpochDay(),
+            toEpochDay = to.toEpochDay()
+          )
+        )
         if (kind == PeriodKind.SICK) {
           // Больничный: если попал в отпуск — продлить отпуск (ТК РФ), см. VacationSick.
-          val spans = periods.map {
-            VacationSick.Span(it.fromEpochDay, it.toEpochDay, PeriodKind.fromReason(it.reason))
-          }
-          val sick = VacationSick.Span(from.toEpochDay(), to.toEpochDay(), PeriodKind.SICK)
-          onPeriodsChange(
-            VacationSick.applySick(spans, sick).map {
-              AlarmPeriod(
-                alarmId = draft.id,
-                fromEpochDay = it.from,
-                toEpochDay = it.to,
-                reason = it.kind.label
+          val fromEpochDay = from.toEpochDay()
+          val toEpochDay = to.toEpochDay()
+
+          /*
+           * Отпуск обрабатывается отдельным правилом продления.
+           * У прочих периодов заменяется только выбранная часть.
+           */
+          val nonVacationPeriods = CalendarRangeEdits.removeFromPeriods(
+            periods = periods.filter {
+              PeriodKind.fromReason(it.reason) != PeriodKind.VACATION
+            },
+            fromEpochDay = fromEpochDay,
+            toEpochDay = toEpochDay
+          )
+
+          val vacationSpans = periods
+            .filter {
+              PeriodKind.fromReason(it.reason) == PeriodKind.VACATION
+            }
+            .map {
+              VacationSick.Span(
+                from = it.fromEpochDay,
+                to = it.toEpochDay,
+                kind = PeriodKind.VACATION
               )
             }
+
+          val sick = VacationSick.Span(
+            from = fromEpochDay,
+            to = toEpochDay,
+            kind = PeriodKind.SICK
           )
-        } else {
-          overlappingPeriods.forEach(onRemovePeriod) // другой период — заменяем
-          onAddPeriod(
+
+          val vacationAndSick = VacationSick.applySick(
+            periods = vacationSpans,
+            sick = sick
+          ).map {
             AlarmPeriod(
               alarmId = draft.id,
-              fromEpochDay = from.toEpochDay(),
-              toEpochDay = to.toEpochDay(),
-              reason = kind.label
+              fromEpochDay = it.from,
+              toEpochDay = it.to,
+              reason = it.kind.label
+            )
+          }
+
+          onPeriodsChange(
+            (nonVacationPeriods + vacationAndSick)
+              .sortedWith(
+                compareBy<AlarmPeriod> { it.fromEpochDay }
+                  .thenBy { it.toEpochDay }
+                  .thenBy { it.reason }
+              )
+          )
+        } else {
+          onPeriodsChange(
+            CalendarRangeEdits.replacePeriod(
+              periods = periods,
+              replacement = AlarmPeriod(
+                alarmId = draft.id,
+                fromEpochDay = from.toEpochDay(),
+                toEpochDay = to.toEpochDay(),
+                reason = kind.label
+              )
             )
           )
         }
         pending = null
       },
       onClear = {
-        onOverridesChange(overrides.withoutRange(from, to))
-        overlappingPeriods.forEach(onRemovePeriod)
+        onOverridesChange(
+          CalendarRangeEdits.removeFromOverrides(
+            overrides = overrides,
+            fromEpochDay = from.toEpochDay(),
+            toEpochDay = to.toEpochDay()
+          )
+        )
+
+        onPeriodsChange(
+          CalendarRangeEdits.removeFromPeriods(
+            periods = periods,
+            fromEpochDay = from.toEpochDay(),
+            toEpochDay = to.toEpochDay()
+          )
+        )
         pending = null
       },
       onDismiss = { pending = null }
@@ -843,14 +903,10 @@ private fun List<AlarmOverride>.withExactOverride(
     wakeMinutes = wakeTime?.let { it.hour * 60 + it.minute },
     name = name
   )
-  return withoutRange(from, to) + ovr
-}
-
-/** Убрать все правки, пересекающие [from]..[to] («вернуть по графику»). */
-private fun List<AlarmOverride>.withoutRange(from: LocalDate, to: LocalDate): List<AlarmOverride> {
-  val lo = from.toEpochDay()
-  val hi = to.toEpochDay()
-  return filterNot { it.fromEpochDay <= hi && it.toEpochDay >= lo }
+  return CalendarRangeEdits.replaceOverride(
+    overrides = this,
+    replacement = ovr
+  )
 }
 
 /**
