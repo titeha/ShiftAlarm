@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -108,7 +109,10 @@ fun AlarmEditorScreen(
   initialPeriods: List<AlarmPeriod>,
   initialOverrides: List<AlarmOverride>,
   onSave: (AlarmEntity, List<AlarmPeriod>, List<AlarmOverride>) -> Unit,
-  onCancel: () -> Unit
+  onCancel: () -> Unit,
+  isSaving: Boolean = false,
+  saveErrorMessage: String? = null,
+  onDismissSaveError: () -> Unit = {}
 ) {
   /*
  * Исходный снимок фиксируется на время одной сессии редактора.
@@ -153,6 +157,9 @@ fun AlarmEditorScreen(
   }
 
   fun requestCancel() {
+    if (isSaving) {
+      return
+    }
     if (hasUnsavedChanges) {
       showDiscardDialog = true
     } else {
@@ -279,19 +286,39 @@ fun AlarmEditorScreen(
       EditorValidationCard(validation)
     }
 
+    saveErrorMessage?.let { message ->
+      Spacer(Modifier.height(16.dp))
+
+      EditorSaveErrorCard(
+        message = message,
+        onDismiss = onDismissSaveError
+      )
+    }
+
     Spacer(Modifier.height(24.dp))
 
     Row(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-      OutlinedButton(onClick = ::requestCancel, modifier = Modifier.weight(1f)) { Text("Отмена") }
+      OutlinedButton(onClick = ::requestCancel, enabled = !isSaving, modifier = Modifier.weight(1f)) { Text("Отмена") }
       Button(
         onClick = { onSave(currentAlarm, periods, overrides) },
-        enabled = validation.canSave,
+        enabled = validation.canSave && !isSaving,
         modifier = Modifier.weight(1f)
       ) {
-        Text("Сохранить")
+        if (isSaving) {
+          CircularProgressIndicator(
+            modifier = Modifier.size(18.dp),
+            strokeWidth = 2.dp,
+            color = MaterialTheme.colorScheme.onPrimary
+          )
+
+          Spacer(Modifier.width(8.dp))
+          Text("Сохранение")
+        } else {
+          Text("Сохранить")
+        }
       }
     }
   }
@@ -358,6 +385,43 @@ private fun EditorValidationCard(validation: AlarmEditorValidation) {
           "• ${issue.message}",
           style = MaterialTheme.typography.bodySmall
         )
+      }
+    }
+  }
+}
+
+/** Ошибка транзакционной записи данных будильника. */
+@Composable
+private fun EditorSaveErrorCard(
+  message: String,
+  onDismiss: () -> Unit
+) {
+  Surface(
+    modifier = Modifier.fillMaxWidth(),
+    shape = RoundedCornerShape(12.dp),
+    color = MaterialTheme.colorScheme.errorContainer,
+    contentColor =
+      MaterialTheme.colorScheme.onErrorContainer
+  ) {
+    Column(
+      Modifier.padding(12.dp)
+    ) {
+      Text(
+        "Не удалось сохранить",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold
+      )
+
+      Spacer(Modifier.height(4.dp))
+      Text(
+        message,
+        style = MaterialTheme.typography.bodySmall
+      )
+
+      TextButton(
+        onClick = onDismiss
+      ) {
+        Text("Скрыть")
       }
     }
   }

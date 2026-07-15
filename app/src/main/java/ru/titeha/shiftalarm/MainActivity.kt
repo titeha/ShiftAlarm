@@ -64,6 +64,7 @@ import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.ui.AlarmEditorScreen
 import ru.titeha.shiftalarm.ui.AlarmListViewModel
 import ru.titeha.shiftalarm.ui.AlarmReadinessBanner
+import ru.titeha.shiftalarm.ui.AlarmSaveState
 import ru.titeha.shiftalarm.ui.DiagnosticsScreen
 import ru.titeha.shiftalarm.ui.SettingsScreen
 import ru.titeha.shiftalarm.ui.theme.AppTheme
@@ -87,6 +88,7 @@ class MainActivity : ComponentActivity() {
       AppTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
         val vm: AlarmListViewModel = viewModel()
         val state by vm.uiState.collectAsStateWithLifecycle()
+        val saveState by vm.saveState.collectAsStateWithLifecycle()
         val scope = rememberCoroutineScope()
 
         // null — список; иначе редактор: (будильник, его периоды отпуска, его правки календаря).
@@ -95,6 +97,21 @@ class MainActivity : ComponentActivity() {
         }
         var showDiagnostics by remember { mutableStateOf(false) }
         var showSettings by remember { mutableStateOf(false) }
+
+        var saveWarning by remember { mutableStateOf<String?>(null) }
+
+        LaunchedEffect(saveState) {
+          val result = saveState as? AlarmSaveState.Saved
+            ?: return@LaunchedEffect
+
+          /*
+           * Данные уже сохранены. Закрываем редактор только после результата
+           * ViewModel и отдельно показываем предупреждение AlarmManager.
+           */
+          editing = null
+          saveWarning = result.warningMessage
+          vm.resetSaveState()
+        }
 
         RequestNotificationPermission()
 
@@ -117,15 +134,23 @@ class MainActivity : ComponentActivity() {
           }
 
           current != null -> {
-            BackHandler { editing = null }
             AlarmEditorScreen(
               initial = current.first,
               initialPeriods = current.second,
               initialOverrides = current.third,
               onSave = { alarm, periods, overrides ->
-                vm.save(alarm, periods, overrides); editing = null
+                vm.save(alarm, periods, overrides)
               },
-              onCancel = { editing = null }
+              onCancel = {
+                vm.resetSaveState()
+                editing = null
+              },
+              isSaving = saveState is AlarmSaveState.Saving,
+              saveErrorMessage =
+                (saveState as? AlarmSaveState.Failed)?.message,
+              onDismissSaveError = {
+                vm.resetSaveState()
+              }
             )
           }
 
@@ -134,11 +159,26 @@ class MainActivity : ComponentActivity() {
               alarms = state.alarms,
               periodsByAlarm = state.periodsByAlarm,
               overridesByAlarm = state.overridesByAlarm,
-              onAdd = { editing = Triple(defaultAlarm(), emptyList(), emptyList()) },
+              onAdd = {
+                vm.resetSaveState()
+                editing = Triple(
+                  defaultAlarm(),
+                  emptyList(),
+                  emptyList()
+                )
+              },
               onEdit = { alarm ->
+                vm.resetSaveState()
+
                 scope.launch {
-                  val (periods, overrides) = vm.childrenFor(alarm)
-                  editing = Triple(alarm, periods, overrides)
+                  val (periods, overrides) =
+                    vm.childrenFor(alarm)
+
+                  editing = Triple(
+                    alarm,
+                    periods,
+                    overrides
+                  )
                 }
               },
               onToggle = { alarm, on -> vm.setEnabled(alarm, on) },
@@ -147,6 +187,29 @@ class MainActivity : ComponentActivity() {
               onOpenSettings = { showSettings = true }
             )
           }
+        }
+
+        saveWarning?.let { warning ->
+          AlertDialog(
+            onDismissRequest = {
+              saveWarning = null
+            },
+            title = {
+              Text("Будильник сохранён")
+            },
+            text = {
+              Text(warning)
+            },
+            confirmButton = {
+              TextButton(
+                onClick = {
+                  saveWarning = null
+                }
+              ) {
+                Text("Понятно")
+              }
+            }
+          )
         }
       }
     }

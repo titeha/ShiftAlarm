@@ -17,6 +17,7 @@
 | [EDITOR_VALIDATION.md](EDITOR_VALIDATION.md) | Правила проверки черновика перед сохранением и конфликт звонков одного цикла. |
 | [CUSTOM_CYCLE_EDITOR_GUARDS.md](CUSTOM_CYCLE_EDITOR_GUARDS.md) | Лимиты операций редактора цикла и отмена добавления нового блока. |
 | [EDITOR_UNSAVED_CHANGES.md](EDITOR_UNSAVED_CHANGES.md) | Предупреждение при выходе из изменённого редактора без сохранения. |
+| [EDITOR_SAVE_RESULT.md](EDITOR_SAVE_RESULT.md) | Состояния сохранения, ошибки транзакции и предупреждение AlarmManager. |
 
 ## Архитектура
 
