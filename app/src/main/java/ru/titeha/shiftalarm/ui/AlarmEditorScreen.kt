@@ -1,5 +1,6 @@
 package ru.titeha.shiftalarm.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -109,11 +110,59 @@ fun AlarmEditorScreen(
   onSave: (AlarmEntity, List<AlarmPeriod>, List<AlarmOverride>) -> Unit,
   onCancel: () -> Unit
 ) {
+  /*
+ * Исходный снимок фиксируется на время одной сессии редактора.
+ * Обновления Flow в родительском экране не должны незаметно менять
+ * точку сравнения несохранённых изменений.
+ */
+  val initialMethod = remember { methodOf(initial) }
+  val initialAlarmSnapshot = remember {
+    effective(initial, initialMethod)
+  }
+  val initialPeriodsSnapshot = remember {
+    initialPeriods.toList()
+  }
+  val initialOverridesSnapshot = remember {
+    initialOverrides.toList()
+  }
+
   var draft by remember { mutableStateOf(initial) }
   var periods by remember { mutableStateOf(initialPeriods) }
   var overrides by remember { mutableStateOf(initialOverrides) }
-  var method by remember { mutableStateOf(methodOf(initial)) }
+  var method by remember { mutableStateOf(initialMethod) }
+  var showDiscardDialog by remember { mutableStateOf(false) }
+
   val isNew = initial.id == 0L
+  val currentAlarm = effective(draft, method)
+
+  val hasUnsavedChanges = remember(
+    currentAlarm,
+    periods,
+    overrides,
+    method
+  ) {
+    method != initialMethod ||
+            AlarmEditorDirtyState.hasUnsavedChanges(
+              initialAlarm = initialAlarmSnapshot,
+              currentAlarm = currentAlarm,
+              initialPeriods = initialPeriodsSnapshot,
+              currentPeriods = periods,
+              initialOverrides = initialOverridesSnapshot,
+              currentOverrides = overrides
+            )
+  }
+
+  fun requestCancel() {
+    if (hasUnsavedChanges) {
+      showDiscardDialog = true
+    } else {
+      onCancel()
+    }
+  }
+
+  BackHandler {
+    requestCancel()
+  }
   val validation = remember(draft, method) {
     when (method) {
       EditMethod.ONCE -> AlarmEditorValidator.validateOnce()
@@ -210,7 +259,7 @@ fun AlarmEditorScreen(
 
     // ── Проверка ──
     SectionHeader("Проверка")
-    SchedulePreview(effective(draft, method), periods, overrides)
+    SchedulePreview(currentAlarm, periods, overrides)
     if (method == EditMethod.SHIFT) {
       Spacer(Modifier.height(8.dp))
       ShiftCalendarAndOverrides(
@@ -222,7 +271,7 @@ fun AlarmEditorScreen(
       )
     } else if (method == EditMethod.WEEKLY) {
       Spacer(Modifier.height(8.dp))
-      WeeklyCalendarSection(effective(draft, method))
+      WeeklyCalendarSection(currentAlarm)
     }
 
     if (!validation.canSave) {
@@ -236,9 +285,9 @@ fun AlarmEditorScreen(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-      OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Отмена") }
+      OutlinedButton(onClick = ::requestCancel, modifier = Modifier.weight(1f)) { Text("Отмена") }
       Button(
-        onClick = { onSave(effective(draft, method), periods, overrides) },
+        onClick = { onSave(currentAlarm, periods, overrides) },
         enabled = validation.canSave,
         modifier = Modifier.weight(1f)
       ) {
@@ -246,6 +295,39 @@ fun AlarmEditorScreen(
       }
     }
   }
+
+    if (showDiscardDialog) {
+      AlertDialog(
+        onDismissRequest = {
+          showDiscardDialog = false
+        },
+        title = {
+          Text("Не сохранять изменения?")
+        },
+        text = {
+          Text("В редакторе есть несохранённые изменения.")
+        },
+        confirmButton = {
+          TextButton(
+            onClick = {
+              showDiscardDialog = false
+              onCancel()
+            }
+          ) {
+            Text("Не сохранять")
+          }
+        },
+        dismissButton = {
+          TextButton(
+            onClick = {
+              showDiscardDialog = false
+            }
+          ) {
+            Text("Продолжить")
+          }
+        }
+      )
+    }
   }
 }
 

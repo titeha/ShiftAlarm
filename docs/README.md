@@ -16,6 +16,7 @@
 | [EDITOR_STABILIZATION_PLAN.md](EDITOR_STABILIZATION_PLAN.md) | Рабочий список недочётов редактора, решения и порядок стабилизации UI. |
 | [EDITOR_VALIDATION.md](EDITOR_VALIDATION.md) | Правила проверки черновика перед сохранением и конфликт звонков одного цикла. |
 | [CUSTOM_CYCLE_EDITOR_GUARDS.md](CUSTOM_CYCLE_EDITOR_GUARDS.md) | Лимиты операций редактора цикла и отмена добавления нового блока. |
+| [EDITOR_UNSAVED_CHANGES.md](EDITOR_UNSAVED_CHANGES.md) | Предупреждение при выходе из изменённого редактора без сохранения. |
 
 ## Архитектура
 
