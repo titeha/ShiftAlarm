@@ -114,6 +114,13 @@ fun AlarmEditorScreen(
   var overrides by remember { mutableStateOf(initialOverrides) }
   var method by remember { mutableStateOf(methodOf(initial)) }
   val isNew = initial.id == 0L
+  val validation = remember(draft, method) {
+    when (method) {
+      EditMethod.ONCE -> AlarmEditorValidator.validateOnce()
+      EditMethod.WEEKLY -> AlarmEditorValidator.validateWeekly(draft)
+      EditMethod.SHIFT -> AlarmEditorValidator.validateShift(draft)
+    }
+  }
 
   Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
   Column(
@@ -218,6 +225,11 @@ fun AlarmEditorScreen(
       WeeklyCalendarSection(effective(draft, method))
     }
 
+    if (!validation.canSave) {
+      Spacer(Modifier.height(16.dp))
+      EditorValidationCard(validation)
+    }
+
     Spacer(Modifier.height(24.dp))
 
     Row(
@@ -227,10 +239,45 @@ fun AlarmEditorScreen(
       OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Отмена") }
       Button(
         onClick = { onSave(effective(draft, method), periods, overrides) },
+        enabled = validation.canSave,
         modifier = Modifier.weight(1f)
-      ) { Text("Сохранить") }
+      ) {
+        Text("Сохранить")
+      }
     }
   }
+  }
+}
+
+/**
+ * Блокирующие проблемы текущего черновика.
+ *
+ * Карточка находится рядом с кнопкой сохранения, чтобы пользователь видел причину,
+ * по которой действие недоступно.
+ */
+@Composable
+private fun EditorValidationCard(validation: AlarmEditorValidation) {
+  Surface(
+    modifier = Modifier.fillMaxWidth(),
+    shape = RoundedCornerShape(12.dp),
+    color = MaterialTheme.colorScheme.errorContainer,
+    contentColor = MaterialTheme.colorScheme.onErrorContainer
+  ) {
+    Column(Modifier.padding(12.dp)) {
+      Text(
+        "Нужно исправить перед сохранением",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold
+      )
+
+      validation.issues.forEach { issue ->
+        Spacer(Modifier.height(4.dp))
+        Text(
+          "• ${issue.message}",
+          style = MaterialTheme.typography.bodySmall
+        )
+      }
+    }
   }
 }
 

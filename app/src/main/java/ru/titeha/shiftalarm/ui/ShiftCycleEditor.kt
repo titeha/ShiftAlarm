@@ -160,13 +160,13 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
       selected = at
       editing = at
     },
-    enabled = slots.size < MAX_CUSTOM_CYCLE_DAYS
+    enabled = slots.size < AlarmEditorValidator.MAX_CUSTOM_CYCLE_DAYS
   ) { Text("+ блок") }
 
   if (slots.isEmpty()) {
     Spacer(Modifier.height(8.dp))
     Text(
-      "Цикл пуст — добавьте хотя бы один блок, иначе будет использован пресет.",
+      "Цикл пуст — добавьте хотя бы один блок. Сохранение недоступно.",
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.error
     )
@@ -180,7 +180,7 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
         block = runs[i],
         isFirst = i == 0,
         isLast = i == runs.lastIndex,
-        canGrow = slots.size < MAX_CUSTOM_CYCLE_DAYS,
+        canGrow = slots.size < AlarmEditorValidator.MAX_CUSTOM_CYCLE_DAYS,
         canRemove = runs.size > 1,
         onCommit = { edited ->
           applyRuns(runs.toMutableList().also { it[i] = edited })
@@ -214,9 +214,6 @@ private val CATEGORIES = listOf(
   ShiftCategory.NIGHT to "Ночь",
   ShiftCategory.OFF to "Выходной"
 )
-
-/** Общий предел длины произвольного цикла (в днях после развёртки записей ×N). */
-private const val MAX_CUSTOM_CYCLE_DAYS = 60
 
 /** Односимвольная метка типа для сегмента ленты («У/Д/Н/В»). */
 private fun shortLabel(category: ShiftCategory): String = when (category) {
