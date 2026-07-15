@@ -19,6 +19,7 @@
 | [EDITOR_UNSAVED_CHANGES.md](EDITOR_UNSAVED_CHANGES.md) | Предупреждение при выходе из изменённого редактора без сохранения. |
 | [EDITOR_SAVE_RESULT.md](EDITOR_SAVE_RESULT.md) | Состояния сохранения, ошибки транзакции и предупреждение AlarmManager. |
 | [EDITOR_TIME_REFRESH.md](EDITOR_TIME_REFRESH.md) | Минутное обновление списка и предпросмотра ближайших звонков. |
+| [ALARM_STOP_UI_SYNC.md](ALARM_STOP_UI_SYNC.md) | Закрытие полноэкранного экрана при остановке сигнала из уведомления. |
 
 ## Архитектура
 

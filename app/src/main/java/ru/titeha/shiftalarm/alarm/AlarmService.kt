@@ -46,6 +46,13 @@ class AlarmService : Service() {
     }
 
     alarmLabel = intent.getStringExtra(EXTRA_LABEL).orEmpty()
+
+    /*
+    * Состояние устанавливается до foreground-уведомления:
+    * full-screen PendingIntent может открыть Activity прямо во время goForeground().
+    */
+    AlarmSignalState.markStarted()
+
     goForeground()
     startRinging()
     launchScreen()
@@ -187,6 +194,13 @@ class AlarmService : Service() {
 
   private fun stopRingingAndSelf() {
     stopRinging()
+
+    /*
+     * Экран наблюдает это состояние и закрывается независимо от того,
+     * где пользователь остановил сигнал.
+     */
+    AlarmSignalState.markStopped()
+
     stopForeground(STOP_FOREGROUND_REMOVE)
     stopSelf()
   }
@@ -215,6 +229,7 @@ class AlarmService : Service() {
 
   override fun onDestroy() {
     stopRinging()
+    AlarmSignalState.markStopped()
     super.onDestroy()
   }
 
