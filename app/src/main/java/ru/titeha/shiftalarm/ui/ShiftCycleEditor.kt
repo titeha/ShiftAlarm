@@ -135,33 +135,56 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   // selected — подсветка блока в ленте; editing — индекс блока, для которого открыт sheet.
   var selected by remember { mutableStateOf<Int?>(null) }
   var editing by remember { mutableStateOf<Int?>(null) }
+  var pendingNew by remember { mutableStateOf<PendingNewBlock?>(null) }
+
+  fun applyRuns(newRuns: List<SlotRun>) {
+    setSlots(ShiftCycle.expand(newRuns))
+  }
 
   CycleStrip(
     runs = runs,
     selectedIndex = selected,
     dark = dark,
-    onSelect = { selected = it; editing = it }
+    onSelect = { index ->
+      pendingNew = null
+      selected = index
+      editing = index
+    }
   )
+
   Spacer(Modifier.height(8.dp))
 
   Button(
     onClick = {
-      // «+ блок»: умный тип, отличный от соседей (не сольётся при нормализации), после выбранного.
-      // Блок добавляется и сразу открывается в sheet для правки; ✕ откатит к дефолтному «умному»
-      // блоку (он уже в цикле), ✓ сохранит правки, «Удалить» — уберёт.
-      val at = ((selected ?: runs.lastIndex) + 1).coerceIn(0, runs.size)
+      /*
+       * Новый блок пока существует только как локальный черновик.
+       * cycleSpec изменится после подтверждения галочкой.
+       */
+      val at = (
+              (selected ?: runs.lastIndex) + 1
+              ).coerceIn(0, runs.size)
+
       val neighbours = setOfNotNull(
         runs.getOrNull(at - 1)?.slot?.category,
         runs.getOrNull(at)?.slot?.category
       )
-      val cat = ShiftCycle.distinctCategoryFrom(neighbours)
-      val newRuns = runs.toMutableList().also { it.add(at, SlotRun(ShiftCycle.blockOf(cat), 1)) }
-      setSlots(ShiftCycle.expand(newRuns))
-      selected = at
-      editing = at
+
+      val category = ShiftCycle.distinctCategoryFrom(neighbours)
+
+      pendingNew = PendingNewBlock(
+        insertAt = at,
+        block = SlotRun(
+          slot = ShiftCycle.blockOf(category),
+          count = 1
+        )
+      )
+
+      editing = null
     },
-    enabled = slots.size < AlarmEditorValidator.MAX_CUSTOM_CYCLE_DAYS
-  ) { Text("+ блок") }
+    enabled = ShiftCycleEditLimits.canAddBlock(slots.size)
+  ) {
+    Text("+ блок")
+  }
 
   if (slots.isEmpty()) {
     Spacer(Modifier.height(8.dp))
@@ -172,41 +195,146 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
     )
   }
 
-  editing?.let { idx ->
+  editing?.let { index ->
     if (runs.isNotEmpty()) {
-      val i = idx.coerceIn(0, runs.lastIndex)
-      fun applyRuns(newRuns: List<SlotRun>) = setSlots(ShiftCycle.expand(newRuns))
+      val i = index.coerceIn(0, runs.lastIndex)
+      val originalBlock = runs[i]
+      val otherDays = slots.size - originalBlock.count
+
       BlockSheet(
-        block = runs[i],
+        title = "Блок",
+        block = originalBlock,
         isFirst = i == 0,
         isLast = i == runs.lastIndex,
-        canGrow = slots.size < AlarmEditorValidator.MAX_CUSTOM_CYCLE_DAYS,
+        otherDays = otherDays,
         canRemove = runs.size > 1,
+        showStructuralActions = true,
         onCommit = { edited ->
-          applyRuns(runs.toMutableList().also { it[i] = edited })
+          applyRuns(
+            runs.toMutableList().also {
+              it[i] = edited
+            }
+          )
           editing = null
         },
-        onCancel = { editing = null },
+        onCancel = {
+          editing = null
+        },
         onMoveLeft = { edited ->
-          applyRuns(runs.toMutableList().also { it[i] = edited; it.add(i - 1, it.removeAt(i)) })
-          selected = i - 1; editing = i - 1
+          applyRuns(
+            runs.toMutableList().also {
+              it[i] = edited
+              it.add(i - 1, it.removeAt(i))
+            }
+          )
+          selected = i - 1
+          editing = i - 1
         },
         onMoveRight = { edited ->
-          applyRuns(runs.toMutableList().also { it[i] = edited; it.add(i + 1, it.removeAt(i)) })
-          selected = i + 1; editing = i + 1
+          applyRuns(
+            runs.toMutableList().also {
+              it[i] = edited
+              it.add(i + 1, it.removeAt(i))
+            }
+          )
+          selected = i + 1
+          editing = i + 1
         },
         onDuplicate = { edited ->
-          applyRuns(runs.toMutableList().also { it[i] = edited; it.add(i + 1, edited) })
-          selected = i + 1; editing = i + 1
+          /*
+           * Кнопка уже учитывает локальный размер, но проверка здесь
+           * оставлена как последний рубеж структурной операции.
+           */
+          if (
+            ShiftCycleEditLimits.canDuplicate(
+              otherDays = otherDays,
+              editedCount = edited.count
+            )
+          ) {
+            applyRuns(
+              runs.toMutableList().also {
+                it[i] = edited
+                it.add(i + 1, edited)
+              }
+            )
+
+            /*
+             * Идентичные соседние блоки после нормализации сольются.
+             * Поэтому остаёмся на исходном индексе.
+             */
+            selected = i
+            editing = i
+          }
         },
         onRemove = {
-          applyRuns(runs.toMutableList().also { it.removeAt(i) })
-          selected = null; editing = null
+          applyRuns(
+            runs.toMutableList().also {
+              it.removeAt(i)
+            }
+          )
+          selected = null
+          editing = null
         }
       )
     }
   }
+
+  pendingNew?.let { pending ->
+    val insertAt = pending.insertAt.coerceIn(0, runs.size)
+
+    BlockSheet(
+      title = "Новый блок",
+      block = pending.block,
+      isFirst = true,
+      isLast = true,
+      otherDays = slots.size,
+      canRemove = false,
+      showStructuralActions = false,
+      onCommit = { edited ->
+        /*
+         * Галочка доступна только для допустимого размера.
+         * Повторная проверка защищает саму операцию вставки.
+         */
+        if (
+          ShiftCycleEditLimits.canUseBlockCount(
+            otherDays = slots.size,
+            count = edited.count
+          )
+        ) {
+          applyRuns(
+            runs.toMutableList().also {
+              it.add(insertAt, edited)
+            }
+          )
+          selected = null
+        }
+
+        pendingNew = null
+      },
+      onCancel = {
+        /*
+         * cycleSpec ещё не менялся, поэтому отмена полностью
+         * отбрасывает новый блок.
+         */
+        pendingNew = null
+      },
+      onMoveLeft = { _ -> },
+      onMoveRight = { _ -> },
+      onDuplicate = { _ -> },
+      onRemove = {}
+    )
+  }
 }
+
+/**
+ * Новый блок, который ещё не записан в cycleSpec.
+ *
+ * Только подтверждение в bottom sheet переносит его в основной цикл.
+ */
+private data class PendingNewBlock(
+  val insertAt: Int,
+  val block: SlotRun
+)
 
 private val CATEGORIES = listOf(
   ShiftCategory.MORNING to "Утро",
@@ -294,11 +422,13 @@ private fun CycleStrip(runs: List<SlotRun>, selectedIndex: Int?, dark: Boolean, 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BlockSheet(
+  title: String,
   block: SlotRun,
   isFirst: Boolean,
   isLast: Boolean,
-  canGrow: Boolean,
+  otherDays: Int,
   canRemove: Boolean,
+  showStructuralActions: Boolean,
   onCommit: (SlotRun) -> Unit,
   onCancel: () -> Unit,
   onMoveLeft: (SlotRun) -> Unit,
@@ -313,6 +443,9 @@ private fun BlockSheet(
   var showAdvanced by remember(block) { mutableStateOf(false) }
   val wt = slot.wakeTime
   val staged = SlotRun(slot, count)
+  val maxCount = ShiftCycleEditLimits.maxBlockCount(otherDays)
+  val countFits = ShiftCycleEditLimits.canUseBlockCount(otherDays = otherDays, count = count)
+  val duplicateAllowed = ShiftCycleEditLimits.canDuplicate(otherDays = otherDays, editedCount = count)
 
   ModalBottomSheet(onDismissRequest = onCancel) {
     Column(
@@ -327,12 +460,15 @@ private fun BlockSheet(
           Icon(Icons.Filled.Close, contentDescription = "Отмена")
         }
         Text(
-          "Блок",
+          title,
           style = MaterialTheme.typography.titleMedium,
           textAlign = TextAlign.Center,
           modifier = Modifier.weight(1f)
         )
-        IconButton(onClick = { onCommit(staged) }) {
+        IconButton(
+          onClick = { onCommit(staged) },
+          enabled = countFits
+        ) {
           Icon(
             Icons.Filled.Check,
             contentDescription = "Готово",
@@ -363,9 +499,22 @@ private fun BlockSheet(
           Text("−", style = MaterialTheme.typography.titleLarge)
         }
         Text("$count", style = MaterialTheme.typography.titleMedium)
-        TextButton(onClick = { count++ }, enabled = canGrow && count < 30) {
+        TextButton(onClick = { count++ }, enabled = count < maxCount) {
           Text("+", style = MaterialTheme.typography.titleLarge)
         }
+      }
+      if (maxCount < ShiftCycleEditLimits.MAX_BLOCK_DAYS) {
+        val limitText = if (maxCount > 0) {
+          "С учётом остальных блоков здесь доступно до $maxCount дн."
+        } else {
+          "Остальные блоки уже занимают весь лимит цикла. Уменьшите или удалите другой блок."
+        }
+
+        Text(
+          limitText,
+          style = MaterialTheme.typography.labelSmall,
+          color = MaterialTheme.colorScheme.tertiary
+        )
       }
       Spacer(Modifier.height(4.dp))
 
@@ -412,11 +561,36 @@ private fun BlockSheet(
       Spacer(Modifier.height(12.dp))
 
       // Действия над блоком — фиксируют текущие правки блока, затем структурная операция.
-      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(onClick = { onMoveLeft(staged) }, enabled = !isFirst) { Text("Сдвинуть влево") }
-        TextButton(onClick = { onMoveRight(staged) }, enabled = !isLast) { Text("Сдвинуть вправо") }
-        TextButton(onClick = { onDuplicate(staged) }, enabled = canGrow) { Text("Дублировать") }
-        TextButton(onClick = onRemove, enabled = canRemove) { Text("Удалить") }
+      if (showStructuralActions) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          TextButton(
+            onClick = { onMoveLeft(staged) },
+            enabled = !isFirst && countFits
+          ) {
+            Text("Сдвинуть влево")
+          }
+
+          TextButton(
+            onClick = { onMoveRight(staged) },
+            enabled = !isLast && countFits
+          ) {
+            Text("Сдвинуть вправо")
+          }
+
+          TextButton(
+            onClick = { onDuplicate(staged) },
+            enabled = duplicateAllowed
+          ) {
+            Text("Дублировать")
+          }
+
+          TextButton(
+            onClick = onRemove,
+            enabled = canRemove
+          ) {
+            Text("Удалить")
+          }
+        }
       }
     }
   }
