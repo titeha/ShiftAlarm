@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
@@ -47,6 +49,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -129,6 +134,7 @@ fun AlarmEditorScreen(
   val initialOverridesSnapshot = remember {
     initialOverrides.toList()
   }
+  val focusManager = LocalFocusManager.current
 
   var draft by remember { mutableStateOf(initial) }
   var periods by remember { mutableStateOf(initialPeriods) }
@@ -201,6 +207,8 @@ fun AlarmEditorScreen(
       onValueChange = { draft = draft.copy(label = it) },
       label = { Text("Название (необязательно)") },
       singleLine = true,
+      keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+      keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() } ),
       modifier = Modifier.fillMaxWidth()
     )
     Spacer(Modifier.height(8.dp))
