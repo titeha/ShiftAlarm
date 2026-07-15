@@ -66,6 +66,7 @@ import ru.titeha.shiftalarm.ui.AlarmListViewModel
 import ru.titeha.shiftalarm.ui.AlarmReadinessBanner
 import ru.titeha.shiftalarm.ui.AlarmSaveState
 import ru.titeha.shiftalarm.ui.DiagnosticsScreen
+import ru.titeha.shiftalarm.ui.rememberCurrentMinute
 import ru.titeha.shiftalarm.ui.SettingsScreen
 import ru.titeha.shiftalarm.ui.theme.AppTheme
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
@@ -235,6 +236,7 @@ private fun AlarmListScreen(
   onOpenDiagnostics: () -> Unit,
   onOpenSettings: () -> Unit
 ) {
+  val currentMinute = rememberCurrentMinute()
   Scaffold(
     floatingActionButton = {
       // Плавающая кнопка «+»: правый нижний угол, поверх списка, чуть крупнее стандартной, круглая.
@@ -290,6 +292,7 @@ private fun AlarmListScreen(
               alarm = alarm,
               periods = periodsByAlarm[alarm.id].orEmpty(),
               overrides = overridesByAlarm[alarm.id].orEmpty(),
+              now = currentMinute,
               onClick = { onEdit(alarm) },
               onToggle = { on -> onToggle(alarm, on) },
               onDelete = { onDelete(alarm) }
@@ -306,6 +309,7 @@ private fun AlarmRow(
   alarm: AlarmEntity,
   periods: List<AlarmPeriod>,
   overrides: List<AlarmOverride>,
+  now: LocalDateTime,
   onClick: () -> Unit,
   onToggle: (Boolean) -> Unit,
   onDelete: () -> Unit
@@ -330,10 +334,27 @@ private fun AlarmRow(
         Text(title, style = MaterialTheme.typography.headlineMedium)
         Text(describe(alarm), style = MaterialTheme.typography.bodyMedium)
         if (alarm.enabled) {
-          val dayOverrides = overrides.mapNotNull { it.toDayOverrideOrNull() }
-          val next = AlarmTimes.next(alarm, periods, dayOverrides, LocalDateTime.now())
+          val dayOverrides = remember(overrides) {
+            overrides.mapNotNull {
+              it.toDayOverrideOrNull()
+            }
+          }
+
+          val next = remember(
+            alarm,
+            periods,
+            dayOverrides,
+            now
+          ) {
+            AlarmTimes.next(
+              alarm,
+              periods,
+              dayOverrides,
+              now
+            )
+          }
           if (next != null) {
-            Text("след: ${formatNext(next)}", style = MaterialTheme.typography.bodySmall)
+            Text("след: ${formatNext(next, now.toLocalDate())}", style = MaterialTheme.typography.bodySmall)
           }
         }
       }
@@ -402,11 +423,10 @@ private fun describe(alarm: AlarmEntity): String {
   }
 }
 
-private fun formatNext(dt: LocalDateTime): String {
-  val today = LocalDate.now()
-  val time = "%02d:%02d".format(dt.hour, dt.minute)
-  return if (dt.toLocalDate() == today) "сегодня $time"
-  else "%02d.%02d %s".format(dt.dayOfMonth, dt.monthValue, time)
+private fun formatNext(value: LocalDateTime, today: LocalDate): String {
+  val time = "%02d:%02d".format(value.hour, value.minute)
+  return if (value.toLocalDate() == today) "сегодня $time"
+  else "%02d.%02d %s".format(value.dayOfMonth, value.monthValue, time)
 }
 
 @Composable

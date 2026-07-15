@@ -138,6 +138,7 @@ fun AlarmEditorScreen(
 
   val isNew = initial.id == 0L
   val currentAlarm = effective(draft, method)
+  val currentMinute = rememberCurrentMinute()
 
   val hasUnsavedChanges = remember(
     currentAlarm,
@@ -266,7 +267,7 @@ fun AlarmEditorScreen(
 
     // ── Проверка ──
     SectionHeader("Проверка")
-    SchedulePreview(currentAlarm, periods, overrides)
+    SchedulePreview(alarm = currentAlarm, periods = periods, overrides = overrides, now = currentMinute)
     if (method == EditMethod.SHIFT) {
       Spacer(Modifier.height(8.dp))
       ShiftCalendarAndOverrides(
@@ -557,10 +558,10 @@ private fun FreezeCycleToggle(draft: AlarmEntity, onChange: (AlarmEntity) -> Uni
 
 /** Строка «Следующий звонок: дата · время» — из боевого расчёта [AlarmTimes.next] (тот же движок). */
 @Composable
-private fun NextRingLine(alarm: AlarmEntity, periods: List<AlarmPeriod>, overrides: List<AlarmOverride>) {
+private fun NextRingLine(alarm: AlarmEntity, periods: List<AlarmPeriod>, overrides: List<AlarmOverride>, now: LocalDateTime) {
   val dayOverrides = remember(overrides) { overrides.mapNotNull { it.toDayOverrideOrNull() } }
-  val next = remember(alarm, periods, dayOverrides) {
-    AlarmTimes.next(alarm, periods, dayOverrides, LocalDateTime.now())
+  val next = remember(alarm, periods, dayOverrides, now) {
+    AlarmTimes.next(alarm, periods, dayOverrides, now)
   }
   Text(
     next?.let { "Следующий звонок: ${it.toLocalDate().localized()} · %02d:%02d".format(it.hour, it.minute) }
@@ -575,13 +576,17 @@ private fun NextRingLine(alarm: AlarmEntity, periods: List<AlarmPeriod>, overrid
  * 3 срабатывания. Всё считается движком ([AlarmTimes]/[ShiftEngine]) — совпадает с реальным звонком.
  */
 @Composable
-private fun SchedulePreview(alarm: AlarmEntity, periods: List<AlarmPeriod>, overrides: List<AlarmOverride>) {
+private fun SchedulePreview(alarm: AlarmEntity, periods: List<AlarmPeriod>, overrides: List<AlarmOverride>, now: LocalDateTime) {
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-  val now = remember { LocalDateTime.now() }
-  val today = remember { now.toLocalDate() }
+  val today = now.toLocalDate()
   val dayOverrides = remember(overrides) { overrides.mapNotNull { it.toDayOverrideOrNull() } }
 
-  NextRingLine(alarm, periods, overrides)
+  NextRingLine(
+    alarm = alarm,
+    periods = periods,
+    overrides = overrides,
+    now = now
+  )
 
   if (alarm.mode == AlarmEntity.MODE_SHIFT) {
     val calendar = remember(alarm.honorHolidays, today) {

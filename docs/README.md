@@ -18,6 +18,7 @@
 | [CUSTOM_CYCLE_EDITOR_GUARDS.md](CUSTOM_CYCLE_EDITOR_GUARDS.md) | Лимиты операций редактора цикла и отмена добавления нового блока. |
 | [EDITOR_UNSAVED_CHANGES.md](EDITOR_UNSAVED_CHANGES.md) | Предупреждение при выходе из изменённого редактора без сохранения. |
 | [EDITOR_SAVE_RESULT.md](EDITOR_SAVE_RESULT.md) | Состояния сохранения, ошибки транзакции и предупреждение AlarmManager. |
+| [EDITOR_TIME_REFRESH.md](EDITOR_TIME_REFRESH.md) | Минутное обновление списка и предпросмотра ближайших звонков. |
 
 ## Архитектура
 
