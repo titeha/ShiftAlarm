@@ -49,6 +49,7 @@ import ru.titeha.shiftalarm.schedule.ShiftCategory
 import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
 import ru.titeha.shiftalarm.schedule.orderedDaysOfWeek
+import ru.titeha.shiftalarm.schedule.stateDayKindLabel
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -162,6 +163,8 @@ fun WeeklyCalendar(
     if (alarm.honorHolidays) ProductionCalendars.merged("RU", month.year) else null
   }
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+  // Выбранный день — для подписи причины под календарём (сбрасывается при смене месяца).
+  var selected by remember(month) { mutableStateOf<LocalDate?>(null) }
 
   Column(
     modifier = modifier
@@ -185,13 +188,28 @@ fun WeeklyCalendar(
             kind = if (nonWorking) DayKind.OFF else null,
             rings = date != null && AlarmTimes.weeklyFiresOn(alarm, date, calendar),
             isToday = date == today,
-            isHighlighted = false,
+            isHighlighted = date != null && date == selected,
             isInDragRange = false,
             dark = dark,
-            onClick = null,
+            onClick = if (date != null) {
+              { selected = date }
+            } else null,
             modifier = Modifier.weight(1f)
           )
         }
+      }
+    }
+
+    // Подпись причины по выбранному дню (только при «Учитывать праздники» — иначе календаря нет).
+    selected?.let { sel ->
+      if (calendar != null) {
+        Spacer(Modifier.height(6.dp))
+        val label = stateDayKindLabel(calendar.kindOf(sel))
+          ?: if (calendar.isWorking(sel)) "рабочий день" else "выходной"
+        Text(
+          "%02d.%02d — %s".format(sel.dayOfMonth, sel.monthValue, label),
+          style = MaterialTheme.typography.labelMedium
+        )
       }
     }
 

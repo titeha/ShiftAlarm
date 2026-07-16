@@ -27,6 +27,16 @@ class ProductionCalendarTest {
   }
 
   @Test
+  fun stateDayKindLabel_forSpecialAndOrdinaryDays() {
+    assertEquals("Праздник", stateDayKindLabel(StateDayKind.HOLIDAY))
+    assertEquals("Перенесённый выходной", stateDayKindLabel(StateDayKind.TRANSFER_OFF))
+    assertEquals("Рабочий день (перенос)", stateDayKindLabel(StateDayKind.TRANSFER_WORK))
+    assertEquals("Сокращённый день", stateDayKindLabel(StateDayKind.PRE_HOLIDAY))
+    assertNull(stateDayKindLabel(StateDayKind.NONE))
+    assertNull(stateDayKindLabel(StateDayKind.UNKNOWN))
+  }
+
+  @Test
   fun kindOf_derivedFromBooleanSets() {
     val holiday = LocalDate.of(2026, 6, 12)
     val workSat = LocalDate.of(2026, 7, 4)

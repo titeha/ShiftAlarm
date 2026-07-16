@@ -19,6 +19,15 @@ enum class DayStatus { WORKING, NONWORKING }
  */
 enum class StateDayKind { NONE, HOLIDAY, TRANSFER_OFF, TRANSFER_WORK, PRE_HOLIDAY, UNKNOWN }
 
+/** Человекочитаемая причина особого дня (для подписи в календаре). null — обычный день. */
+fun stateDayKindLabel(kind: StateDayKind): String? = when (kind) {
+    StateDayKind.HOLIDAY -> "Праздник"
+    StateDayKind.TRANSFER_OFF -> "Перенесённый выходной"
+    StateDayKind.TRANSFER_WORK -> "Рабочий день (перенос)"
+    StateDayKind.PRE_HOLIDAY -> "Сокращённый день"
+    StateDayKind.NONE, StateDayKind.UNKNOWN -> null
+}
+
 /**
  * Производственный календарь: официальный статус каждого дня с учётом праздников и переносов
  * выходных. Чистая логика (без Android/I-O); данные по стране/году — в [ProductionCalendars].
