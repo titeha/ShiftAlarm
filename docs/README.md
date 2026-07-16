@@ -21,6 +21,7 @@
 | [EDITOR_TIME_REFRESH.md](EDITOR_TIME_REFRESH.md) | Минутное обновление списка и предпросмотра ближайших звонков. |
 | [ALARM_STOP_UI_SYNC.md](ALARM_STOP_UI_SYNC.md) | Закрытие полноэкранного экрана при остановке сигнала из уведомления. |
 | [ALARM_NAME_INPUT.md](ALARM_NAME_INPUT.md) | Правила капитализации и IME-действия для названия будильника. |
+| [SHIFT_HOLIDAY_POLICY.md](SHIFT_HOLIDAY_POLICY.md) | Семантика производственного календаря и отсутствие REST в сменном режиме. |
 
 ## Архитектура
 

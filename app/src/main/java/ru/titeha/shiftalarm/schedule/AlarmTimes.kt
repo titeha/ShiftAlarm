@@ -61,11 +61,29 @@ object AlarmTimes {
     // (обновляемого с офиц. источника), иначе встроенные данные. Год без данных → лишь Сб/Вс.
     val calendar = if (alarm.honorHolidays) ProductionCalendars.merged("RU", from.toLocalDate().year) else null
 
-    // Полярность REST («буди по выходным»): звонок в hh:mm на нерабочих днях, независимо от режима
-    // и маски. Без данных календаря — хотя бы обычные Сб/Вс (пустой ProductionCalendar).
-    if (alarm.honorHolidays && alarm.polarity == AlarmEntity.POLARITY_REST) {
+    val effectivePolarity = HolidayModePolicy.effectivePolarity(alarm)
+
+    /*
+    * Полярность REST относится к простому календарному будильнику.
+    * В сменном режиме производственный календарь только глушит
+    * звонки цикла в официальные нерабочие дни.
+    * REST — простой календарный будильник с одним временем.
+    * Для сменного режима HolidayModePolicy всегда возвращает WORK,
+    * поэтому цикл и его времена не обходятся этой веткой.
+    */
+    if (
+      alarm.honorHolidays &&
+      effectivePolarity == AlarmPolarity.REST
+    ) {
       return HolidayAlarms.next(
-        from, LocalTime.of(alarm.hour, alarm.minute), AlarmPolarity.REST, calendar ?: ProductionCalendar()
+        from = from,
+        time = LocalTime.of(
+          alarm.hour,
+          alarm.minute
+        ),
+        polarity = AlarmPolarity.REST,
+        calendar = calendar
+          ?: ProductionCalendar()
       )
     }
 
@@ -123,8 +141,10 @@ object AlarmTimes {
    * как повтор не показываем.
    */
   fun weeklyFiresOn(alarm: AlarmEntity, date: LocalDate, calendar: ProductionCalendar?): Boolean {
+    val effectivePolarity = HolidayModePolicy.effectivePolarity(alarm)
+
     if (alarm.mode != AlarmEntity.MODE_WEEKLY) return false
-    if (alarm.honorHolidays && alarm.polarity == AlarmEntity.POLARITY_REST) {
+    if (alarm.honorHolidays && effectivePolarity == AlarmPolarity.REST) {
       return calendar != null && !calendar.isWorking(date)
     }
     if (alarm.daysMask == 0) return false
