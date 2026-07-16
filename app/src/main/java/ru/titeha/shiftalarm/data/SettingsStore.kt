@@ -1,6 +1,7 @@
 package ru.titeha.shiftalarm.data
 
 import android.content.Context
+import ru.titeha.shiftalarm.alarm.RingConfig
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
 
 /**
@@ -35,11 +36,36 @@ class SettingsStore(context: Context) {
 
   fun setVendorSetupDismissed() = prefs.edit().putBoolean(KEY_VENDOR_SETUP_DISMISSED, true).apply()
 
+  /**
+   * Настройки звонка (раздел «Звонок»): длительность до авто-перезвона T, интервал снуза, лимит M
+   * (0 = снуз выключен), тумблер авто-перезвона. Значения зажимаются в допустимые диапазоны.
+   */
+  fun ringConfig(): RingConfig {
+    val d = RingConfig()
+    return RingConfig(
+      ringDurationMinutes = prefs.getInt(KEY_RING_DURATION, d.ringDurationMinutes).coerceIn(1, 30),
+      snoozeIntervalMinutes = prefs.getInt(KEY_SNOOZE_INTERVAL, d.snoozeIntervalMinutes).coerceIn(1, 30),
+      maxSnoozes = prefs.getInt(KEY_MAX_SNOOZES, d.maxSnoozes).coerceIn(0, 10),
+      autoRepeatEnabled = prefs.getBoolean(KEY_AUTO_REPEAT, d.autoRepeatEnabled),
+    )
+  }
+
+  fun setRingConfig(config: RingConfig) = prefs.edit()
+    .putInt(KEY_RING_DURATION, config.ringDurationMinutes)
+    .putInt(KEY_SNOOZE_INTERVAL, config.snoozeIntervalMinutes)
+    .putInt(KEY_MAX_SNOOZES, config.maxSnoozes)
+    .putBoolean(KEY_AUTO_REPEAT, config.autoRepeatEnabled)
+    .apply()
+
   private companion object {
     const val PREFS = "app_settings"
     const val KEY_THEME = "theme_mode"
     const val KEY_DYNAMIC = "dynamic_color"
     const val KEY_NOTIF_PROMPT = "notification_prompt_done"
     const val KEY_VENDOR_SETUP_DISMISSED = "vendor_setup_dismissed"
+    const val KEY_RING_DURATION = "ring_duration_minutes"
+    const val KEY_SNOOZE_INTERVAL = "snooze_interval_minutes"
+    const val KEY_MAX_SNOOZES = "max_snoozes"
+    const val KEY_AUTO_REPEAT = "auto_repeat_enabled"
   }
 }

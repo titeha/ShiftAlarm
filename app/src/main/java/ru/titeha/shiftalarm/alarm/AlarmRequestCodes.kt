@@ -20,4 +20,11 @@ object AlarmRequestCodes {
 
     /** requestCode показа экрана «Стоп» (full-screen PendingIntent). */
     fun show(id: Long): Int = (id * 2 + 1).toInt()
+
+    /**
+     * requestCode снуз-звонка — ОТДЕЛЬНЫЙ неймспейс, чтобы снуз-PendingIntent не затирал базовое
+     * расписание. Базовые [fire]/[show] неотрицательные (id ≥ 1), поэтому снуз уводим в отрицательный
+     * диапазон: он гарантированно дизъюнктен с fire/show, а разные id дают разные коды.
+     */
+    fun snooze(id: Long): Int = -(id * 2 + 2).toInt()
 }
