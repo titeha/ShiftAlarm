@@ -39,6 +39,7 @@ fun SettingsScreen(
   dynamicColor: Boolean,
   onThemeMode: (ThemeMode) -> Unit,
   onDynamicColor: (Boolean) -> Unit,
+  onRunSelfTest: () -> Unit = {},
   onOpenPhoneSetup: (() -> Unit)? = null,
   onBack: () -> Unit,
 ) {
@@ -94,15 +95,20 @@ fun SettingsScreen(
         }
       }
 
+      Spacer(Modifier.height(24.dp))
+      Text("Надёжность", style = MaterialTheme.typography.titleMedium)
+      Spacer(Modifier.height(8.dp))
+      TextButton(onClick = onRunSelfTest) { Text("Проверить будильник") }
+      Text(
+        "Тестовый звонок примерно через минуту — проверить весь путь сигнала (можно заблокировать экран).",
+        style = MaterialTheme.typography.labelSmall
+      )
       if (onOpenPhoneSetup != null) {
-        Spacer(Modifier.height(24.dp))
-        Text("Надёжность", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(12.dp))
         Text(
           "На вашей прошивке будильник может не срабатывать после перезагрузки без автозапуска.",
           style = MaterialTheme.typography.bodySmall
         )
-        Spacer(Modifier.height(8.dp))
         TextButton(onClick = onOpenPhoneSetup) { Text("Настроить телефон") }
       }
 

@@ -143,6 +143,7 @@ class MainActivity : ComponentActivity() {
               dynamicColor = dynamicColor,
               onThemeMode = { themeMode = it; settings.setThemeMode(it) },
               onDynamicColor = { dynamicColor = it; settings.setDynamicColor(it) },
+              onRunSelfTest = { vm.runSelfTest() },
               onOpenPhoneSetup = if (vendorGuide != null) {
                 { showSettings = false; showVendorSetup = true }
               } else {

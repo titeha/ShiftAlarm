@@ -324,6 +324,36 @@ class AlarmListViewModel(
     }
 
     /**
+     * Самотест звонка: создаёт разовый будильник примерно через минуту и планирует его боевым путём
+     * (тот же Scheduler → Receiver → Service → экран). Удаляется после срабатывания (deleteAfterFiring),
+     * поэтому в списке не копится. Пользователь может заблокировать экран и проверить полный путь.
+     */
+    fun runSelfTest() = viewModelScope.launch {
+        try {
+            val fireAt = java.time.LocalDateTime.now().plusMinutes(1)
+            val test = AlarmEntity(
+                label = "Проверка будильника",
+                enabled = true,
+                hour = fireAt.hour,
+                minute = fireAt.minute,
+                mode = AlarmEntity.MODE_WEEKLY,
+                daysMask = 0,
+                deleteAfterFiring = true
+            )
+
+            val id = repo.upsert(test)
+            AlarmScheduler.reschedule(context(), repo, test.copy(id = id))
+
+            _userMessages.send("Тестовый будильник зазвонит примерно через минуту — можно заблокировать экран")
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.e(TAG, "Не удалось запустить самотест звонка", error)
+            _userMessages.send("Не удалось запустить проверку")
+        }
+    }
+
+    /**
      * Сбросить завершённый результат перед новой сессией редактора
      * или после обработки сообщения.
      */
