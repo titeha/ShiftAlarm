@@ -3,6 +3,7 @@ package ru.titeha.shiftalarm.alarm
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.UserManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,8 +39,20 @@ class AlarmReceiver : BroadcastReceiver() {
       AlarmScheduler.NO_TRIGGER_AT_MILLIS
     )
 
-    val pending = goAsync()
     val appContext = context.applicationContext
+
+    /*
+     * До разблокировки (Direct Boot) credential-encrypted хранилище недоступно: Room не прочитать,
+     * валидатор и репозиторий использовать нельзя. Звоним по данным из RingCache/extras, ничего не
+     * трогая в базе. Полный пересчёт произойдёт по USER_UNLOCKED / первому старту приложения.
+     */
+    val userManager = appContext.getSystemService(UserManager::class.java)
+    if (userManager != null && !userManager.isUserUnlocked) {
+      handleAlarmLocked(appContext, id, scheduledTriggerAtMillis)
+      return
+    }
+
+    val pending = goAsync()
 
     // Асинхронно, чтобы не блокировать broadcast-поток. goAsync() держит процесс живым до finish()
     // (до ~10 c) — на загрузку из БД и запуск сервиса звонка этого хватает.
@@ -111,6 +124,35 @@ class AlarmReceiver : BroadcastReceiver() {
     }
   }
 
+  /**
+   * Звонок до разблокировки устройства (Direct Boot). Метка берётся из device-protected RingCache,
+   * Room и журнал (CE) НЕ трогаются. Перепланирование/удаление отложено до USER_UNLOCKED.
+   */
+  private fun handleAlarmLocked(
+    context: Context,
+    alarmId: Long,
+    scheduledTriggerAtMillis: Long
+  ) {
+    val now = System.currentTimeMillis()
+
+    // Просроченный сверх грейса (ребут занял слишком долго или звонок давний) — не звоним;
+    // пропуск зафиксирует сверка при разблокировке / детект пропуска.
+    if (scheduledTriggerAtMillis != AlarmScheduler.NO_TRIGGER_AT_MILLIS &&
+      scheduledTriggerAtMillis < now - LOCKED_OVERDUE_GRACE_MS
+    ) {
+      Log.w(TAG, "Locked: срабатывание id=$alarmId просрочено сверх грейса — не звоним")
+      return
+    }
+
+    val label = DirectBootAlarmStore(context).read()
+      .firstOrNull { it.alarmId == alarmId }
+      ?.label
+      .orEmpty()
+
+    Log.i(TAG, "Locked: звоним по RingCache id=$alarmId")
+    AlarmService.start(context, label)
+  }
+
   private suspend fun periodsFor(
     repo: AlarmRepository,
     alarm: AlarmEntity
@@ -139,5 +181,8 @@ class AlarmReceiver : BroadcastReceiver() {
 
   private companion object {
     const val TAG = "AlarmReceiver"
+
+    /** Грейс для просроченного (за время ребута) звонка при locked boot: в пределах — звоним. */
+    const val LOCKED_OVERDUE_GRACE_MS = 30L * 60L * 1000L
   }
 }

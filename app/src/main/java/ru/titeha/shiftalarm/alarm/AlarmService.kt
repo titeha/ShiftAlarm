@@ -147,13 +147,18 @@ class AlarmService : Service() {
     AlarmVibration.start(this)
 
     // Если звук не завёлся (нет мелодии/ошибка) — сигнал остаётся только вибрацией. Фиксируем это
-    // в диагностическом журнале, чтобы «почему тихо» можно было понять постфактум.
+    // в диагностическом журнале, чтобы «почему тихо» можно было понять постфактум. До разблокировки
+    // журнал (CE) недоступен — тогда просто не пишем (звонок важнее записи).
     if (!startSound()) {
-      AlarmEventLog(this).record(
-        AlarmEventType.SIGNAL_DEGRADED,
-        "звук недоступен — сигнал только вибрацией",
-        System.currentTimeMillis()
-      )
+      try {
+        AlarmEventLog(this).record(
+          AlarmEventType.SIGNAL_DEGRADED,
+          "звук недоступен — сигнал только вибрацией",
+          System.currentTimeMillis()
+        )
+      } catch (_: Exception) {
+        // Direct Boot: credential-encrypted журнал недоступен до разблокировки — пропускаем запись.
+      }
     }
   }
 

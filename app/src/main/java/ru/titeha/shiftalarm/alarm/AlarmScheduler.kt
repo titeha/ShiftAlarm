@@ -38,6 +38,9 @@ object AlarmScheduler {
   /** Насколько должно просрочиться срабатывание из кэша, чтобы счесть его пропущенным (мс). */
   private const val MISS_GRACE_MS = 90_000L
 
+  /** Грейс для перевыставления просроченного за время ребута звонка при locked boot (мс). */
+  private const val LOCKED_BOOT_OVERDUE_GRACE_MS = 30L * 60L * 1000L
+
   /**
    * Запланировать, подгрузив периоды отпуска и правки календаря из репозитория.
    */
@@ -252,11 +255,22 @@ object AlarmScheduler {
    * без единого обращения к базе.
    */
   fun reArmFromCache(context: Context) {
+    val now = System.currentTimeMillis()
+
     DirectBootAlarmStore(context).read().forEach { entry ->
+      /*
+       * Просроченный сверх грейса (ребут занял слишком долго) — не перевыставляем: звонить глубокой
+       * ночью за давно прошедший звонок не нужно (пропуск зафиксируется отдельно). Просроченный в
+       * пределах грейса — ставим на «сейчас», чтобы прозвенел сразу после загрузки.
+       */
+      if (entry.triggerAtMillis < now - LOCKED_BOOT_OVERDUE_GRACE_MS) {
+        return@forEach
+      }
+
       scheduleAt(
         context = context,
         alarmId = entry.alarmId,
-        triggerAtMillis = entry.triggerAtMillis
+        triggerAtMillis = maxOf(entry.triggerAtMillis, now)
       )
     }
   }

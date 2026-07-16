@@ -71,6 +71,7 @@
 | [ALARM_STOP_UI_SYNC.md](ALARM_STOP_UI_SYNC.md) | Закрытие полноэкранного экрана при остановке сигнала из уведомления. |
 | [SYSTEM_RESCHEDULE.md](SYSTEM_RESCHEDULE.md) | Перепланирование будильников после reboot / обновления приложения / смены времени и часового пояса. |
 | [DIRECT_BOOT.md](DIRECT_BOOT.md) | Direct Boot: device-protected кэш и перевыставление будильников после ночного ребута залоченным (слой A). |
+| [DIRECT_BOOT_FIX.md](DIRECT_BOOT_FIX.md) | План слоя B: весь путь звонка directBootAware (звонок на локскрине до разблокировки) + тест-матрица. |
 | [VENDOR_SETUP.md](VENDOR_SETUP.md) | Настройка агрессивных прошивок (автозапуск): без него на Xiaomi будильник не переживает перезагрузку (проверено). |
 | [DST_POLICY.md](DST_POLICY.md) | Часовой пояс и переходы летнего времени: единый резолвер локального времени в Instant, политика gap/overlap. |
 | [BATCH_RESCHEDULE.md](BATCH_RESCHEDULE.md) | Изоляция ошибок отдельных будильников при массовом перепланировании. |

@@ -55,25 +55,30 @@
             </intent-filter>
         </activity>
 
-        <!-- Полноэкранный экран звонка: поверх блокировки, будит экран. -->
+        <!-- Полноэкранный экран звонка: поверх блокировки, будит экран. directBootAware: должен
+             показываться и до разблокировки (звонок на локскрине после ночного ребута). -->
         <activity
             android:name=".AlarmActivity"
             android:exported="false"
+            android:directBootAware="true"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
             android:theme="@style/Theme.ShiftAlarm" />
 
-        <!-- Ловит срабатывание AlarmManager. -->
+        <!-- Ловит срабатывание AlarmManager. directBootAware: должен отработать и до разблокировки —
+             тогда звонит по данным из RingCache/extras, не трогая Room. -->
         <receiver
             android:name=".alarm.AlarmReceiver"
-            android:exported="false" />
+            android:exported="false"
+            android:directBootAware="true" />
 
-        <!-- Проигрывает сигнал независимо от UI. -->
+        <!-- Проигрывает сигнал независимо от UI. directBootAware: играет и до разблокировки. -->
         <service
             android:name=".alarm.AlarmService"
             android:exported="false"
+            android:directBootAware="true"
             android:foregroundServiceType="mediaPlayback" />
 
         <!-- Перерегистрация будильников после системных событий. directBootAware: на LOCKED_BOOT_COMPLETED
