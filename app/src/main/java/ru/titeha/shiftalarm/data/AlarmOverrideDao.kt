@@ -22,6 +22,10 @@ interface AlarmOverrideDao {
   @Query("SELECT * FROM alarm_overrides WHERE alarmId = :alarmId ORDER BY fromEpochDay")
   suspend fun forAlarm(alarmId: Long): List<AlarmOverride>
 
+  /** Все правки разом — для массового перепланирования (без N+1 запроса по каждому будильнику). */
+  @Query("SELECT * FROM alarm_overrides ORDER BY fromEpochDay")
+  suspend fun all(): List<AlarmOverride>
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsert(override: AlarmOverride): Long
 

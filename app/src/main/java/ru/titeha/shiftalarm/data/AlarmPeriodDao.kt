@@ -22,6 +22,10 @@ interface AlarmPeriodDao {
   @Query("SELECT * FROM alarm_periods WHERE alarmId = :alarmId ORDER BY fromEpochDay")
   suspend fun forAlarm(alarmId: Long): List<AlarmPeriod>
 
+  /** Все периоды разом — для массового перепланирования (без N+1 запроса по каждому будильнику). */
+  @Query("SELECT * FROM alarm_periods ORDER BY fromEpochDay")
+  suspend fun all(): List<AlarmPeriod>
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsert(period: AlarmPeriod): Long
 

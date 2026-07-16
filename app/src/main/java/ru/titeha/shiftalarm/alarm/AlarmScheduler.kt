@@ -115,16 +115,24 @@ object AlarmScheduler {
     repo: AlarmRepository,
     alarms: List<AlarmEntity>
   ): AlarmRescheduleReport {
+    // Все периоды и правки грузим ДВУМЯ запросами и группируем по alarmId, а не по запросу на каждый
+    // будильник (N+1). Путь массовый (boot/системное событие) — так меньше обращений к БД.
+    val periodsByAlarm = repo.allPeriodsList().groupBy { it.alarmId }
+    val overridesByAlarm = repo.allOverridesList()
+      .groupBy { it.alarmId }
+      .mapValues { (_, list) -> list.mapNotNull { it.toDayOverrideOrNull() } }
+
     val report = AlarmRescheduleBatch.run(
       alarms = alarms,
       operation = { alarm ->
         // Через не-repo перегрузку, чтобы кэш Direct Boot пересобрать один раз ниже, а не на
-        // каждой записи.
+        // каждой записи. Периоды/правки нужны только сменным будильникам (как в offPeriodsFor/overridesFor).
+        val isShift = alarm.mode == AlarmEntity.MODE_SHIFT
         reschedule(
           context = context,
           alarm = alarm,
-          periods = offPeriodsFor(repo, alarm),
-          overrides = overridesFor(repo, alarm)
+          periods = if (isShift) periodsByAlarm[alarm.id].orEmpty() else emptyList(),
+          overrides = if (isShift) overridesByAlarm[alarm.id].orEmpty() else emptyList()
         )
       }
     )

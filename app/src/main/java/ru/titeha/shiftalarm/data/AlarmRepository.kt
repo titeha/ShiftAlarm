@@ -68,6 +68,9 @@ class AlarmRepository(context: Context) {
   /** Периоды будильника — для расчёта расписания. */
   suspend fun periodsList(alarmId: Long): List<AlarmPeriod> = periodDao.forAlarm(alarmId)
 
+  /** Все периоды разом (одноразовый список) — для массового перепланирования без N+1. */
+  suspend fun allPeriodsList(): List<AlarmPeriod> = periodDao.all()
+
   suspend fun upsertPeriod(period: AlarmPeriod): Long = periodDao.upsert(period)
   suspend fun deletePeriod(period: AlarmPeriod) = periodDao.delete(period)
   suspend fun deletePeriodsForAlarm(alarmId: Long) = periodDao.deleteForAlarm(alarmId)
@@ -82,6 +85,9 @@ class AlarmRepository(context: Context) {
 
   /** Правки будильника — для расчёта расписания. */
   suspend fun overridesList(alarmId: Long): List<AlarmOverride> = overrideDao.forAlarm(alarmId)
+
+  /** Все правки разом (одноразовый список) — для массового перепланирования без N+1. */
+  suspend fun allOverridesList(): List<AlarmOverride> = overrideDao.all()
 
   suspend fun upsertOverride(override: AlarmOverride): Long = overrideDao.upsert(override)
   suspend fun deleteOverride(override: AlarmOverride) = overrideDao.delete(override)
