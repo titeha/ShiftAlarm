@@ -12,7 +12,14 @@ import ru.titeha.shiftalarm.ui.theme.ThemeMode
 class SettingsStore(context: Context) {
 
   private val app = context.applicationContext
-  private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+  /*
+   * CE-хранилище открываем ЛЕНИВО: до разблокировки (Direct Boot) оно недоступно и падает при открытии.
+   * Путь звонка снуза конструирует SettingsStore залоченным ради alarmPrefs (DE) — если бы prefs (CE)
+   * открывался в конструкторе, сервис звонка падал бы. Ленивое открытие трогает CE только для
+   * тема/цвета/и т.п., которые нужны лишь после разблокировки.
+   */
+  private val prefs by lazy { app.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
   /**
    * Device-protected настройки, которые нужны в пути звонка ДО разблокировки (Direct Boot): параметры
