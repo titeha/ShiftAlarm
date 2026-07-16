@@ -23,6 +23,21 @@ class BootReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     val action = intent.action
 
+    if (SystemRescheduleActions.isLockedBoot(action)) {
+      /*
+       * Ранняя загрузка залоченного устройства (Direct Boot): Room и обычные prefs недоступны.
+       * Перевыставляем будильники СЛЕПО из device-protected кэша, без обращения к базе и журналу.
+       * Полный пересчёт из Room произойдёт позже — по USER_UNLOCKED / первому старту приложения.
+       */
+      try {
+        AlarmScheduler.reArmFromCache(context.applicationContext)
+        Log.i(TAG, "Locked boot: будильники перевыставлены из device-protected кэша")
+      } catch (error: Exception) {
+        Log.w(TAG, "Locked boot: не удалось перевыставить из кэша", error)
+      }
+      return
+    }
+
     if (!SystemRescheduleActions.shouldReschedule(action)) {
       return
     }

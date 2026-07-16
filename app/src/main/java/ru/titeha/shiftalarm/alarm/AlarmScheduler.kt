@@ -32,6 +32,9 @@ object AlarmScheduler {
 
   private const val TAG = "AlarmScheduler"
 
+  /** Горизонт device-protected кэша ближайших звонков (дни). */
+  private const val DIRECT_BOOT_HORIZON_DAYS = 7L
+
   /**
    * Запланировать, подгрузив периоды отпуска и правки календаря из репозитория.
    */
@@ -42,6 +45,7 @@ object AlarmScheduler {
       periods = offPeriodsFor(repo, alarm),
       overrides = overridesFor(repo, alarm)
     )
+    refreshDirectBootCache(context, repo)
   }
 
   /**
@@ -99,10 +103,13 @@ object AlarmScheduler {
     val report = AlarmRescheduleBatch.run(
       alarms = alarms,
       operation = { alarm ->
+        // Через не-repo перегрузку, чтобы кэш Direct Boot пересобрать один раз ниже, а не на
+        // каждой записи.
         reschedule(
           context = context,
-          repo = repo,
-          alarm = alarm
+          alarm = alarm,
+          periods = offPeriodsFor(repo, alarm),
+          overrides = overridesFor(repo, alarm)
         )
       }
     )
@@ -134,6 +141,8 @@ object AlarmScheduler {
         )
       }
     }
+
+    refreshDirectBootCache(context, repo)
 
     return report
   }
@@ -168,6 +177,49 @@ object AlarmScheduler {
         triggerAtMillis = NO_TRIGGER_AT_MILLIS
       )
     )
+  }
+
+  /**
+   * Пересобрать device-protected кэш ближайших звонков — чтобы после ночного ребута залоченным
+   * `directBootAware`-ресивер мог перевыставить будильники, не обращаясь к Room.
+   *
+   * Берёт включённые будильники, считает ближайшее срабатывание каждого (тем же движком, что и
+   * планирование) и кладёт в кэш те, что в пределах горизонта [DIRECT_BOOT_HORIZON_DAYS] дней.
+   */
+  suspend fun refreshDirectBootCache(context: Context, repo: AlarmRepository) {
+    val now = LocalDateTime.now()
+    val horizonMillis = AlarmInstant.epochMilli(now.plusDays(DIRECT_BOOT_HORIZON_DAYS))
+
+    val entries = repo.enabled().mapNotNull { alarm ->
+      val next = AlarmTimes.next(
+        alarm,
+        offPeriodsFor(repo, alarm),
+        overridesFor(repo, alarm),
+        now
+      ) ?: return@mapNotNull null
+
+      val millis = AlarmInstant.epochMilli(next)
+      if (millis > horizonMillis) return@mapNotNull null
+
+      CachedAlarm(alarmId = alarm.id, triggerAtMillis = millis, label = alarm.label)
+    }
+
+    DirectBootAlarmStore(context).write(entries)
+  }
+
+  /**
+   * Слепо перевыставить будильники из device-protected кэша — для `LOCKED_BOOT_COMPLETED`, когда
+   * Room ещё недоступна. PendingIntent собирается только из данных кэша (id + время срабатывания),
+   * без единого обращения к базе.
+   */
+  fun reArmFromCache(context: Context) {
+    DirectBootAlarmStore(context).read().forEach { entry ->
+      scheduleAt(
+        context = context,
+        alarmId = entry.alarmId,
+        triggerAtMillis = entry.triggerAtMillis
+      )
+    }
   }
 
   private suspend fun offPeriodsFor(
