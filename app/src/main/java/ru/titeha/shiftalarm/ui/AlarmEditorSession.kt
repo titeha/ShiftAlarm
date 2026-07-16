@@ -15,7 +15,9 @@ internal enum class EditMethod {
 }
 
 /** Определить способ расписания по сохранённой записи. */
-internal fun methodOf(alarm: AlarmEntity): EditMethod {
+internal fun methodOf(
+    alarm: AlarmEntity
+): EditMethod {
     return when {
         alarm.mode == AlarmEntity.MODE_SHIFT ->
             EditMethod.SHIFT
@@ -31,8 +33,8 @@ internal fun methodOf(alarm: AlarmEntity): EditMethod {
 /**
  * Привести общий черновик к фактически выбранному способу расписания.
  *
- * Черновики других способов остаются в [draft], но расчёт, проверка и сохранение
- * используют только результат этой функции.
+ * Черновики других способов остаются в [draft], но расчёт, проверка
+ * и сохранение используют только результат этой функции.
  */
 internal fun effective(
     draft: AlarmEntity,
@@ -63,11 +65,8 @@ internal fun effective(
  * Состояние одной сессии редактора будильника.
  *
  * Объект хранится в [AlarmListViewModel], поэтому переживает пересоздание
- * Activity при повороте экрана. Compose-экран только читает и изменяет
- * предоставленные [MutableState].
- *
- * Этот класс не восстанавливает состояние после уничтожения процесса.
- * Поддержка process death будет добавлена отдельным шагом через SavedStateHandle.
+ * Activity. Компактный снимок дополнительно сохраняется через SavedStateHandle,
+ * чтобы восстановить подтверждённый черновик после системного уничтожения процесса.
  */
 class AlarmEditorSession(
     initialAlarm: AlarmEntity,
@@ -83,31 +82,42 @@ class AlarmEditorSession(
             initialMethod
         )
 
-    private val initialPeriodsSnapshot: List<AlarmPeriod> =
+    private val initialPeriodsSnapshot:
+        List<AlarmPeriod> =
         initialPeriods.toList()
 
-    private val initialOverridesSnapshot: List<AlarmOverride> =
+    private val initialOverridesSnapshot:
+        List<AlarmOverride> =
         initialOverrides.toList()
 
-    internal val draftState: MutableState<AlarmEntity> =
+    internal val draftState:
+        MutableState<AlarmEntity> =
         mutableStateOf(initialAlarm)
 
-    internal val periodsState: MutableState<List<AlarmPeriod>> =
-        mutableStateOf(initialPeriods.toList())
+    internal val periodsState:
+        MutableState<List<AlarmPeriod>> =
+        mutableStateOf(
+            initialPeriods.toList()
+        )
 
-    internal val overridesState: MutableState<List<AlarmOverride>> =
-        mutableStateOf(initialOverrides.toList())
+    internal val overridesState:
+        MutableState<List<AlarmOverride>> =
+        mutableStateOf(
+            initialOverrides.toList()
+        )
 
-    internal val methodState: MutableState<EditMethod> =
+    internal val methodState:
+        MutableState<EditMethod> =
         mutableStateOf(initialMethod)
 
-    internal val discardDialogState: MutableState<Boolean> =
+    internal val discardDialogState:
+        MutableState<Boolean> =
         mutableStateOf(false)
 
     val isNew: Boolean =
         initialAlarm.id == 0L
 
-    /** Текущий черновик в форме, пригодной для расчёта и сохранения. */
+    /** Текущий черновик в форме для расчёта и сохранения. */
     internal fun currentAlarm(): AlarmEntity {
         return effective(
             draft = draftState.value,
@@ -115,16 +125,80 @@ class AlarmEditorSession(
         )
     }
 
-    /** Есть ли изменения относительно состояния при открытии редактора. */
+    /** Есть ли изменения относительно состояния при открытии. */
     internal fun hasUnsavedChanges(): Boolean {
         return methodState.value != initialMethod ||
             AlarmEditorDirtyState.hasUnsavedChanges(
-                initialAlarm = initialAlarmSnapshot,
-                currentAlarm = currentAlarm(),
-                initialPeriods = initialPeriodsSnapshot,
-                currentPeriods = periodsState.value,
-                initialOverrides = initialOverridesSnapshot,
-                currentOverrides = overridesState.value
+                initialAlarm =
+                    initialAlarmSnapshot,
+                currentAlarm =
+                    currentAlarm(),
+                initialPeriods =
+                    initialPeriodsSnapshot,
+                currentPeriods =
+                    periodsState.value,
+                initialOverrides =
+                    initialOverridesSnapshot,
+                currentOverrides =
+                    overridesState.value
             )
+    }
+
+    /** Снимок для SavedStateHandle. */
+    internal fun toSnapshot():
+        AlarmEditorSessionSnapshot {
+        return AlarmEditorSessionSnapshot(
+            initialAlarm =
+                initialAlarmSnapshot,
+            initialPeriods =
+                initialPeriodsSnapshot,
+            initialOverrides =
+                initialOverridesSnapshot,
+            /*
+             * Сохраняется сырой draft, а не currentAlarm():
+             * так не теряются настройки временно неактивного способа.
+             */
+            currentAlarm =
+                draftState.value,
+            currentPeriods =
+                periodsState.value.toList(),
+            currentOverrides =
+                overridesState.value.toList(),
+            currentMethod =
+                methodState.value,
+            discardDialogVisible =
+                discardDialogState.value
+        )
+    }
+
+    internal companion object {
+        /** Восстановить сессию из проверенного снимка. */
+        fun fromSnapshot(
+            snapshot: AlarmEditorSessionSnapshot
+        ): AlarmEditorSession {
+            return AlarmEditorSession(
+                initialAlarm =
+                    snapshot.initialAlarm,
+                initialPeriods =
+                    snapshot.initialPeriods,
+                initialOverrides =
+                    snapshot.initialOverrides
+            ).apply {
+                draftState.value =
+                    snapshot.currentAlarm
+
+                periodsState.value =
+                    snapshot.currentPeriods.toList()
+
+                overridesState.value =
+                    snapshot.currentOverrides.toList()
+
+                methodState.value =
+                    snapshot.currentMethod
+
+                discardDialogState.value =
+                    snapshot.discardDialogVisible
+            }
+        }
     }
 }

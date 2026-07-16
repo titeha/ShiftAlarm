@@ -2,13 +2,17 @@ package ru.titeha.shiftalarm.ui
 
 import android.app.Application
 import android.util.Log
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -33,7 +37,10 @@ data class AlarmListUiState(
  * Сохранение имеет отдельное состояние, чтобы редактор не закрывался раньше
  * результата транзакции и не запускал несколько параллельных сохранений.
  */
-class AlarmListViewModel(app: Application) : AndroidViewModel(app) {
+class AlarmListViewModel(
+    app: Application,
+    private val savedStateHandle: SavedStateHandle
+) : AndroidViewModel(app) {
     private val repo = AlarmRepository(app)
 
     val uiState: StateFlow<AlarmListUiState> =
@@ -83,13 +90,40 @@ class AlarmListViewModel(app: Application) : AndroidViewModel(app) {
     val saveState: StateFlow<AlarmSaveState> =
         _saveState.asStateFlow()
 
+    private val restoredEditorSession: AlarmEditorSession? =
+        savedStateHandle.get<String>(EDITOR_SESSION_KEY)
+            ?.let { AlarmEditorSessionSnapshotCodec.decodeOrNull(it) }
+            ?.let { AlarmEditorSession.fromSnapshot(it) }
+
     private val _editorSession =
-        MutableStateFlow<AlarmEditorSession?>(null)
+        MutableStateFlow(restoredEditorSession)
 
     val editorSession: StateFlow<AlarmEditorSession?> =
         _editorSession.asStateFlow()
 
     private var openEditorJob: Job? = null
+
+    private var editorPersistenceJob: Job? = null
+
+    init {
+        val encoded =
+            savedStateHandle.get<String>(EDITOR_SESSION_KEY)
+
+        when {
+            restoredEditorSession != null ->
+                observeEditorSession(restoredEditorSession)
+
+            encoded != null -> {
+                // Повреждённый или устаревший снимок не пытаемся восстановить повторно.
+                savedStateHandle.remove<String>(EDITOR_SESSION_KEY)
+
+                Log.w(
+                    TAG,
+                    "Сохранённый черновик редактора повреждён и был удалён"
+                )
+            }
+        }
+    }
 
     /** Периоды и правки будильника для открытия редактора. */
     suspend fun childrenFor(
@@ -161,10 +195,12 @@ class AlarmListViewModel(app: Application) : AndroidViewModel(app) {
         openEditorJob?.cancel()
         openEditorJob = null
 
-        _editorSession.value = AlarmEditorSession(
-            initialAlarm = alarm,
-            initialPeriods = emptyList(),
-            initialOverrides = emptyList()
+        setEditorSession(
+            AlarmEditorSession(
+                initialAlarm = alarm,
+                initialPeriods = emptyList(),
+                initialOverrides = emptyList()
+            )
         )
     }
 
@@ -184,10 +220,12 @@ class AlarmListViewModel(app: Application) : AndroidViewModel(app) {
             val periods = repo.periodsList(alarm.id)
             val overrides = repo.overridesList(alarm.id)
 
-            _editorSession.value = AlarmEditorSession(
-                initialAlarm = alarm,
-                initialPeriods = periods,
-                initialOverrides = overrides
+            setEditorSession(
+                AlarmEditorSession(
+                    initialAlarm = alarm,
+                    initialPeriods = periods,
+                    initialOverrides = overrides
+                )
             )
         }
     }
@@ -200,7 +238,63 @@ class AlarmListViewModel(app: Application) : AndroidViewModel(app) {
 
         openEditorJob?.cancel()
         openEditorJob = null
+
+        editorPersistenceJob?.cancel()
+        editorPersistenceJob = null
+
+        savedStateHandle.remove<String>(EDITOR_SESSION_KEY)
+
         _editorSession.value = null
+    }
+
+    /**
+     * Установить активную сессию редактора: сохранить снимок и начать наблюдение
+     * за изменениями черновика для восстановления после уничтожения процесса.
+     */
+    private fun setEditorSession(session: AlarmEditorSession) {
+        editorPersistenceJob?.cancel()
+
+        _editorSession.value = session
+
+        persistEditorSnapshot(session.toSnapshot())
+
+        observeEditorSession(session)
+    }
+
+    /** Писать снимок сессии в SavedStateHandle при каждом изменении черновика. */
+    private fun observeEditorSession(session: AlarmEditorSession) {
+        editorPersistenceJob?.cancel()
+
+        editorPersistenceJob = viewModelScope.launch {
+            snapshotFlow { session.toSnapshot() }
+                .distinctUntilChanged()
+                .collect { snapshot ->
+                    // Пишем, только пока наблюдается всё ещё текущая (не закрытая) сессия.
+                    if (_editorSession.value === session) {
+                        persistEditorSnapshot(snapshot)
+                    }
+                }
+        }
+    }
+
+    /** Записать снимок; повреждённый или слишком большой снимок безопасно игнорируется. */
+    private fun persistEditorSnapshot(snapshot: AlarmEditorSessionSnapshot) {
+        val encoded =
+            AlarmEditorSessionSnapshotCodec.encodeOrNull(snapshot)
+
+        if (encoded == null) {
+            savedStateHandle.remove<String>(EDITOR_SESSION_KEY)
+
+            Log.w(
+                TAG,
+                "Черновик редактора слишком велик или повреждён; " +
+                    "восстановление после process death отключено"
+            )
+
+            return
+        }
+
+        savedStateHandle[EDITOR_SESSION_KEY] = encoded
     }
 
     /**
@@ -231,5 +325,7 @@ class AlarmListViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val TAG = "AlarmListViewModel"
+
+        const val EDITOR_SESSION_KEY = "alarm_editor_session_v1"
     }
 }
