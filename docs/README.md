@@ -22,6 +22,7 @@
 | [ALARM_STOP_UI_SYNC.md](ALARM_STOP_UI_SYNC.md) | Закрытие полноэкранного экрана при остановке сигнала из уведомления. |
 | [ALARM_NAME_INPUT.md](ALARM_NAME_INPUT.md) | Правила капитализации и IME-действия для названия будильника. |
 | [SHIFT_HOLIDAY_POLICY.md](SHIFT_HOLIDAY_POLICY.md) | Семантика производственного календаря и отсутствие REST в сменном режиме. |
+| [CONSOLIDATED_REVIEW_2026-07-16.md](CONSOLIDATED_REVIEW_2026-07-16.md) | Сверка внешнего ревью с кодом и консолидированный план стабилизации. |
 
 ## Архитектура
 
