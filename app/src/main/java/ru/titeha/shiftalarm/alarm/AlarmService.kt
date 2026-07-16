@@ -180,9 +180,17 @@ class AlarmService : Service() {
       builder.addAction(android.R.drawable.ic_lock_idle_alarm, "Отложить $minutes мин", snoozePending)
     }
 
+    /*
+     * Жёсткий режим: из уведомления НЕЛЬЗЯ выключить напрямую — иначе задание («Стоп») обходится
+     * шторкой. Тогда действие открывает экран звонка с заданием, а не глушит сигнал.
+     */
+    val hardDismiss = FeatureFlags.HARD_MODE && SettingsStore(this).dismissMode() != DismissMode.NORMAL
+    val dismissLabel = if (hardDismiss) "Выключить" else "Стоп"
+    val dismissPending = if (hardDismiss) openScreen else stopPending
+
     val notification = builder
-      .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Стоп", stopPending)
-      .setDeleteIntent(stopPending)
+      .addAction(android.R.drawable.ic_menu_close_clear_cancel, dismissLabel, dismissPending)
+      .setDeleteIntent(dismissPending)
       .setOngoing(true)
       .build()
 

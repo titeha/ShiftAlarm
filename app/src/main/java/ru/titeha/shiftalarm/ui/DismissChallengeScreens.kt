@@ -102,7 +102,9 @@ fun StepsChallengeView(onSuccess: () -> Unit, onCancel: () -> Unit) {
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
         if (sensor != null) {
-            manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+            // maxReportLatencyUs=0 — без батчинга: иначе датчик копит шаги и отдаёт пачкой позже,
+            // и счётчик на экране не растёт по ходу ходьбы.
+            manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI, 0)
         }
         onDispose { manager?.unregisterListener(listener) }
     }
