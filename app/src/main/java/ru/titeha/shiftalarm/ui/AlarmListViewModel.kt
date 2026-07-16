@@ -6,6 +6,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +15,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import ru.titeha.shiftalarm.alarm.AlarmScheduler
@@ -90,6 +94,14 @@ class AlarmListViewModel(
     val saveState: StateFlow<AlarmSaveState> =
         _saveState.asStateFlow()
 
+    /**
+     * Одноразовые сообщения пользователю (Snackbar) об ошибках операций вне редактора:
+     * включение/выключение, удаление, открытие. Технические подробности идут в журнал.
+     */
+    private val _userMessages = Channel<String>(Channel.BUFFERED)
+
+    val userMessages: Flow<String> = _userMessages.receiveAsFlow()
+
     private val restoredEditorSession: AlarmEditorSession? =
         savedStateHandle.get<String>(EDITOR_SESSION_KEY)
             ?.let { AlarmEditorSessionSnapshotCodec.decodeOrNull(it) }
@@ -138,14 +150,21 @@ class AlarmListViewModel(
         alarm: AlarmEntity,
         enabled: Boolean
     ) = viewModelScope.launch {
-        val updated = alarm.copy(enabled = enabled)
-        val id = repo.upsert(updated)
+        try {
+            val updated = alarm.copy(enabled = enabled)
+            val id = repo.upsert(updated)
 
-        AlarmScheduler.reschedule(
-            context = context(),
-            repo = repo,
-            alarm = updated.copy(id = id)
-        )
+            AlarmScheduler.reschedule(
+                context = context(),
+                repo = repo,
+                alarm = updated.copy(id = id)
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.e(TAG, "Не удалось переключить будильник id=${alarm.id}", error)
+            _userMessages.send("Не удалось изменить будильник")
+        }
     }
 
     /**
@@ -217,16 +236,23 @@ class AlarmListViewModel(
         openEditorJob?.cancel()
 
         openEditorJob = viewModelScope.launch {
-            val periods = repo.periodsList(alarm.id)
-            val overrides = repo.overridesList(alarm.id)
+            try {
+                val periods = repo.periodsList(alarm.id)
+                val overrides = repo.overridesList(alarm.id)
 
-            setEditorSession(
-                AlarmEditorSession(
-                    initialAlarm = alarm,
-                    initialPeriods = periods,
-                    initialOverrides = overrides
+                setEditorSession(
+                    AlarmEditorSession(
+                        initialAlarm = alarm,
+                        initialPeriods = periods,
+                        initialOverrides = overrides
+                    )
                 )
-            )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.e(TAG, "Не удалось открыть будильник id=${alarm.id}", error)
+                _userMessages.send("Не удалось открыть будильник")
+            }
         }
     }
 
@@ -309,15 +335,22 @@ class AlarmListViewModel(
 
     /** Удалить будильник, снять сигнал и записать событие в журнал. */
     fun delete(alarm: AlarmEntity) = viewModelScope.launch {
-        AlarmScheduler.cancel(context(), alarm.id)
+        try {
+            AlarmScheduler.cancel(context(), alarm.id)
 
-        AlarmEventLog(context()).record(
-            AlarmEventType.CANCELLED,
-            "id=${alarm.id} (удалён)",
-            System.currentTimeMillis()
-        )
+            AlarmEventLog(context()).record(
+                AlarmEventType.CANCELLED,
+                "id=${alarm.id} (удалён)",
+                System.currentTimeMillis()
+            )
 
-        repo.delete(alarm)
+            repo.delete(alarm)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.e(TAG, "Не удалось удалить будильник id=${alarm.id}", error)
+            _userMessages.send("Не удалось удалить будильник")
+        }
     }
 
     private fun context(): Application =

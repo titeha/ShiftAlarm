@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -36,6 +37,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -95,6 +98,14 @@ class MainActivity : ComponentActivity() {
 
         var saveWarning by remember { mutableStateOf<String?>(null) }
 
+        val snackbarHostState = remember { SnackbarHostState() }
+
+        LaunchedEffect(Unit) {
+          vm.userMessages.collect { message ->
+            snackbarHostState.showSnackbar(message)
+          }
+        }
+
         LaunchedEffect(saveState) {
           val result = saveState as? AlarmSaveState.Saved
             ?: return@LaunchedEffect
@@ -110,6 +121,7 @@ class MainActivity : ComponentActivity() {
 
         RequestNotificationPermission()
 
+        Box(modifier = Modifier.fillMaxSize()) {
         val currentEditor = editorSession
         when {
           showSettings -> {
@@ -196,6 +208,12 @@ class MainActivity : ComponentActivity() {
                 Text("Понятно")
               }
             }
+          )
+        }
+
+          SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
           )
         }
       }
