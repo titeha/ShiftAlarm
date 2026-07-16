@@ -100,6 +100,9 @@ class MainActivity : ComponentActivity() {
 
         val snackbarHostState = remember { SnackbarHostState() }
 
+        // Контекстный запрос уведомлений (не вслепую на старте): по действию с будильником.
+        val requestNotifications = rememberNotificationPermissionRequester()
+
         LaunchedEffect(Unit) {
           vm.userMessages.collect { message ->
             snackbarHostState.showSnackbar(message)
@@ -117,9 +120,10 @@ class MainActivity : ComponentActivity() {
           vm.closeEditor()
           saveWarning = result.warningMessage
           vm.resetSaveState()
-        }
 
-        RequestNotificationPermission()
+          // Будильник создан/сохранён — уместный момент попросить разрешение на уведомления.
+          requestNotifications()
+        }
 
         Box(modifier = Modifier.fillMaxSize()) {
         val currentEditor = editorSession
@@ -180,7 +184,11 @@ class MainActivity : ComponentActivity() {
                 vm.resetSaveState()
                 vm.openEditor(alarm)
               },
-              onToggle = { alarm, on -> vm.setEnabled(alarm, on) },
+              onToggle = { alarm, on ->
+                vm.setEnabled(alarm, on)
+                // Включение будильника — уместный момент попросить разрешение на уведомления.
+                if (on) requestNotifications()
+              },
               onDelete = { vm.delete(it) },
               onOpenDiagnostics = { showDiagnostics = true },
               onOpenSettings = { showSettings = true }
@@ -433,18 +441,58 @@ private fun formatNext(value: LocalDateTime, today: LocalDate): String {
   else "%02d.%02d %s".format(value.dayOfMonth, value.monthValue, time)
 }
 
+/**
+ * Контекстный запрос разрешения на уведомления (Android 13+).
+ *
+ * Системный диалог НЕ дёргается вслепую на старте. Вместо этого возвращается функция «запросить,
+ * если нужно»: при создании/включении будильника показываем короткое обоснование, и только по
+ * «Разрешить» — системный диалог. Спрашиваем один раз (флаг в [SettingsStore]); дальше постоянный
+ * путь в настройки даёт баннер готовности. На Android < 13 и при уже выданном разрешении — no-op.
+ */
 @Composable
-private fun RequestNotificationPermission() {
+private fun rememberNotificationPermissionRequester(): () -> Unit {
   val context = LocalContext.current
+  val settings = remember { SettingsStore(context) }
+  var showRationale by remember { mutableStateOf(false) }
+
   val launcher = rememberLauncherForActivityResult(
     ActivityResultContracts.RequestPermission()
-  ) {}
-  LaunchedEffect(Unit) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+  ) { /* результат не важен: статус покажет баннер готовности */ }
+
+  if (showRationale) {
+    AlertDialog(
+      onDismissRequest = { showRationale = false },
+      title = { Text("Разрешить уведомления?") },
+      text = {
+        Text(
+          "Будильнику нужны уведомления, чтобы показать экран звонка и кнопку «Стоп». " +
+            "Без них сигнал может не всплыть."
+        )
+      },
+      confirmButton = {
+        TextButton(onClick = {
+          showRationale = false
+          settings.setNotificationPromptDone()
+          launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }) { Text("Разрешить") }
+      },
+      dismissButton = {
+        TextButton(onClick = {
+          showRationale = false
+          settings.setNotificationPromptDone()
+        }) { Text("Не сейчас") }
+      }
+    )
+  }
+
+  return {
+    if (
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
       ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-      PackageManager.PERMISSION_GRANTED
+      PackageManager.PERMISSION_GRANTED &&
+      !settings.notificationPromptDone()
     ) {
-      launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+      showRationale = true
     }
   }
 }

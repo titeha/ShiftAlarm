@@ -22,9 +22,18 @@ class SettingsStore(context: Context) {
 
   fun setDynamicColor(enabled: Boolean) = prefs.edit().putBoolean(KEY_DYNAMIC, enabled).apply()
 
+  /**
+   * Показывали ли уже контекстный запрос разрешения на уведомления. Спрашиваем один раз (при
+   * создании/включении будильника); дальше путь в настройки даёт баннер готовности.
+   */
+  fun notificationPromptDone(): Boolean = prefs.getBoolean(KEY_NOTIF_PROMPT, false)
+
+  fun setNotificationPromptDone() = prefs.edit().putBoolean(KEY_NOTIF_PROMPT, true).apply()
+
   private companion object {
     const val PREFS = "app_settings"
     const val KEY_THEME = "theme_mode"
     const val KEY_DYNAMIC = "dynamic_color"
+    const val KEY_NOTIF_PROMPT = "notification_prompt_done"
   }
 }
