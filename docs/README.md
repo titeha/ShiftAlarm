@@ -68,6 +68,7 @@
 | [ALARM_SIGNAL_FALLBACK.md](ALARM_SIGNAL_FALLBACK.md) | Вибрация как запасной канал сигнала. |
 | [ALARM_STOP_UI_SYNC.md](ALARM_STOP_UI_SYNC.md) | Закрытие полноэкранного экрана при остановке сигнала из уведомления. |
 | [SYSTEM_RESCHEDULE.md](SYSTEM_RESCHEDULE.md) | Перепланирование будильников после reboot / обновления приложения / смены времени и часового пояса. |
+| [DST_POLICY.md](DST_POLICY.md) | Часовой пояс и переходы летнего времени: единый резолвер локального времени в Instant, политика gap/overlap. |
 | [BATCH_RESCHEDULE.md](BATCH_RESCHEDULE.md) | Изоляция ошибок отдельных будильников при массовом перепланировании. |
 | [USER_OPERATION_ERRORS.md](USER_OPERATION_ERRORS.md) | Единая обработка ошибок операций списка (toggle/delete/open) через Snackbar; техническое — в журнал. |
 | [SET_ALARM_INTENT.md](SET_ALARM_INTENT.md) | Обработка и валидация внешнего `ACTION_SET_ALARM` (Ассистент/сторонние приложения). |

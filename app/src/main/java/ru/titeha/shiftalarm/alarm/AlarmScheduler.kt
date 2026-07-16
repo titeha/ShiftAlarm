@@ -14,7 +14,7 @@ import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 import java.time.LocalDateTime
-import java.time.ZoneId
+import ru.titeha.shiftalarm.schedule.AlarmInstant
 
 /**
  * Планирование будильников через системный AlarmManager.setAlarmClock —
@@ -72,10 +72,7 @@ object AlarmScheduler {
       scheduleAt(
         context = context,
         alarmId = alarm.id,
-        triggerAtMillis = next
-          .atZone(ZoneId.systemDefault())
-          .toInstant()
-          .toEpochMilli()
+        triggerAtMillis = AlarmInstant.epochMilli(next)
       )
       AlarmEventLog(context).record(
         AlarmEventType.SCHEDULED,
