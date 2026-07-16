@@ -20,6 +20,8 @@
 | [SHIFTALARM_PROJECT_REVIEW_2026-07-08.md](SHIFTALARM_PROJECT_REVIEW_2026-07-08.md) | Технический аудит (ChatGPT/GPT-5.5 Pro): архитектура, риски по приоритетам P0–P3, что уже хорошо. |
 | [CONSOLIDATED_REVIEW_2026-07-16.md](CONSOLIDATED_REVIEW_2026-07-16.md) | Сверка внешнего ревью с кодом и консолидированный план стабилизации. |
 | [EDITOR_STABILIZATION_PLAN.md](EDITOR_STABILIZATION_PLAN.md) | Рабочий список недочётов редактора, решения и порядок стабилизации UI (чеклист шагов). |
+| [RELIABILITY_AUDIT.md](RELIABILITY_AUDIT.md) | Чек-лист аудита надёжности звонка (P0/P1/P2): что проверить в коде и как чинить. |
+| [RELIABILITY_REPORT.md](RELIABILITY_REPORT.md) | Результат аудита надёжности по коду: статусы пунктов, пробелы, порядок фиксов. |
 
 ## Архитектура
 
