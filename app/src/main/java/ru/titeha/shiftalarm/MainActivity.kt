@@ -125,6 +125,11 @@ class MainActivity : ComponentActivity() {
         // Контекстный запрос уведомлений (не вслепую на старте): по действию с будильником.
         val requestNotifications = rememberNotificationPermissionRequester()
 
+        // Датчик шагов для жёсткого режима требует ACTIVITY_RECOGNITION (Android 10+) — запросим при выборе.
+        val activityRecognitionLauncher = rememberLauncherForActivityResult(
+          ActivityResultContracts.RequestPermission()
+        ) { /* отказ не критичен: без датчика «Шаги» просто не будут считаться */ }
+
         LaunchedEffect(Unit) {
           vm.userMessages.collect { message ->
             snackbarHostState.showSnackbar(message)
@@ -160,7 +165,19 @@ class MainActivity : ComponentActivity() {
               ringConfig = ringConfig,
               onRingConfig = { ringConfig = it; settings.setRingConfig(it) },
               dismissMode = dismissMode,
-              onDismissMode = { dismissMode = it; settings.setDismissMode(it) },
+              onDismissMode = { mode ->
+                dismissMode = mode
+                settings.setDismissMode(mode)
+                // «Шаги» без разрешения на распознавание активности не считаются — просим при выборе.
+                if (mode == ru.titeha.shiftalarm.alarm.DismissMode.STEPS &&
+                  Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                  ContextCompat.checkSelfPermission(
+                    this@MainActivity, Manifest.permission.ACTIVITY_RECOGNITION
+                  ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                  activityRecognitionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                }
+              },
               onRunSelfTest = { vm.runSelfTest() },
               onOpenPhoneSetup = if (vendorGuide != null) {
                 { showSettings = false; showVendorSetup = true }
