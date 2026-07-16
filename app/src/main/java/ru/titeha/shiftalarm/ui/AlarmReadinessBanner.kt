@@ -119,6 +119,7 @@ private fun titleOf(issue: AlarmReadinessIssue): String = when (issue) {
   AlarmReadinessIssue.NOTIFICATIONS -> "Уведомления выключены"
   AlarmReadinessIssue.FULL_SCREEN -> "Полноэкранные уведомления выключены"
   AlarmReadinessIssue.BATTERY -> "Экономия батареи ограничивает приложение"
+  AlarmReadinessIssue.ALARM_VOLUME -> "Громкость будильника на нуле"
 }
 
 private fun explainOf(issue: AlarmReadinessIssue): String = when (issue) {
@@ -126,4 +127,5 @@ private fun explainOf(issue: AlarmReadinessIssue): String = when (issue) {
   AlarmReadinessIssue.NOTIFICATIONS -> "Без них экран звонка может не показаться."
   AlarmReadinessIssue.FULL_SCREEN -> "Без них экран «Подъём!» не всплывёт сам поверх блокировки."
   AlarmReadinessIssue.BATTERY -> "Добавьте приложение в исключения, чтобы звонок не задерживался."
+  AlarmReadinessIssue.ALARM_VOLUME -> "Сигнал прозвучит только вибрацией. Поднимите громкость будильника."
 }

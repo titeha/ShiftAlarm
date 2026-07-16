@@ -45,11 +45,24 @@ class AlarmReadinessTest {
   }
 
   @Test
-  fun severity_batteryIsRecommendation_othersCritical() {
+  fun severity_batteryAndVolumeAreRecommendation_othersCritical() {
     assertEquals(AlarmReadinessSeverity.RECOMMENDATION, AlarmReadiness.severityOf(AlarmReadinessIssue.BATTERY))
+    assertEquals(AlarmReadinessSeverity.RECOMMENDATION, AlarmReadiness.severityOf(AlarmReadinessIssue.ALARM_VOLUME))
     assertEquals(AlarmReadinessSeverity.CRITICAL, AlarmReadiness.severityOf(AlarmReadinessIssue.EXACT_ALARM))
     assertEquals(AlarmReadinessSeverity.CRITICAL, AlarmReadiness.severityOf(AlarmReadinessIssue.NOTIFICATIONS))
     assertEquals(AlarmReadinessSeverity.CRITICAL, AlarmReadiness.severityOf(AlarmReadinessIssue.FULL_SCREEN))
+  }
+
+  @Test
+  fun alarmVolumeZero_reported() {
+    assertEquals(
+      listOf(AlarmReadinessIssue.ALARM_VOLUME),
+      AlarmReadiness.issues(
+        canScheduleExact = true, notificationsAllowed = true,
+        fullScreenAllowed = true, batteryUnrestricted = true,
+        alarmVolumeZero = true
+      )
+    )
   }
 
   @Test

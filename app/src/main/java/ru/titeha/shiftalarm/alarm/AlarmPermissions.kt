@@ -3,6 +3,7 @@ package ru.titeha.shiftalarm.alarm
 import android.app.AlarmManager
 import android.app.NotificationManager
 import android.content.Context
+import android.media.AudioManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -43,12 +44,19 @@ object AlarmPermissions {
     return pm.isIgnoringBatteryOptimizations(context.packageName)
   }
 
+  /** Громкость канала будильника на нуле — сигнал прозвучит только вибрацией. */
+  fun alarmVolumeZero(context: Context): Boolean {
+    val audio = context.getSystemService(AudioManager::class.java)
+    return audio.getStreamVolume(AudioManager.STREAM_ALARM) == 0
+  }
+
   /** Актуальные проблемы готовности (по приоритету). Пустой список — всё в порядке. */
   fun issues(context: Context): List<AlarmReadinessIssue> = AlarmReadiness.issues(
     canScheduleExact = canScheduleExact(context),
     notificationsAllowed = notificationsAllowed(context),
     fullScreenAllowed = canUseFullScreen(context),
     batteryUnrestricted = batteryUnrestricted(context),
+    alarmVolumeZero = alarmVolumeZero(context),
   )
 
   /** Интент в настройки для устранения [issue]. */
@@ -79,6 +87,10 @@ object AlarmPermissions {
       // Список приложений энергосбережения (без прямого запроса — безопасно для Google Play).
       AlarmReadinessIssue.BATTERY ->
         Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+
+      // Настройки звука: громкость будильника пользователь поднимает сам (не трогаем её кодом).
+      AlarmReadinessIssue.ALARM_VOLUME ->
+        Intent(Settings.ACTION_SOUND_SETTINGS)
     }
     return intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
   }

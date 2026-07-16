@@ -86,6 +86,7 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
       ReadinessRow("Уведомления", AlarmReadinessIssue.NOTIFICATIONS !in issues)
       ReadinessRow("Полноэкранные уведомления", AlarmReadinessIssue.FULL_SCREEN !in issues)
       ReadinessRow("Энергосбережение (рекомендация)", AlarmReadinessIssue.BATTERY !in issues)
+      ReadinessRow("Громкость будильника (рекомендация)", AlarmReadinessIssue.ALARM_VOLUME !in issues)
       Spacer(Modifier.height(16.dp))
 
       Row(

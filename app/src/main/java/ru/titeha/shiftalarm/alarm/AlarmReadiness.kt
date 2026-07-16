@@ -16,6 +16,9 @@ enum class AlarmReadinessIssue {
 
   /** Приложение под ограничением энергосбережения: система может задержать/убить звонок. */
   BATTERY,
+
+  /** Громкость будильника на нуле: звук не прозвучит, останется только вибрация. */
+  ALARM_VOLUME,
 }
 
 /**
@@ -37,7 +40,8 @@ object AlarmReadiness {
    * почти всегда не в белом списке, поэтому не пугаем красным, а мягко советуем.
    */
   fun severityOf(issue: AlarmReadinessIssue): AlarmReadinessSeverity = when (issue) {
-    AlarmReadinessIssue.BATTERY -> AlarmReadinessSeverity.RECOMMENDATION
+    AlarmReadinessIssue.BATTERY,
+    AlarmReadinessIssue.ALARM_VOLUME -> AlarmReadinessSeverity.RECOMMENDATION
     else -> AlarmReadinessSeverity.CRITICAL
   }
 
@@ -46,6 +50,7 @@ object AlarmReadiness {
    * @param notificationsAllowed уведомления разрешены (на Android < 13 всегда true).
    * @param fullScreenAllowed полноэкранные уведомления разрешены (на Android < 14 всегда true).
    * @param batteryUnrestricted нет ограничения энергосбережения; null — не проверяем.
+   * @param alarmVolumeZero громкость канала будильника на нуле (сигнал будет только вибрацией).
    * @return проблемы по приоритету; пустой список — всё готово.
    */
   fun issues(
@@ -53,10 +58,12 @@ object AlarmReadiness {
     notificationsAllowed: Boolean,
     fullScreenAllowed: Boolean,
     batteryUnrestricted: Boolean?,
+    alarmVolumeZero: Boolean = false,
   ): List<AlarmReadinessIssue> = buildList {
     if (!canScheduleExact) add(AlarmReadinessIssue.EXACT_ALARM)
     if (!notificationsAllowed) add(AlarmReadinessIssue.NOTIFICATIONS)
     if (!fullScreenAllowed) add(AlarmReadinessIssue.FULL_SCREEN)
     if (batteryUnrestricted == false) add(AlarmReadinessIssue.BATTERY)
+    if (alarmVolumeZero) add(AlarmReadinessIssue.ALARM_VOLUME)
   }
 }
