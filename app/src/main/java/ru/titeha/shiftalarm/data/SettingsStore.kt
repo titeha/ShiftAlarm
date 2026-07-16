@@ -11,7 +11,15 @@ import ru.titeha.shiftalarm.ui.theme.ThemeMode
  */
 class SettingsStore(context: Context) {
 
-  private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+  private val app = context.applicationContext
+  private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+  /**
+   * Device-protected настройки, которые нужны в пути звонка ДО разблокировки (Direct Boot): параметры
+   * снуза/авто-перезвона и способ выключения. CE-хранилище там недоступно и роняет сервис звонка.
+   */
+  private val alarmPrefs = app.createDeviceProtectedStorageContext()
+    .getSharedPreferences(PREFS_ALARM_DE, Context.MODE_PRIVATE)
 
   fun themeMode(): ThemeMode =
     runCatching { ThemeMode.valueOf(prefs.getString(KEY_THEME, ThemeMode.SYSTEM.name)!!) }
@@ -44,14 +52,14 @@ class SettingsStore(context: Context) {
   fun ringConfig(): RingConfig {
     val d = RingConfig()
     return RingConfig(
-      ringDurationMinutes = prefs.getInt(KEY_RING_DURATION, d.ringDurationMinutes).coerceIn(1, 30),
-      snoozeIntervalMinutes = prefs.getInt(KEY_SNOOZE_INTERVAL, d.snoozeIntervalMinutes).coerceIn(1, 30),
-      maxSnoozes = prefs.getInt(KEY_MAX_SNOOZES, d.maxSnoozes).coerceIn(0, 10),
-      autoRepeatEnabled = prefs.getBoolean(KEY_AUTO_REPEAT, d.autoRepeatEnabled),
+      ringDurationMinutes = alarmPrefs.getInt(KEY_RING_DURATION, d.ringDurationMinutes).coerceIn(1, 30),
+      snoozeIntervalMinutes = alarmPrefs.getInt(KEY_SNOOZE_INTERVAL, d.snoozeIntervalMinutes).coerceIn(1, 30),
+      maxSnoozes = alarmPrefs.getInt(KEY_MAX_SNOOZES, d.maxSnoozes).coerceIn(0, 10),
+      autoRepeatEnabled = alarmPrefs.getBoolean(KEY_AUTO_REPEAT, d.autoRepeatEnabled),
     )
   }
 
-  fun setRingConfig(config: RingConfig) = prefs.edit()
+  fun setRingConfig(config: RingConfig) = alarmPrefs.edit()
     .putInt(KEY_RING_DURATION, config.ringDurationMinutes)
     .putInt(KEY_SNOOZE_INTERVAL, config.snoozeIntervalMinutes)
     .putInt(KEY_MAX_SNOOZES, config.maxSnoozes)
@@ -60,14 +68,15 @@ class SettingsStore(context: Context) {
 
   /** Способ выключения звонка (жёсткий режим). По умолчанию обычное «Стоп». */
   fun dismissMode(): DismissMode = runCatching {
-    DismissMode.valueOf(prefs.getString(KEY_DISMISS_MODE, DismissMode.NORMAL.name)!!)
+    DismissMode.valueOf(alarmPrefs.getString(KEY_DISMISS_MODE, DismissMode.NORMAL.name)!!)
   }.getOrDefault(DismissMode.NORMAL)
 
   fun setDismissMode(mode: DismissMode) =
-    prefs.edit().putString(KEY_DISMISS_MODE, mode.name).apply()
+    alarmPrefs.edit().putString(KEY_DISMISS_MODE, mode.name).apply()
 
   private companion object {
     const val PREFS = "app_settings"
+    const val PREFS_ALARM_DE = "alarm_settings_de"
     const val KEY_THEME = "theme_mode"
     const val KEY_DYNAMIC = "dynamic_color"
     const val KEY_NOTIF_PROMPT = "notification_prompt_done"
