@@ -30,10 +30,16 @@ class SettingsStore(context: Context) {
 
   fun setNotificationPromptDone() = prefs.edit().putBoolean(KEY_NOTIF_PROMPT, true).apply()
 
+  /** Скрыта ли на списке подсказка «Настроить телефон» (вендорский автозапуск). */
+  fun vendorSetupDismissed(): Boolean = prefs.getBoolean(KEY_VENDOR_SETUP_DISMISSED, false)
+
+  fun setVendorSetupDismissed() = prefs.edit().putBoolean(KEY_VENDOR_SETUP_DISMISSED, true).apply()
+
   private companion object {
     const val PREFS = "app_settings"
     const val KEY_THEME = "theme_mode"
     const val KEY_DYNAMIC = "dynamic_color"
     const val KEY_NOTIF_PROMPT = "notification_prompt_done"
+    const val KEY_VENDOR_SETUP_DISMISSED = "vendor_setup_dismissed"
   }
 }

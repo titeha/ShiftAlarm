@@ -39,6 +39,7 @@ fun SettingsScreen(
   dynamicColor: Boolean,
   onThemeMode: (ThemeMode) -> Unit,
   onDynamicColor: (Boolean) -> Unit,
+  onOpenPhoneSetup: (() -> Unit)? = null,
   onBack: () -> Unit,
 ) {
   Scaffold { padding ->
@@ -91,6 +92,18 @@ fun SettingsScreen(
             )
           }
         }
+      }
+
+      if (onOpenPhoneSetup != null) {
+        Spacer(Modifier.height(24.dp))
+        Text("Надёжность", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        Text(
+          "На вашей прошивке будильник может не срабатывать после перезагрузки без автозапуска.",
+          style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = onOpenPhoneSetup) { Text("Настроить телефон") }
       }
 
       Spacer(Modifier.height(24.dp))

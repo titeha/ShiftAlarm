@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -64,7 +65,9 @@ import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.ui.AlarmEditorScreen
 import ru.titeha.shiftalarm.ui.AlarmListViewModel
+import ru.titeha.shiftalarm.alarm.VendorSetup
 import ru.titeha.shiftalarm.ui.AlarmReadinessBanner
+import ru.titeha.shiftalarm.ui.VendorSetupScreen
 import ru.titeha.shiftalarm.ui.AlarmSaveState
 import ru.titeha.shiftalarm.ui.DiagnosticsScreen
 import ru.titeha.shiftalarm.ui.rememberCurrentMinute
@@ -95,6 +98,11 @@ class MainActivity : ComponentActivity() {
 
         var showDiagnostics by remember { mutableStateOf(false) }
         var showSettings by remember { mutableStateOf(false) }
+        var showVendorSetup by remember { mutableStateOf(false) }
+
+        // Инструкция по автозапуску для агрессивных прошивок (Xiaomi и т.п.); null — прошивка не из них.
+        val vendorGuide = remember { VendorSetup.forManufacturer(Build.MANUFACTURER) }
+        var vendorDismissed by remember { mutableStateOf(settings.vendorSetupDismissed()) }
 
         var saveWarning by remember { mutableStateOf<String?>(null) }
 
@@ -135,8 +143,18 @@ class MainActivity : ComponentActivity() {
               dynamicColor = dynamicColor,
               onThemeMode = { themeMode = it; settings.setThemeMode(it) },
               onDynamicColor = { dynamicColor = it; settings.setDynamicColor(it) },
+              onOpenPhoneSetup = if (vendorGuide != null) {
+                { showSettings = false; showVendorSetup = true }
+              } else {
+                null
+              },
               onBack = { showSettings = false }
             )
+          }
+
+          showVendorSetup && vendorGuide != null -> {
+            BackHandler { showVendorSetup = false }
+            VendorSetupScreen(guide = vendorGuide, onBack = { showVendorSetup = false })
           }
 
           showDiagnostics -> {
@@ -191,7 +209,13 @@ class MainActivity : ComponentActivity() {
               },
               onDelete = { vm.delete(it) },
               onOpenDiagnostics = { showDiagnostics = true },
-              onOpenSettings = { showSettings = true }
+              onOpenSettings = { showSettings = true },
+              showVendorSetupHint = vendorGuide != null && !vendorDismissed,
+              onOpenVendorSetup = { showVendorSetup = true },
+              onDismissVendorSetup = {
+                vendorDismissed = true
+                settings.setVendorSetupDismissed()
+              }
             )
           }
         }
@@ -229,6 +253,31 @@ class MainActivity : ComponentActivity() {
   }
 }
 
+/** Скрываемая карточка «Настроить телефон» для агрессивных прошивок (автозапуск после ребута). */
+@Composable
+private fun VendorSetupHintCard(
+  onOpen: () -> Unit,
+  onDismiss: () -> Unit,
+  modifier: Modifier = Modifier
+) {
+  Card(modifier = modifier.fillMaxWidth()) {
+    Column(Modifier.padding(12.dp)) {
+      Text("Настройте телефон для надёжности", style = MaterialTheme.typography.titleSmall)
+      Spacer(Modifier.height(4.dp))
+      Text(
+        "На этой прошивке будильник может не сработать после перезагрузки, пока не разрешён " +
+          "автозапуск. Настроить нужно один раз.",
+        style = MaterialTheme.typography.bodySmall
+      )
+      Spacer(Modifier.height(8.dp))
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = onOpen) { Text("Настроить") }
+        TextButton(onClick = onDismiss) { Text("Скрыть") }
+      }
+    }
+  }
+}
+
 private fun defaultAlarm() = AlarmEntity(
   hour = 7, minute = 0,
   mode = AlarmEntity.MODE_WEEKLY,
@@ -246,7 +295,10 @@ private fun AlarmListScreen(
   onToggle: (AlarmEntity, Boolean) -> Unit,
   onDelete: (AlarmEntity) -> Unit,
   onOpenDiagnostics: () -> Unit,
-  onOpenSettings: () -> Unit
+  onOpenSettings: () -> Unit,
+  showVendorSetupHint: Boolean = false,
+  onOpenVendorSetup: () -> Unit = {},
+  onDismissVendorSetup: () -> Unit = {}
 ) {
   val currentMinute = rememberCurrentMinute()
   Scaffold(
@@ -290,6 +342,15 @@ private fun AlarmListScreen(
 
       // Предупреждение о разрешениях, мешающих звонку (показывается только при проблемах).
       AlarmReadinessBanner(Modifier.padding(bottom = 12.dp))
+
+      // Подсказка «Настроить телефон» для агрессивных прошивок (автозапуск). Скрываемая.
+      if (showVendorSetupHint) {
+        VendorSetupHintCard(
+          onOpen = onOpenVendorSetup,
+          onDismiss = onDismissVendorSetup,
+          modifier = Modifier.padding(bottom = 12.dp)
+        )
+      }
 
       if (alarms.isEmpty()) {
         Text("Список пуст. Добавьте будильник.", style = MaterialTheme.typography.bodyMedium)
