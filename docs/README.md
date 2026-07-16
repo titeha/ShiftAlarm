@@ -79,6 +79,7 @@
 | [USER_OPERATION_ERRORS.md](USER_OPERATION_ERRORS.md) | Единая обработка ошибок операций списка (toggle/delete/open) через Snackbar; техническое — в журнал. |
 | [SET_ALARM_INTENT.md](SET_ALARM_INTENT.md) | Обработка и валидация внешнего `ACTION_SET_ALARM` (Ассистент/сторонние приложения). |
 | [SNOOZE_AND_REPEAT.md](SNOOZE_AND_REPEAT.md) | ТЗ (старшая модель): слой «сессия звонка» — снуз, авто-перезвон невыключенного (общий лимит), дублирование будильника, жёсткий режим за флагом. Чистый RingSessionReducer. |
+| [SNOOZE.md](SNOOZE.md) | Реализация снуза (этап 1): RingSessionReducer + device-protected сессия/снуз-кэш, кнопка «Отложить», раздел настроек «Звонок». |
 
 ## Процесс
 

@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import ru.titeha.shiftalarm.alarm.RingConfig
 import ru.titeha.shiftalarm.data.HolidayCalendarRepository
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
 import java.time.Instant
@@ -39,6 +40,8 @@ fun SettingsScreen(
   dynamicColor: Boolean,
   onThemeMode: (ThemeMode) -> Unit,
   onDynamicColor: (Boolean) -> Unit,
+  ringConfig: RingConfig = RingConfig(),
+  onRingConfig: (RingConfig) -> Unit = {},
   onRunSelfTest: () -> Unit = {},
   onOpenPhoneSetup: (() -> Unit)? = null,
   onBack: () -> Unit,
@@ -111,6 +114,45 @@ fun SettingsScreen(
         )
         TextButton(onClick = onOpenPhoneSetup) { Text("Настроить телефон") }
       }
+
+      Spacer(Modifier.height(24.dp))
+      Text("Звонок", style = MaterialTheme.typography.titleMedium)
+      Spacer(Modifier.height(8.dp))
+      Text("Интервал снуза, мин", style = MaterialTheme.typography.bodyMedium)
+      Spacer(Modifier.height(4.dp))
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(5, 10, 15).forEach { minutes ->
+          FilterChip(
+            selected = ringConfig.snoozeIntervalMinutes == minutes,
+            onClick = {
+              if (ringConfig.snoozeIntervalMinutes != minutes) {
+                onRingConfig(ringConfig.copy(snoozeIntervalMinutes = minutes))
+              }
+            },
+            label = { Text(minutes.toString()) }
+          )
+        }
+      }
+      Spacer(Modifier.height(8.dp))
+      Text("Сколько раз откладывать", style = MaterialTheme.typography.bodyMedium)
+      Spacer(Modifier.height(4.dp))
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(0, 1, 2, 3, 5).forEach { limit ->
+          FilterChip(
+            selected = ringConfig.maxSnoozes == limit,
+            onClick = {
+              if (ringConfig.maxSnoozes != limit) onRingConfig(ringConfig.copy(maxSnoozes = limit))
+            },
+            label = { Text(limit.toString()) }
+          )
+        }
+      }
+      Spacer(Modifier.height(4.dp))
+      Text(
+        if (ringConfig.maxSnoozes == 0) "0 — снуз выключен, кнопки «Отложить» не будет."
+        else "После лимита звонок больше не откладывается.",
+        style = MaterialTheme.typography.labelSmall
+      )
 
       Spacer(Modifier.height(24.dp))
       Text("Праздничный календарь", style = MaterialTheme.typography.titleMedium)

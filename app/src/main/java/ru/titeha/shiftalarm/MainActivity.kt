@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
       val settings = remember { SettingsStore(applicationContext) }
       var themeMode by remember { mutableStateOf(settings.themeMode()) }
       var dynamicColor by remember { mutableStateOf(settings.dynamicColor()) }
+      var ringConfig by remember { mutableStateOf(settings.ringConfig()) }
       val darkTheme = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
@@ -152,6 +153,8 @@ class MainActivity : ComponentActivity() {
               dynamicColor = dynamicColor,
               onThemeMode = { themeMode = it; settings.setThemeMode(it) },
               onDynamicColor = { dynamicColor = it; settings.setDynamicColor(it) },
+              ringConfig = ringConfig,
+              onRingConfig = { ringConfig = it; settings.setRingConfig(it) },
               onRunSelfTest = { vm.runSelfTest() },
               onOpenPhoneSetup = if (vendorGuide != null) {
                 { showSettings = false; showVendorSetup = true }
