@@ -12,6 +12,7 @@ import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import ru.titeha.shiftalarm.AlarmActivity
 import ru.titeha.shiftalarm.data.AlarmEventLog
@@ -29,6 +30,7 @@ import ru.titeha.shiftalarm.data.AlarmEventType
  */
 class AlarmService : Service() {
   private var player: MediaPlayer? = null
+  private var wakeLock: PowerManager.WakeLock? = null
   private var signalStarted = false
   private var alarmLabel: String = ""
 
@@ -132,6 +134,13 @@ class AlarmService : Service() {
     signalStarted = true
 
     /*
+     * Держим CPU включённым, пока играет сигнал: foreground-сервиса и USAGE_ALARM недостаточно на
+     * части прошивок — при погашенном экране звук/вибрация могут «уснуть». Wake lock со страховочным
+     * таймаутом, чтобы никогда не зависнуть навсегда.
+     */
+    acquireWakeLock()
+
+    /*
      * Вибрация стартует независимо от звука.
      * Если MediaPlayer не сможет открыть мелодию, вибрация останется запасным сигналом.
      */
@@ -224,7 +233,34 @@ class AlarmService : Service() {
 
     player = null
     AlarmVibration.stop(this)
+    releaseWakeLock()
     signalStarted = false
+  }
+
+  private fun acquireWakeLock() {
+    if (wakeLock != null) {
+      return
+    }
+
+    wakeLock = getSystemService(PowerManager::class.java)
+      .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG)
+      .apply {
+        setReferenceCounted(false)
+        acquire(WAKE_LOCK_TIMEOUT_MS)
+      }
+  }
+
+  private fun releaseWakeLock() {
+    wakeLock?.let { lock ->
+      try {
+        if (lock.isHeld) {
+          lock.release()
+        }
+      } catch (_: Exception) {
+        // Уже освобождён или в ошибочном состоянии — повторять нечего.
+      }
+    }
+    wakeLock = null
   }
 
   override fun onDestroy() {
@@ -238,6 +274,11 @@ class AlarmService : Service() {
     const val NOTIFICATION_ID = 1
     const val ACTION_STOP = "ru.titeha.shiftalarm.action.STOP"
     const val EXTRA_LABEL = "alarm_label"
+
+    private const val WAKE_LOCK_TAG = "shiftalarm:ringing"
+
+    /** Страховочный таймаут wake lock: звонок столько не длится, но лок не должен зависнуть. */
+    private const val WAKE_LOCK_TIMEOUT_MS = 10L * 60L * 1000L
 
     /** Текст на экране/в уведомлении звонка: название будильника, иначе — дефолт. */
     const val DEFAULT_TEXT = "Подъём!"
