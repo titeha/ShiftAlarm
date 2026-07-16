@@ -73,18 +73,27 @@ object AlarmScheduler {
         System.currentTimeMillis()
       )
     } else {
-      scheduleAt(
+      val scheduled = scheduleAt(
         context = context,
         alarmId = alarm.id,
         triggerAtMillis = AlarmInstant.epochMilli(next)
       )
-      AlarmEventLog(context).record(
-        AlarmEventType.SCHEDULED,
-        "id=${alarm.id} → %02d.%02d %02d:%02d".format(
-          next.dayOfMonth, next.monthValue, next.hour, next.minute
-        ),
-        System.currentTimeMillis()
-      )
+
+      if (scheduled) {
+        AlarmEventLog(context).record(
+          AlarmEventType.SCHEDULED,
+          "id=${alarm.id} → %02d.%02d %02d:%02d".format(
+            next.dayOfMonth, next.monthValue, next.hour, next.minute
+          ),
+          System.currentTimeMillis()
+        )
+      } else {
+        AlarmEventLog(context).record(
+          AlarmEventType.ERROR,
+          "id=${alarm.id}: не удалось запланировать (нет разрешения на точные будильники)",
+          System.currentTimeMillis()
+        )
+      }
     }
   }
 
@@ -147,7 +156,13 @@ object AlarmScheduler {
     return report
   }
 
-  fun scheduleAt(context: Context, alarmId: Long, triggerAtMillis: Long) {
+  /**
+   * Поставить системный сигнal на [triggerAtMillis]. Возвращает false, если ОС отказала из-за
+   * отсутствия разрешения на точные будильники (`SecurityException`, API 31-32) — тогда планировщик
+   * не роняем (готовность уже ведёт в настройки), а событие фиксирует вызывающий код (журналом,
+   * который недоступен при locked boot). true — сигнал поставлен.
+   */
+  fun scheduleAt(context: Context, alarmId: Long, triggerAtMillis: Long): Boolean {
     val alarmManager = context.getSystemService(AlarmManager::class.java)
 
     val show = PendingIntent.getActivity(
@@ -159,14 +174,24 @@ object AlarmScheduler {
 
     val info = AlarmManager.AlarmClockInfo(triggerAtMillis, show)
 
-    alarmManager.setAlarmClock(
-      info,
-      firePendingIntent(
-        context = context,
-        alarmId = alarmId,
-        triggerAtMillis = triggerAtMillis
+    return try {
+      alarmManager.setAlarmClock(
+        info,
+        firePendingIntent(
+          context = context,
+          alarmId = alarmId,
+          triggerAtMillis = triggerAtMillis
+        )
       )
-    )
+      true
+    } catch (error: SecurityException) {
+      Log.e(
+        TAG,
+        "Не удалось запланировать id=$alarmId: нет разрешения на точные будильники",
+        error
+      )
+      false
+    }
   }
 
   fun cancel(context: Context, alarmId: Long) {
