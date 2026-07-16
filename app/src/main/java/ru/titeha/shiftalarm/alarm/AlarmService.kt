@@ -34,20 +34,42 @@ class AlarmService : Service() {
   private var wakeLock: PowerManager.WakeLock? = null
   private var signalStarted = false
   private var alarmLabel: String = ""
+  private var alarmId: Long = AlarmScheduler.NO_ID
 
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    val action = intent?.action
+
     /*
      * intent == null приходит, когда ОС воскрешает убитый сервис.
      * Нам это не нужно: надёжность звонка держит AlarmManager+AlarmReceiver,
-     * а не «липучесть» сервиса.
+     * а не «липучесть» сервиса. «Стоп» дополнительно закрывает сессию звонка.
      */
-    if (intent == null || intent.action == ACTION_STOP) {
+    if (intent == null || action == ACTION_STOP) {
+      val id = intent?.getLongExtra(EXTRA_ALARM_ID, alarmId) ?: alarmId
+      if (id != AlarmScheduler.NO_ID) {
+        RingSessionController.onStopped(this, id)
+      }
       stopRingingAndSelf()
       return START_NOT_STICKY
     }
 
+    /*
+     * «Отложить»: ставим снуз-звонок (через сессию) и глушим текущий сигнал. Будильник вернётся
+     * по снуз-звонку через интервал.
+     */
+    if (action == ACTION_SNOOZE) {
+      val id = intent.getLongExtra(EXTRA_ALARM_ID, alarmId)
+      val label = intent.getStringExtra(EXTRA_LABEL).orEmpty()
+      if (id != AlarmScheduler.NO_ID) {
+        RingSessionController.onSnoozePressed(this, id, label)
+      }
+      stopRingingAndSelf()
+      return START_NOT_STICKY
+    }
+
+    alarmId = intent.getLongExtra(EXTRA_ALARM_ID, AlarmScheduler.NO_ID)
     alarmLabel = intent.getStringExtra(EXTRA_LABEL).orEmpty()
 
     /*
@@ -77,6 +99,7 @@ class AlarmService : Service() {
         Intent(this, AlarmActivity::class.java)
           .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
           .putExtra(EXTRA_LABEL, alarmLabel)
+          .putExtra(EXTRA_ALARM_ID, alarmId)
       )
     } catch (_: Exception) {
       // Фоновый запуск Activity заблокирован ОС — звонок глушится из уведомления.
@@ -91,18 +114,21 @@ class AlarmService : Service() {
       0,
       Intent(this, AlarmActivity::class.java)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        .putExtra(EXTRA_LABEL, alarmLabel),
+        .putExtra(EXTRA_LABEL, alarmLabel)
+        .putExtra(EXTRA_ALARM_ID, alarmId),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 
     val stopPending = PendingIntent.getService(
       this,
       1,
-      Intent(this, AlarmService::class.java).setAction(ACTION_STOP),
+      Intent(this, AlarmService::class.java)
+        .setAction(ACTION_STOP)
+        .putExtra(EXTRA_ALARM_ID, alarmId),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 
-    val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+    val builder = NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
       .setContentTitle("Будильник")
       .setContentText(displayText(alarmLabel))
@@ -110,6 +136,23 @@ class AlarmService : Service() {
       .setCategory(NotificationCompat.CATEGORY_ALARM)
       .setFullScreenIntent(openScreen, true)
       .setContentIntent(openScreen)
+
+    // «Отложить» — только пока лимит снуза не исчерпан (0 = снуз выключен). Порядок: снуз, затем стоп.
+    if (alarmId != AlarmScheduler.NO_ID && RingSessionController.remainingSnoozes(this, alarmId) > 0) {
+      val minutes = RingSessionController.snoozeIntervalMinutes(this)
+      val snoozePending = PendingIntent.getService(
+        this,
+        2,
+        Intent(this, AlarmService::class.java)
+          .setAction(ACTION_SNOOZE)
+          .putExtra(EXTRA_ALARM_ID, alarmId)
+          .putExtra(EXTRA_LABEL, alarmLabel),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+      )
+      builder.addAction(android.R.drawable.ic_lock_idle_alarm, "Отложить $minutes мин", snoozePending)
+    }
+
+    val notification = builder
       .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Стоп", stopPending)
       .setDeleteIntent(stopPending)
       .setOngoing(true)
@@ -327,7 +370,9 @@ class AlarmService : Service() {
     const val CHANNEL_ID = "alarm_channel"
     const val NOTIFICATION_ID = 1
     const val ACTION_STOP = "ru.titeha.shiftalarm.action.STOP"
+    const val ACTION_SNOOZE = "ru.titeha.shiftalarm.action.SNOOZE"
     const val EXTRA_LABEL = "alarm_label"
+    const val EXTRA_ALARM_ID = AlarmScheduler.EXTRA_ALARM_ID
 
     private const val WAKE_LOCK_TAG = "shiftalarm:ringing"
 
@@ -338,9 +383,10 @@ class AlarmService : Service() {
     const val DEFAULT_TEXT = "Подъём!"
     fun displayText(label: String): String = label.ifBlank { DEFAULT_TEXT }
 
-    /** Запустить звонок с названием будильника [label]. Разрешено из ресивера даже из фона. */
-    fun start(context: Context, label: String = "") {
+    /** Запустить звонок будильника [alarmId] с названием [label]. Разрешено из ресивера даже из фона. */
+    fun start(context: Context, alarmId: Long, label: String = "") {
       val intent = Intent(context, AlarmService::class.java)
+        .putExtra(EXTRA_ALARM_ID, alarmId)
         .putExtra(EXTRA_LABEL, label)
 
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -353,6 +399,16 @@ class AlarmService : Service() {
     fun stop(context: Context) {
       context.startService(
         Intent(context, AlarmService::class.java).setAction(ACTION_STOP)
+      )
+    }
+
+    /** Отложить текущий звонок будильника [alarmId] (из экрана «Стоп»). */
+    fun snooze(context: Context, alarmId: Long, label: String = "") {
+      context.startService(
+        Intent(context, AlarmService::class.java)
+          .setAction(ACTION_SNOOZE)
+          .putExtra(EXTRA_ALARM_ID, alarmId)
+          .putExtra(EXTRA_LABEL, label)
       )
     }
 

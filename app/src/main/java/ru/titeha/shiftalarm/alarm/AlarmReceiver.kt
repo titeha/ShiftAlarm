@@ -50,7 +50,7 @@ class AlarmReceiver : BroadcastReceiver() {
       val label = intent.getStringExtra(AlarmService.EXTRA_LABEL).orEmpty()
       DirectBootAlarmStore(appContext).removeSnooze(id)
       Log.i(TAG, "Снуз-срабатывание id=$id — звоним без валидатора")
-      AlarmService.start(appContext, label)
+      AlarmService.start(appContext, id, label)
       return
     }
 
@@ -120,7 +120,7 @@ class AlarmReceiver : BroadcastReceiver() {
     AlarmEventLog(context).record(
       AlarmEventType.FIRED, "id=$alarmId «${alarm.label}»", System.currentTimeMillis()
     )
-    AlarmService.start(context, alarm.label)
+    AlarmService.start(context, alarm.id, alarm.label)
 
     when {
       isOneShot(alarm) && alarm.deleteAfterFiring -> {
@@ -167,7 +167,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
     Log.i(TAG, "Locked: звоним по RingCache id=$alarmId")
     DirectBootEventBuffer(context).add(AlarmEventType.FIRED.name, "id=$alarmId «$label» (locked)", now)
-    AlarmService.start(context, label)
+    AlarmService.start(context, alarmId, label)
   }
 
   private suspend fun periodsFor(

@@ -143,6 +143,8 @@ private fun typeLabel(type: AlarmEventType): String = when (type) {
   AlarmEventType.CANCELLED -> "Снят"
   AlarmEventType.RESCHEDULED -> "Перепланирован"
   AlarmEventType.SIGNAL_DEGRADED -> "Сигнал только вибрацией"
+  AlarmEventType.SNOOZED -> "Отложен"
+  AlarmEventType.MISSED -> "Не был выключен"
   AlarmEventType.ERROR -> "Ошибка обработки"
 }
 

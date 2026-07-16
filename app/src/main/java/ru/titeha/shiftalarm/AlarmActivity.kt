@@ -23,8 +23,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material3.OutlinedButton
+import ru.titeha.shiftalarm.alarm.AlarmScheduler
 import ru.titeha.shiftalarm.alarm.AlarmService
 import ru.titeha.shiftalarm.alarm.AlarmSignalState
+import ru.titeha.shiftalarm.alarm.RingSessionController
 
 /**
  * Полноэкранный экран активного сигнала.
@@ -36,6 +39,11 @@ import ru.titeha.shiftalarm.alarm.AlarmSignalState
 class AlarmActivity : ComponentActivity() {
     /** Название может обновиться, если новый сигнал пришёл в существующую singleTask Activity. */
     private var label by mutableStateOf("")
+    private var alarmId by mutableStateOf(AlarmScheduler.NO_ID)
+
+    /** Остаток снузов на момент показа кнопки (пересчитывается при обновлении интента). */
+    private var snoozeRemaining by mutableStateOf(0)
+    private var snoozeIntervalMinutes by mutableStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +86,13 @@ class AlarmActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(32.dp))
 
+                    if (snoozeRemaining > 0) {
+                        OutlinedButton(onClick = ::snoozeAlarm) {
+                            Text("Отложить на $snoozeIntervalMinutes мин  ·  осталось $snoozeRemaining")
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
+
                     Button(
                         onClick = ::stopAlarm
                     ) {
@@ -98,6 +113,18 @@ class AlarmActivity : ComponentActivity() {
         label = intent
             .getStringExtra(AlarmService.EXTRA_LABEL)
             .orEmpty()
+        alarmId = intent.getLongExtra(AlarmService.EXTRA_ALARM_ID, AlarmScheduler.NO_ID)
+        if (alarmId != AlarmScheduler.NO_ID) {
+            snoozeRemaining = RingSessionController.remainingSnoozes(this, alarmId)
+            snoozeIntervalMinutes = RingSessionController.snoozeIntervalMinutes(this)
+        } else {
+            snoozeRemaining = 0
+        }
+    }
+
+    private fun snoozeAlarm() {
+        AlarmService.snooze(this, alarmId, label)
+        finish()
     }
 
     private fun stopAlarm() {

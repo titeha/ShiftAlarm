@@ -65,31 +65,17 @@ class RingSessionStore(context: Context) {
             ?.let { RingSessionCodec.decodeOrNull(it) }
             ?: emptyList()
 
-    /** Сессия по паре ключа, либо null. */
-    fun find(alarmId: Long, scheduledTriggerAtMillis: Long): RingSessionState? =
-        all().firstOrNull {
-            it.alarmId == alarmId && it.scheduledTriggerAtMillis == scheduledTriggerAtMillis
-        }
+    /** Активная сессия будильника, либо null. Ключ — alarmId: одна активная сессия на будильник. */
+    fun find(alarmId: Long): RingSessionState? =
+        all().firstOrNull { it.alarmId == alarmId }
 
-    /** Вставить/обновить сессию (по ключу). */
+    /** Вставить/обновить сессию (по alarmId). */
     fun put(session: RingSessionState) {
-        val others = all().filterNot {
-            it.alarmId == session.alarmId &&
-                it.scheduledTriggerAtMillis == session.scheduledTriggerAtMillis
-        }
-        write(others + session)
+        write(all().filterNot { it.alarmId == session.alarmId } + session)
     }
 
-    /** Удалить сессию (по ключу). */
-    fun remove(alarmId: Long, scheduledTriggerAtMillis: Long) {
-        val remaining = all().filterNot {
-            it.alarmId == alarmId && it.scheduledTriggerAtMillis == scheduledTriggerAtMillis
-        }
-        write(remaining)
-    }
-
-    /** Удалить все сессии этого будильника (любое плановое время) — для отмены тумблером/удаления. */
-    fun removeAllFor(alarmId: Long) {
+    /** Удалить сессию будильника. */
+    fun remove(alarmId: Long) {
         write(all().filterNot { it.alarmId == alarmId })
     }
 

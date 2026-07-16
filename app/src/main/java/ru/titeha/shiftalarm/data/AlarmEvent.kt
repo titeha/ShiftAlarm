@@ -8,6 +8,8 @@ enum class AlarmEventType {
   CANCELLED,   // снят
   RESCHEDULED, // перепланирование после системного события (reboot/time/timezone/обновление)
   SIGNAL_DEGRADED, // звук не удалось запустить — сигнал только вибрацией
+  SNOOZED, // отложен (ручной снуз или авто-перезвон невыключенного)
+  MISSED, // звонок не был выключен: лимит снуза исчерпан / авто-перезвон выключен
   ERROR, // исключение при обработке (ресивер) — чтобы «почему не сработало» было видно в журнале
 }
 
@@ -19,6 +21,7 @@ val AlarmEventType.isImportant: Boolean
   get() = this == AlarmEventType.FIRED ||
     this == AlarmEventType.SKIPPED ||
     this == AlarmEventType.SIGNAL_DEGRADED ||
+    this == AlarmEventType.MISSED ||
     this == AlarmEventType.ERROR
 
 /** Одна запись журнала: когда ([atMillis]), что ([type]) и детали ([detail], напр. id и время). */

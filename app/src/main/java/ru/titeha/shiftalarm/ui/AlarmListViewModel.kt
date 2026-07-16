@@ -21,6 +21,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import ru.titeha.shiftalarm.alarm.AlarmScheduler
+import ru.titeha.shiftalarm.alarm.RingSessionController
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
@@ -159,6 +160,11 @@ class AlarmListViewModel(
                 repo = repo,
                 alarm = updated.copy(id = id)
             )
+
+            // Выключение будильника закрывает активную сессию звонка (снимает снуз).
+            if (!enabled) {
+                RingSessionController.onCancelled(context(), id)
+            }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -191,11 +197,14 @@ class AlarmListViewModel(
                     overrides = overrides
                 )
             ) {
-                is AlarmSaveResult.Saved ->
+                is AlarmSaveResult.Saved -> {
+                    // Сохранение правок закрывает активную сессию звонка этого будильника.
+                    RingSessionController.onCancelled(context(), result.alarmId)
                     AlarmSaveState.Saved(
                         alarmId = result.alarmId,
                         warningMessage = result.warningMessage
                     )
+                }
 
                 is AlarmSaveResult.Failed ->
                     AlarmSaveState.Failed(
@@ -367,6 +376,7 @@ class AlarmListViewModel(
     fun delete(alarm: AlarmEntity) = viewModelScope.launch {
         try {
             AlarmScheduler.cancel(context(), alarm.id)
+            RingSessionController.onCancelled(context(), alarm.id)
 
             AlarmEventLog(context()).record(
                 AlarmEventType.CANCELLED,
