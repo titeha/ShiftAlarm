@@ -154,6 +154,40 @@ fun SettingsScreen(
         style = MaterialTheme.typography.labelSmall
       )
 
+      Spacer(Modifier.height(12.dp))
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(
+          checked = ringConfig.autoRepeatEnabled,
+          onCheckedChange = { onRingConfig(ringConfig.copy(autoRepeatEnabled = it)) }
+        )
+        Spacer(Modifier.width(8.dp))
+        Column {
+          Text("Авто-перезвон невыключенного", style = MaterialTheme.typography.bodyMedium)
+          Text(
+            "Если звонок не выключили, сам отложится (в пределах лимита).",
+            style = MaterialTheme.typography.bodySmall
+          )
+        }
+      }
+      if (ringConfig.autoRepeatEnabled) {
+        Spacer(Modifier.height(8.dp))
+        Text("Через сколько минут авто-перезвон", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          listOf(5, 10, 15).forEach { minutes ->
+            FilterChip(
+              selected = ringConfig.ringDurationMinutes == minutes,
+              onClick = {
+                if (ringConfig.ringDurationMinutes != minutes) {
+                  onRingConfig(ringConfig.copy(ringDurationMinutes = minutes))
+                }
+              },
+              label = { Text(minutes.toString()) }
+            )
+          }
+        }
+      }
+
       Spacer(Modifier.height(24.dp))
       Text("Праздничный календарь", style = MaterialTheme.typography.titleMedium)
       Spacer(Modifier.height(8.dp))

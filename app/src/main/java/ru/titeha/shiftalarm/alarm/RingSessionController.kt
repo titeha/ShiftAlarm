@@ -1,6 +1,12 @@
 package ru.titeha.shiftalarm.alarm
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import androidx.core.app.NotificationCompat
+import ru.titeha.shiftalarm.MainActivity
 import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.SettingsStore
@@ -28,6 +34,11 @@ object RingSessionController {
         if (RingSessionStore(context).find(alarmId) != null) {
             applyEvent(context, alarmId, "", RingEvent.Cancelled)
         }
+    }
+
+    /** Прошло T минут без взаимодействия — авто-перезвон или, если лимит исчерпан, пропущен. */
+    fun onRingTimeout(context: Context, alarmId: Long, label: String) {
+        applyEvent(context, alarmId, label, RingEvent.RingTimeout)
     }
 
     /** Сколько снузов ещё доступно для будильника (для подписи «осталось N» и показа кнопки). */
@@ -59,10 +70,7 @@ object RingSessionController {
                 is RingAction.ScheduleSnooze ->
                     scheduled = AlarmScheduler.scheduleSnoozeAt(context, alarmId, action.atMillis, label)
 
-                RingAction.MarkMissed ->
-                    DirectBootAlarmStore(context).addMissed(
-                        listOf(CachedAlarm(alarmId = alarmId, triggerAtMillis = now, label = label))
-                    )
+                RingAction.MarkMissed -> postMissedNotification(context, alarmId, label)
 
                 RingAction.CloseSession -> {
                     AlarmScheduler.cancelSnooze(context, alarmId)
@@ -106,4 +114,43 @@ object RingSessionController {
             }
         }
     }
+
+    /** Ненавязчивая нотификация «будильник не был выключен» (лимит авто-перезвона исчерпан). */
+    private fun postMissedNotification(context: Context, alarmId: Long, label: String) {
+        try {
+            val manager = context.getSystemService(NotificationManager::class.java) ?: return
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    MISSED_CHANNEL_ID,
+                    "Пропущенные будильники",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply { description = "Звонок не был выключен" }
+            )
+
+            val open = PendingIntent.getActivity(
+                context,
+                MISSED_NOTIFICATION_BASE,
+                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+            val title = AlarmService.displayText(label)
+            val notification = NotificationCompat.Builder(context, MISSED_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle("Будильник не был выключен")
+                .setContentText(title)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setAutoCancel(true)
+                .setContentIntent(open)
+                .build()
+
+            // Уникальный id по будильнику, чтобы разные будильники не затирали нотификации друг друга.
+            manager.notify(MISSED_NOTIFICATION_BASE + alarmId.toInt(), notification)
+        } catch (_: Exception) {
+            // Нет разрешения на уведомления / залочено — не критично, событие уже в журнале.
+        }
+    }
+
+    private const val MISSED_CHANNEL_ID = "missed_channel"
+    private const val MISSED_NOTIFICATION_BASE = 2000
 }

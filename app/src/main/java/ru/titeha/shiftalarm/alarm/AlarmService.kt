@@ -11,8 +11,11 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
+import ru.titeha.shiftalarm.data.SettingsStore
 import androidx.core.app.NotificationCompat
 import ru.titeha.shiftalarm.AlarmActivity
 import ru.titeha.shiftalarm.R
@@ -35,6 +38,10 @@ class AlarmService : Service() {
   private var signalStarted = false
   private var alarmLabel: String = ""
   private var alarmId: Long = AlarmScheduler.NO_ID
+
+  // Таймаут авто-перезвона: пока сервис звенит (жив, с wake-lock), по истечении T глушим и авто-снузим.
+  private val timeoutHandler = Handler(Looper.getMainLooper())
+  private val timeoutRunnable = Runnable { onRingTimeout() }
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -81,8 +88,29 @@ class AlarmService : Service() {
     goForeground()
     startRinging()
     launchScreen()
+    scheduleAutoRepeatTimeout()
 
     return START_NOT_STICKY
+  }
+
+  /**
+   * Запланировать авто-перезвон: если он включён, через T минут звонок сам «уснёт» и переставится
+   * снузом (или пометится пропущенным). Между перезвонами сервис не держим — просыпаемся по снуз-звонку.
+   */
+  private fun scheduleAutoRepeatTimeout() {
+    timeoutHandler.removeCallbacks(timeoutRunnable)
+    if (alarmId == AlarmScheduler.NO_ID) {
+      return
+    }
+    val config = SettingsStore(this).ringConfig()
+    if (config.autoRepeatEnabled) {
+      timeoutHandler.postDelayed(timeoutRunnable, config.ringDurationMillis)
+    }
+  }
+
+  private fun onRingTimeout() {
+    RingSessionController.onRingTimeout(this, alarmId, alarmLabel)
+    stopRingingAndSelf()
   }
 
   /**
@@ -312,6 +340,8 @@ class AlarmService : Service() {
   }
 
   private fun stopRinging() {
+    timeoutHandler.removeCallbacks(timeoutRunnable)
+
     player?.let { currentPlayer ->
       try {
         if (currentPlayer.isPlaying) {
