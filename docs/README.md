@@ -10,28 +10,36 @@
 | Документ | О чём |
 |----------|-------|
 | [SHIFTALARM_PRODUCT_VISION.md](SHIFTALARM_PRODUCT_VISION.md) | Продуктовое видение: ниша (сменщики/вахтовики/учащиеся), ценность, направление. |
-| [SHIFTALARM_PROJECT_REVIEW_2026-07-08.md](SHIFTALARM_PROJECT_REVIEW_2026-07-08.md) | Технический аудит (ChatGPT/GPT-5.5 Pro): архитектура, риски по приоритетам P0–P3, что уже хорошо. |
 | [SHIFTALARM_ROAD_TO_10.md](SHIFTALARM_ROAD_TO_10.md) | Дорожная карта до production-уровня: CI, данные, надёжность, тесты, релиз, диагностика. |
 | [WORK_WEEK_AND_STUDY.md](WORK_WEEK_AND_STUDY.md) | Будущие weekly-фичи: «рабочая неделя» как понятие движка (N дней + начало недели), учебный профиль (широкая аудитория), чётная/нечётная неделя. |
-| [EDITOR_STABILIZATION_PLAN.md](EDITOR_STABILIZATION_PLAN.md) | Рабочий список недочётов редактора, решения и порядок стабилизации UI. |
-| [EDITOR_VALIDATION.md](EDITOR_VALIDATION.md) | Правила проверки черновика перед сохранением и конфликт звонков одного цикла. |
-| [CUSTOM_CYCLE_EDITOR_GUARDS.md](CUSTOM_CYCLE_EDITOR_GUARDS.md) | Лимиты операций редактора цикла и отмена добавления нового блока. |
-| [EDITOR_UNSAVED_CHANGES.md](EDITOR_UNSAVED_CHANGES.md) | Предупреждение при выходе из изменённого редактора без сохранения. |
-| [EDITOR_SAVE_RESULT.md](EDITOR_SAVE_RESULT.md) | Состояния сохранения, ошибки транзакции и предупреждение AlarmManager. |
-| [EDITOR_TIME_REFRESH.md](EDITOR_TIME_REFRESH.md) | Минутное обновление списка и предпросмотра ближайших звонков. |
-| [ALARM_STOP_UI_SYNC.md](ALARM_STOP_UI_SYNC.md) | Закрытие полноэкранного экрана при остановке сигнала из уведомления. |
-| [ALARM_NAME_INPUT.md](ALARM_NAME_INPUT.md) | Правила капитализации и IME-действия для названия будильника. |
-| [SHIFT_HOLIDAY_POLICY.md](SHIFT_HOLIDAY_POLICY.md) | Семантика производственного календаря и отсутствие REST в сменном режиме. |
+
+## Ревью и план стабилизации
+
+| Документ | О чём |
+|----------|-------|
+| [SHIFTALARM_PROJECT_REVIEW_2026-07-08.md](SHIFTALARM_PROJECT_REVIEW_2026-07-08.md) | Технический аудит (ChatGPT/GPT-5.5 Pro): архитектура, риски по приоритетам P0–P3, что уже хорошо. |
 | [CONSOLIDATED_REVIEW_2026-07-16.md](CONSOLIDATED_REVIEW_2026-07-16.md) | Сверка внешнего ревью с кодом и консолидированный план стабилизации. |
-| [BATCH_RESCHEDULE.md](BATCH_RESCHEDULE.md) | Изоляция ошибок отдельных будильников при массовом перепланировании. |
-| [EDITOR_CONFIGURATION_STATE.md](EDITOR_CONFIGURATION_STATE.md) | Сохранение черновика редактора при повороте и пересоздании Activity. |
+| [EDITOR_STABILIZATION_PLAN.md](EDITOR_STABILIZATION_PLAN.md) | Рабочий список недочётов редактора, решения и порядок стабилизации UI (чеклист шагов). |
 
 ## Архитектура
 
 | Документ | О чём |
 |----------|-------|
 | [АРХИТЕКТУРА.md](АРХИТЕКТУРА.md) | Карта «какой файл за что отвечает» по слоям (данные / движок / планирование / UI / точки входа) + поток работы. Начинать изучение кода отсюда. |
-| [UI_NOTES.md](UI_NOTES.md) | Решения по интерфейсу: направление (иконки, подтверждения), главный экран, экран звонка, планы. |
+| [UI_NOTES.md](UI_NOTES.md) | Решения по интерфейсу: направление (иконки, подтверждения), главный экран, редактор, экран звонка, планы. |
+
+## Редактор будильника (UX и состояние)
+
+| Документ | О чём |
+|----------|-------|
+| [EDITOR_VALIDATION.md](EDITOR_VALIDATION.md) | Правила проверки черновика перед сохранением и конфликт звонков одного цикла. |
+| [CUSTOM_CYCLE_EDITOR_GUARDS.md](CUSTOM_CYCLE_EDITOR_GUARDS.md) | Лимиты операций редактора цикла и отмена добавления нового блока. |
+| [ALARM_NAME_INPUT.md](ALARM_NAME_INPUT.md) | Правила капитализации и IME-действия для названия будильника. |
+| [EDITOR_UNSAVED_CHANGES.md](EDITOR_UNSAVED_CHANGES.md) | Предупреждение при выходе из изменённого редактора без сохранения. |
+| [EDITOR_SAVE_RESULT.md](EDITOR_SAVE_RESULT.md) | Состояния сохранения, ошибки транзакции и предупреждение AlarmManager. |
+| [EDITOR_TIME_REFRESH.md](EDITOR_TIME_REFRESH.md) | Минутное обновление списка и предпросмотра ближайших звонков. |
+| [EDITOR_CONFIGURATION_STATE.md](EDITOR_CONFIGURATION_STATE.md) | Сохранение черновика редактора при повороте и пересоздании Activity. |
+| [EDITOR_PROCESS_RESTORE.md](EDITOR_PROCESS_RESTORE.md) | Восстановление подтверждённого черновика после системного уничтожения процесса. |
 
 ## Ядро и домен смен
 
@@ -39,6 +47,7 @@
 |----------|-------|
 | [NIGHT_SHIFT_ALARMS.md](NIGHT_SHIFT_ALARMS.md) | Модель ночных смен (Вариант Б): метка ночи на дне отработки, звонок — накануне. Нормализация своих циклов, отмена ночи выходным/отпуском, ограничения. |
 | [HOLIDAY_CALENDAR_SOURCE.md](HOLIDAY_CALENDAR_SOURCE.md) | Производственный календарь: оффлайн-принцип (звонок не зависит от сети), слои, формат isDayOff.ru, кэш и `resolve`, ограничения. |
+| [SHIFT_HOLIDAY_POLICY.md](SHIFT_HOLIDAY_POLICY.md) | Семантика производственного календаря и отсутствие REST в сменном режиме. |
 
 ## Данные и их сохранность
 
@@ -56,7 +65,9 @@
 | [ALARM_DIAGNOSTICS.md](ALARM_DIAGNOSTICS.md) | Журнал событий будильника (запланирован/сработал/пропущен/перепланирован) + экран диагностики: «почему сработал/не сработал». |
 | [ALARM_RECEIVER_SAFETY.md](ALARM_RECEIVER_SAFETY.md) | Защита от ложного звонка: `AlarmReceiver` проверяет актуальность срабатывания до запуска сигнала. |
 | [ALARM_SIGNAL_FALLBACK.md](ALARM_SIGNAL_FALLBACK.md) | Вибрация как запасной канал сигнала. |
+| [ALARM_STOP_UI_SYNC.md](ALARM_STOP_UI_SYNC.md) | Закрытие полноэкранного экрана при остановке сигнала из уведомления. |
 | [SYSTEM_RESCHEDULE.md](SYSTEM_RESCHEDULE.md) | Перепланирование будильников после reboot / обновления приложения / смены времени и часового пояса. |
+| [BATCH_RESCHEDULE.md](BATCH_RESCHEDULE.md) | Изоляция ошибок отдельных будильников при массовом перепланировании. |
 | [SET_ALARM_INTENT.md](SET_ALARM_INTENT.md) | Обработка и валидация внешнего `ACTION_SET_ALARM` (Ассистент/сторонние приложения). |
 
 ## Процесс
