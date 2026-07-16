@@ -141,6 +141,9 @@ class AlarmReceiver : BroadcastReceiver() {
       scheduledTriggerAtMillis < now - LOCKED_OVERDUE_GRACE_MS
     ) {
       Log.w(TAG, "Locked: срабатывание id=$alarmId просрочено сверх грейса — не звоним")
+      DirectBootEventBuffer(context).add(
+        AlarmEventType.SKIPPED.name, "id=$alarmId просрочено сверх грейса (locked)", now
+      )
       return
     }
 
@@ -150,6 +153,7 @@ class AlarmReceiver : BroadcastReceiver() {
       .orEmpty()
 
     Log.i(TAG, "Locked: звоним по RingCache id=$alarmId")
+    DirectBootEventBuffer(context).add(AlarmEventType.FIRED.name, "id=$alarmId «$label» (locked)", now)
     AlarmService.start(context, label)
   }
 

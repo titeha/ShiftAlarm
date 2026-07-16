@@ -151,14 +151,25 @@ class AlarmService : Service() {
     // в диагностическом журнале, чтобы «почему тихо» можно было понять постфактум. До разблокировки
     // журнал (CE) недоступен — тогда просто не пишем (звонок важнее записи).
     if (!startSound()) {
+      val now = System.currentTimeMillis()
       try {
         AlarmEventLog(this).record(
           AlarmEventType.SIGNAL_DEGRADED,
           "звук недоступен — сигнал только вибрацией",
-          System.currentTimeMillis()
+          now
         )
       } catch (_: Exception) {
-        // Direct Boot: credential-encrypted журнал недоступен до разблокировки — пропускаем запись.
+        // Direct Boot: credential-encrypted журнал недоступен до разблокировки — пишем в DPS-буфер,
+        // BootReceiver перельёт его в основной журнал после разблокировки.
+        try {
+          DirectBootEventBuffer(this).add(
+            AlarmEventType.SIGNAL_DEGRADED.name,
+            "звук недоступен — сигнал только вибрацией (locked)",
+            now
+          )
+        } catch (_: Exception) {
+          // Даже DPS-буфер недоступен — звонок важнее записи, молча продолжаем.
+        }
       }
     }
   }

@@ -38,10 +38,14 @@ class BootReceiver : BroadcastReceiver() {
     if (SystemRescheduleActions.isLockedBoot(action) ||
       (locked && SystemRescheduleActions.shouldReschedule(action))
     ) {
+      val buffer = DirectBootEventBuffer(appContext)
+      val now = System.currentTimeMillis()
       try {
         AlarmScheduler.reArmFromCache(appContext)
+        buffer.add(AlarmEventType.RESCHEDULED.name, "$action: перевыставлены из кэша (до разблокировки)", now)
         Log.i(TAG, "Direct Boot ($action): будильники перевыставлены из device-protected кэша")
       } catch (error: Exception) {
+        buffer.add(AlarmEventType.ERROR.name, "$action: не удалось перевыставить из кэша: ${error.javaClass.simpleName}", now)
         Log.w(TAG, "Direct Boot: не удалось перевыставить из кэша", error)
       }
       return
@@ -59,6 +63,9 @@ class BootReceiver : BroadcastReceiver() {
         val repo = AlarmRepository(appContext)
         val alarms = repo.enabled()
         val eventLog = AlarmEventLog(appContext)
+
+        // Перелить события, накопленные до разблокировки (Direct Boot), в основной журнал с пометкой.
+        flushDirectBootBuffer(appContext, eventLog)
 
         val report = AlarmScheduler.rescheduleAll(
           context = appContext,
@@ -118,6 +125,20 @@ class BootReceiver : BroadcastReceiver() {
         )
       } finally {
         pending.finish()
+      }
+    }
+  }
+
+  /**
+   * Переливает буфер событий Direct Boot (накопленных до разблокировки, когда CE-журнал недоступен)
+   * в основной диагностический журнал с пометкой `direct_boot`, затем очищает буфер.
+   */
+  private fun flushDirectBootBuffer(context: Context, eventLog: AlarmEventLog) {
+    runCatching {
+      DirectBootEventBuffer(context).drain().forEach { event ->
+        val type = runCatching { AlarmEventType.valueOf(event.type) }
+          .getOrDefault(AlarmEventType.RESCHEDULED)
+        eventLog.record(type, "[direct_boot] ${event.detail}", event.atMillis)
       }
     }
   }
