@@ -27,7 +27,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -221,6 +224,7 @@ class MainActivity : ComponentActivity() {
                 if (on) requestNotifications()
               },
               onDelete = { vm.delete(it) },
+              onDuplicate = { vm.duplicate(it) },
               onOpenDiagnostics = { showDiagnostics = true },
               onOpenSettings = { showSettings = true },
               showVendorSetupHint = vendorGuide != null && !vendorDismissed,
@@ -352,6 +356,7 @@ private fun AlarmListScreen(
   onEdit: (AlarmEntity) -> Unit,
   onToggle: (AlarmEntity, Boolean) -> Unit,
   onDelete: (AlarmEntity) -> Unit,
+  onDuplicate: (AlarmEntity) -> Unit,
   onOpenDiagnostics: () -> Unit,
   onOpenSettings: () -> Unit,
   showVendorSetupHint: Boolean = false,
@@ -440,7 +445,8 @@ private fun AlarmListScreen(
               now = currentMinute,
               onClick = { onEdit(alarm) },
               onToggle = { on -> onToggle(alarm, on) },
-              onDelete = { onDelete(alarm) }
+              onDelete = { onDelete(alarm) },
+              onDuplicate = { onDuplicate(alarm) }
             )
           }
         }
@@ -457,10 +463,12 @@ private fun AlarmRow(
   now: LocalDateTime,
   onClick: () -> Unit,
   onToggle: (Boolean) -> Unit,
-  onDelete: () -> Unit
+  onDelete: () -> Unit,
+  onDuplicate: () -> Unit
 ) {
   var confirmOff by remember { mutableStateOf(false) }
   var confirmDelete by remember { mutableStateOf(false) }
+  var menuOpen by remember { mutableStateOf(false) }
 
   Card(
     modifier = Modifier
@@ -511,6 +519,20 @@ private fun AlarmRow(
       Spacer(Modifier.width(4.dp))
       IconButton(onClick = { confirmDelete = true }) {
         Icon(Icons.Filled.Delete, contentDescription = "Удалить будильник")
+      }
+      Box {
+        IconButton(onClick = { menuOpen = true }) {
+          Icon(Icons.Filled.MoreVert, contentDescription = "Ещё")
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+          val duplicateText =
+            if (alarm.mode == AlarmEntity.MODE_SHIFT) "Дублировать (выключенным)"
+            else "Дублировать (+5 мин)"
+          DropdownMenuItem(
+            text = { Text(duplicateText) },
+            onClick = { menuOpen = false; onDuplicate() }
+          )
+        }
       }
     }
   }

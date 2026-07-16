@@ -372,6 +372,37 @@ class AlarmListViewModel(
         }
     }
 
+    /**
+     * Дублировать будильник. Разовый / по дням недели — копия со сдвигом времени +5 мин, суффиксом в
+     * имени и включённая. Сменный — точная копия с периодами/правками, но ВЫКЛЮЧЕННАЯ (чтобы не
+     * задвоить звонки молча). Каскадов не строим — серия покрывается снузом.
+     */
+    fun duplicate(alarm: AlarmEntity) = viewModelScope.launch {
+        try {
+            if (alarm.mode == AlarmEntity.MODE_SHIFT) {
+                val periods = repo.periodsList(alarm.id)
+                val overrides = repo.overridesList(alarm.id)
+                repo.saveWithChildren(alarm.copy(id = 0, enabled = false), periods, overrides)
+                // Копия выключена — в систему не ставим (включит пользователь).
+            } else {
+                val total = (alarm.hour * 60 + alarm.minute + DUPLICATE_SHIFT_MINUTES) % (24 * 60)
+                val copy = alarm.copy(
+                    id = 0,
+                    hour = total / 60,
+                    minute = total % 60,
+                    label = alarm.label.ifBlank { "Будильник" } + " +$DUPLICATE_SHIFT_MINUTES"
+                )
+                val id = repo.upsert(copy)
+                AlarmScheduler.reschedule(context(), repo, copy.copy(id = id))
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.e(TAG, "Не удалось дублировать будильник id=${alarm.id}", error)
+            _userMessages.send("Не удалось дублировать будильник")
+        }
+    }
+
     /** Удалить будильник, снять сигнал и записать событие в журнал. */
     fun delete(alarm: AlarmEntity) = viewModelScope.launch {
         try {
@@ -400,5 +431,8 @@ class AlarmListViewModel(
         const val TAG = "AlarmListViewModel"
 
         const val EDITOR_SESSION_KEY = "alarm_editor_session_v1"
+
+        /** Сдвиг времени копии для разового/недельного будильника. */
+        const val DUPLICATE_SHIFT_MINUTES = 5
     }
 }
