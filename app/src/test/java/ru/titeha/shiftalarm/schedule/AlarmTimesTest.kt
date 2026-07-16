@@ -241,11 +241,22 @@ class AlarmTimesTest {
   }
 
   @Test
-  fun `weeklyFiresOn — WORK глушит нерабочие`() {
-    val a = weekly(AlarmTimes.maskOf(*DayOfWeek.entries.toTypedArray()), honor = true)
-    val cal = ProductionCalendar() // Сб/Вс нерабочие
-    assertEquals(true, AlarmTimes.weeklyFiresOn(a, wed, cal))  // рабочий
-    assertEquals(false, AlarmTimes.weeklyFiresOn(a, sat, cal)) // суббота глушится
+  fun `weeklyFiresOn — WORK — отмеченная суббота звонит (личная неделя), праздник глушит`() {
+    // Шестидневка Пн–Сб: суббота — рабочий день ПОЛЬЗОВАТЕЛЯ (личная неделя), а не календарный выходной.
+    val sixDay = weekly(
+      AlarmTimes.maskOf(
+        DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
+        DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY
+      ),
+      honor = true
+    )
+    val plain = ProductionCalendar()
+    assertEquals(true, AlarmTimes.weeklyFiresOn(sixDay, wed, plain))  // рабочий будень — звонит
+    assertEquals(true, AlarmTimes.weeklyFiresOn(sixDay, sat, plain))  // отмеченная суббота — рабочая, звонит
+
+    // Тот же день, но объявленный праздником — глушится даже в личный рабочий день.
+    val holiday = ProductionCalendar(kinds = mapOf(sat to StateDayKind.HOLIDAY))
+    assertEquals(false, AlarmTimes.weeklyFiresOn(sixDay, sat, holiday))
   }
 
   @Test
