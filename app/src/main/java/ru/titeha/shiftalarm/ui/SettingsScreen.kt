@@ -1,6 +1,8 @@
 package ru.titeha.shiftalarm.ui
 
 import android.os.Build
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,6 +59,7 @@ fun SettingsScreen(
       modifier = Modifier
         .fillMaxSize()
         .padding(padding)
+        .verticalScroll(rememberScrollState())
         .padding(16.dp)
     ) {
       Row(
