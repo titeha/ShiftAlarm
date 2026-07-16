@@ -12,6 +12,7 @@
 | [SHIFTALARM_PRODUCT_VISION.md](SHIFTALARM_PRODUCT_VISION.md) | Продуктовое видение: ниша (сменщики/вахтовики/учащиеся), ценность, направление. |
 | [SHIFTALARM_ROAD_TO_10.md](SHIFTALARM_ROAD_TO_10.md) | Дорожная карта до production-уровня: CI, данные, надёжность, тесты, релиз, диагностика. |
 | [WORK_WEEK_AND_STUDY.md](WORK_WEEK_AND_STUDY.md) | Будущие weekly-фичи: «рабочая неделя» как понятие движка (N дней + начало недели), учебный профиль (широкая аудитория), чётная/нечётная неделя. |
+| [WORKWEEK_AND_HOLIDAYS.md](WORKWEEK_AND_HOLIDAYS.md) | ТЗ (старшая модель): редизайн «нестандартная неделя × праздники» — типизированный календарь StateDayKind, WorkWeek=чекбоксы дней, матрица композиции, переносы только для стандартной недели. Заменяет откатанный v1. |
 
 ## Ревью и план стабилизации
 
@@ -77,6 +78,7 @@
 | [BATCH_RESCHEDULE.md](BATCH_RESCHEDULE.md) | Изоляция ошибок отдельных будильников при массовом перепланировании. |
 | [USER_OPERATION_ERRORS.md](USER_OPERATION_ERRORS.md) | Единая обработка ошибок операций списка (toggle/delete/open) через Snackbar; техническое — в журнал. |
 | [SET_ALARM_INTENT.md](SET_ALARM_INTENT.md) | Обработка и валидация внешнего `ACTION_SET_ALARM` (Ассистент/сторонние приложения). |
+| [SNOOZE_AND_REPEAT.md](SNOOZE_AND_REPEAT.md) | ТЗ (старшая модель): слой «сессия звонка» — снуз, авто-перезвон невыключенного (общий лимит), дублирование будильника, жёсткий режим за флагом. Чистый RingSessionReducer. |
 
 ## Процесс
 
