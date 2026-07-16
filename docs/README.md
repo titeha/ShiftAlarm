@@ -24,6 +24,7 @@
 | [SHIFT_HOLIDAY_POLICY.md](SHIFT_HOLIDAY_POLICY.md) | Семантика производственного календаря и отсутствие REST в сменном режиме. |
 | [CONSOLIDATED_REVIEW_2026-07-16.md](CONSOLIDATED_REVIEW_2026-07-16.md) | Сверка внешнего ревью с кодом и консолидированный план стабилизации. |
 | [BATCH_RESCHEDULE.md](BATCH_RESCHEDULE.md) | Изоляция ошибок отдельных будильников при массовом перепланировании. |
+| [EDITOR_CONFIGURATION_STATE.md](EDITOR_CONFIGURATION_STATE.md) | Сохранение черновика редактора при повороте и пересоздании Activity. |
 
 ## Архитектура
 

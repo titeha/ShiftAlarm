@@ -46,14 +46,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import kotlinx.coroutines.launch
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
@@ -90,12 +88,8 @@ class MainActivity : ComponentActivity() {
         val vm: AlarmListViewModel = viewModel()
         val state by vm.uiState.collectAsStateWithLifecycle()
         val saveState by vm.saveState.collectAsStateWithLifecycle()
-        val scope = rememberCoroutineScope()
+        val editorSession by vm.editorSession.collectAsStateWithLifecycle()
 
-        // null — список; иначе редактор: (будильник, его периоды отпуска, его правки календаря).
-        var editing by remember {
-          mutableStateOf<Triple<AlarmEntity, List<AlarmPeriod>, List<AlarmOverride>>?>(null)
-        }
         var showDiagnostics by remember { mutableStateOf(false) }
         var showSettings by remember { mutableStateOf(false) }
 
@@ -109,14 +103,14 @@ class MainActivity : ComponentActivity() {
            * Данные уже сохранены. Закрываем редактор только после результата
            * ViewModel и отдельно показываем предупреждение AlarmManager.
            */
-          editing = null
+          vm.closeEditor()
           saveWarning = result.warningMessage
           vm.resetSaveState()
         }
 
         RequestNotificationPermission()
 
-        val current = editing
+        val currentEditor = editorSession
         when {
           showSettings -> {
             BackHandler { showSettings = false }
@@ -134,21 +128,25 @@ class MainActivity : ComponentActivity() {
             DiagnosticsScreen(onBack = { showDiagnostics = false })
           }
 
-          current != null -> {
+          currentEditor != null -> {
             AlarmEditorScreen(
-              initial = current.first,
-              initialPeriods = current.second,
-              initialOverrides = current.third,
+              session = currentEditor,
               onSave = { alarm, periods, overrides ->
-                vm.save(alarm, periods, overrides)
+                vm.save(
+                  alarm,
+                  periods,
+                  overrides
+                )
               },
               onCancel = {
                 vm.resetSaveState()
-                editing = null
+                vm.closeEditor()
               },
-              isSaving = saveState is AlarmSaveState.Saving,
+              isSaving =
+                saveState is AlarmSaveState.Saving,
               saveErrorMessage =
-                (saveState as? AlarmSaveState.Failed)?.message,
+                (saveState as? AlarmSaveState.Failed)
+                  ?.message,
               onDismissSaveError = {
                 vm.resetSaveState()
               }
@@ -162,25 +160,13 @@ class MainActivity : ComponentActivity() {
               overridesByAlarm = state.overridesByAlarm,
               onAdd = {
                 vm.resetSaveState()
-                editing = Triple(
-                  defaultAlarm(),
-                  emptyList(),
-                  emptyList()
+                vm.openNewEditor(
+                  defaultAlarm()
                 )
               },
               onEdit = { alarm ->
                 vm.resetSaveState()
-
-                scope.launch {
-                  val (periods, overrides) =
-                    vm.childrenFor(alarm)
-
-                  editing = Triple(
-                    alarm,
-                    periods,
-                    overrides
-                  )
-                }
+                vm.openEditor(alarm)
               },
               onToggle = { alarm, on -> vm.setEnabled(alarm, on) },
               onDelete = { vm.delete(it) },

@@ -85,84 +85,33 @@ private val DOW_SHORT = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "
 internal fun LocalDate.localized(): String =
   format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault()))
 
-/**
- * Экран добавления/редактирования одного будильника.
- * Возвращает результат через [onSave] (с уже подготовленной записью) или [onCancel].
- */
-/** Способ расписания, выбранный чипом. Хранится в UI-состоянии, в entity маппится при сохранении. */
-private enum class EditMethod { ONCE, WEEKLY, SHIFT }
-
-/** Способ по данным существующей записи: смены → SHIFT, пустая маска → ONCE, иначе WEEKLY. */
-private fun methodOf(alarm: AlarmEntity): EditMethod = when {
-  alarm.mode == AlarmEntity.MODE_SHIFT -> EditMethod.SHIFT
-  alarm.daysMask == 0 -> EditMethod.ONCE
-  else -> EditMethod.WEEKLY
-}
-
-/**
- * Черновик, приведённый к активному способу — сохраняется и уходит в превью только он.
- * Черновики других способов живут в [draft] (маска дней, цикл, deleteAfterFiring) и не теряются.
- */
-private fun effective(draft: AlarmEntity, method: EditMethod): AlarmEntity = when (method) {
-  EditMethod.ONCE -> draft.copy(mode = AlarmEntity.MODE_WEEKLY, daysMask = 0)
-  EditMethod.WEEKLY -> draft.copy(mode = AlarmEntity.MODE_WEEKLY)
-  EditMethod.SHIFT -> HolidayModePolicy.normalize(draft.copy(mode = AlarmEntity.MODE_SHIFT))
-}
-
 @Composable
 fun AlarmEditorScreen(
-  initial: AlarmEntity,
-  initialPeriods: List<AlarmPeriod>,
-  initialOverrides: List<AlarmOverride>,
+  session: AlarmEditorSession,
   onSave: (AlarmEntity, List<AlarmPeriod>, List<AlarmOverride>) -> Unit,
   onCancel: () -> Unit,
   isSaving: Boolean = false,
   saveErrorMessage: String? = null,
   onDismissSaveError: () -> Unit = {}
 ) {
-  /*
- * Исходный снимок фиксируется на время одной сессии редактора.
- * Обновления Flow в родительском экране не должны незаметно менять
- * точку сравнения несохранённых изменений.
- */
-  val initialMethod = remember { methodOf(initial) }
-  val initialAlarmSnapshot = remember {
-    effective(initial, initialMethod)
-  }
-  val initialPeriodsSnapshot = remember {
-    initialPeriods.toList()
-  }
-  val initialOverridesSnapshot = remember {
-    initialOverrides.toList()
-  }
   val focusManager = LocalFocusManager.current
 
-  var draft by remember { mutableStateOf(initial) }
-  var periods by remember { mutableStateOf(initialPeriods) }
-  var overrides by remember { mutableStateOf(initialOverrides) }
-  var method by remember { mutableStateOf(initialMethod) }
-  var showDiscardDialog by remember { mutableStateOf(false) }
-
-  val isNew = initial.id == 0L
-  val currentAlarm = effective(draft, method)
   val currentMinute = rememberCurrentMinute()
 
-  val hasUnsavedChanges = remember(
-    currentAlarm,
-    periods,
-    overrides,
-    method
-  ) {
-    method != initialMethod ||
-            AlarmEditorDirtyState.hasUnsavedChanges(
-              initialAlarm = initialAlarmSnapshot,
-              currentAlarm = currentAlarm,
-              initialPeriods = initialPeriodsSnapshot,
-              currentPeriods = periods,
-              initialOverrides = initialOverridesSnapshot,
-              currentOverrides = overrides
-            )
-  }
+  /*
+ * Состояние принадлежит ViewModel-сессии, а не экземпляру композиции.
+ * После поворота новый экран получает тот же объект с тем же черновиком.
+ */
+  var draft by session.draftState
+  var periods by session.periodsState
+  var overrides by session.overridesState
+  var method by session.methodState
+  var showDiscardDialog by session.discardDialogState
+
+  val isNew = session.isNew
+  val currentAlarm = session.currentAlarm()
+  val hasUnsavedChanges =
+    session.hasUnsavedChanges()
 
   fun requestCancel() {
     if (isSaving) {

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import ru.titeha.shiftalarm.alarm.AlarmScheduler
 import ru.titeha.shiftalarm.data.AlarmEntity
@@ -82,6 +83,14 @@ class AlarmListViewModel(app: Application) : AndroidViewModel(app) {
     val saveState: StateFlow<AlarmSaveState> =
         _saveState.asStateFlow()
 
+    private val _editorSession =
+        MutableStateFlow<AlarmEditorSession?>(null)
+
+    val editorSession: StateFlow<AlarmEditorSession?> =
+        _editorSession.asStateFlow()
+
+    private var openEditorJob: Job? = null
+
     /** Периоды и правки будильника для открытия редактора. */
     suspend fun childrenFor(
         alarm: AlarmEntity
@@ -141,6 +150,57 @@ class AlarmListViewModel(app: Application) : AndroidViewModel(app) {
                     )
             }
         }
+    }
+
+    /** Открыть чистую сессию создания нового будильника. */
+    fun openNewEditor(alarm: AlarmEntity) {
+        if (_saveState.value is AlarmSaveState.Saving) {
+            return
+        }
+
+        openEditorJob?.cancel()
+        openEditorJob = null
+
+        _editorSession.value = AlarmEditorSession(
+            initialAlarm = alarm,
+            initialPeriods = emptyList(),
+            initialOverrides = emptyList()
+        )
+    }
+
+    /**
+     * Загрузить дочерние данные и открыть сессию существующего будильника.
+     *
+     * Работа идёт в viewModelScope, поэтому поворот Activity не отменяет загрузку.
+     */
+    fun openEditor(alarm: AlarmEntity) {
+        if (_saveState.value is AlarmSaveState.Saving) {
+            return
+        }
+
+        openEditorJob?.cancel()
+
+        openEditorJob = viewModelScope.launch {
+            val periods = repo.periodsList(alarm.id)
+            val overrides = repo.overridesList(alarm.id)
+
+            _editorSession.value = AlarmEditorSession(
+                initialAlarm = alarm,
+                initialPeriods = periods,
+                initialOverrides = overrides
+            )
+        }
+    }
+
+    /** Закрыть редактор, если сейчас не идёт сохранение. */
+    fun closeEditor() {
+        if (_saveState.value is AlarmSaveState.Saving) {
+            return
+        }
+
+        openEditorJob?.cancel()
+        openEditorJob = null
+        _editorSession.value = null
     }
 
     /**
