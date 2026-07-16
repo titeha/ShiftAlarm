@@ -15,6 +15,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import ru.titeha.shiftalarm.AlarmActivity
+import ru.titeha.shiftalarm.R
 import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
 
@@ -162,7 +163,13 @@ class AlarmService : Service() {
     }
   }
 
-  /** Запустить звуковой сигнал; true — играет, false — мелодия недоступна/ошибка (запас — вибрация). */
+  /**
+   * Запустить звуковой сигнал; true — играет, false — ни один источник не завёлся (запас — вибрация).
+   *
+   * Порядок fallback: (1) системная мелодия будильника → (2) любой рингтон → (3) встроенный в APK
+   * raw-сигнал. Последний важен для Direct Boot: системная мелодия может лежать в credential-encrypted
+   * хранилище и до разблокировки быть нечитаемой, а raw-ресурс из APK доступен всегда.
+   */
   private fun startSound(): Boolean {
     val uri = RingtoneManager.getActualDefaultRingtoneUri(
       this,
@@ -170,24 +177,52 @@ class AlarmService : Service() {
     )
       ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
       ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-      ?: return false
 
+    if (uri != null && playUri(uri)) {
+      return true
+    }
+
+    return playBundled()
+  }
+
+  private val alarmAudioAttributes: AudioAttributes
+    get() = AudioAttributes.Builder()
+      .setUsage(AudioAttributes.USAGE_ALARM)
+      .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+      .build()
+
+  /** Проиграть мелодию по URI. */
+  private fun playUri(uri: android.net.Uri): Boolean {
     var createdPlayer: MediaPlayer? = null
-
     return try {
       createdPlayer = MediaPlayer().apply {
         setDataSource(this@AlarmService, uri)
-        setAudioAttributes(
-          AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ALARM)
-            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-            .build()
-        )
+        setAudioAttributes(alarmAudioAttributes)
         isLooping = true
         prepare()
         start()
       }
+      player = createdPlayer
+      true
+    } catch (_: Exception) {
+      releaseQuietly(createdPlayer)
+      player = null
+      false
+    }
+  }
 
+  /** Проиграть встроенный в APK запасной сигнал (доступен даже до разблокировки). */
+  private fun playBundled(): Boolean {
+    var createdPlayer: MediaPlayer? = null
+    return try {
+      val afd = resources.openRawResourceFd(R.raw.fallback_alarm) ?: return false
+      createdPlayer = MediaPlayer().apply {
+        afd.use { setDataSource(it.fileDescriptor, it.startOffset, it.length) }
+        setAudioAttributes(alarmAudioAttributes)
+        isLooping = true
+        prepare()
+        start()
+      }
       player = createdPlayer
       true
     } catch (_: Exception) {
@@ -195,14 +230,17 @@ class AlarmService : Service() {
        * Сигнал недоступен. Не падаем: сервис уже держит foreground-уведомление,
        * экран «Стоп» и вибрацию, если устройство её поддерживает.
        */
-      try {
-        createdPlayer?.release()
-      } catch (_: Exception) {
-        // Плеер уже в некорректном состоянии — освобождение не критично.
-      }
-
+      releaseQuietly(createdPlayer)
       player = null
       false
+    }
+  }
+
+  private fun releaseQuietly(mediaPlayer: MediaPlayer?) {
+    try {
+      mediaPlayer?.release()
+    } catch (_: Exception) {
+      // Плеер уже в некорректном состоянии — освобождение не критично.
     }
   }
 
