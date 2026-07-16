@@ -35,6 +35,9 @@ object AlarmScheduler {
   /** Горизонт device-protected кэша ближайших звонков (дни). */
   private const val DIRECT_BOOT_HORIZON_DAYS = 7L
 
+  /** Насколько должно просрочиться срабатывание из кэша, чтобы счесть его пропущенным (мс). */
+  private const val MISS_GRACE_MS = 90_000L
+
   /**
    * Запланировать, подгрузив периоды отпуска и правки календаря из репозитория.
    */
@@ -212,6 +215,17 @@ object AlarmScheduler {
    * планирование) и кладёт в кэш те, что в пределах горизонта [DIRECT_BOOT_HORIZON_DAYS] дней.
    */
   suspend fun refreshDirectBootCache(context: Context, repo: AlarmRepository) {
+    val store = DirectBootAlarmStore(context)
+
+    /*
+     * Детект пропуска: если в СТАРОМ кэше остался будильник, чьё время прошло больше, чем на
+     * MISS_GRACE, значит приложение не отработало срабатывание (обычно система выгрузила его —
+     * при штатном звонке AlarmReceiver перепланировал бы и обновил кэш). Копим для показа.
+     */
+    val nowMillis = System.currentTimeMillis()
+    val stale = store.read().filter { it.triggerAtMillis < nowMillis - MISS_GRACE_MS }
+    store.addMissed(stale)
+
     val now = LocalDateTime.now()
     val horizonMillis = AlarmInstant.epochMilli(now.plusDays(DIRECT_BOOT_HORIZON_DAYS))
 
@@ -229,7 +243,7 @@ object AlarmScheduler {
       CachedAlarm(alarmId = alarm.id, triggerAtMillis = millis, label = alarm.label)
     }
 
-    DirectBootAlarmStore(context).write(entries)
+    store.write(entries)
   }
 
   /**

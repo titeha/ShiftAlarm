@@ -89,8 +89,29 @@ class DirectBootAlarmStore(context: Context) {
             ?.let { DirectBootAlarmCacheCodec.decodeOrNull(it) }
             ?: emptyList()
 
+    /** Пропущенные звонки (обнаружены как «застрявшие» в кэше после гэпа), для показа пользователю. */
+    fun readMissed(): List<CachedAlarm> =
+        prefs.getString(KEY_MISSED, null)
+            ?.let { DirectBootAlarmCacheCodec.decodeOrNull(it) }
+            ?: emptyList()
+
+    /** Добавить пропущенные к уже накопленным (последние [MAX_MISSED]). */
+    fun addMissed(missed: List<CachedAlarm>) {
+        if (missed.isEmpty()) return
+        val combined = (readMissed() + missed).takeLast(MAX_MISSED)
+        prefs.edit()
+            .putString(KEY_MISSED, DirectBootAlarmCacheCodec.encode(combined))
+            .apply()
+    }
+
+    fun clearMissed() {
+        prefs.edit().remove(KEY_MISSED).apply()
+    }
+
     private companion object {
         const val PREFS = "direct_boot_alarms"
         const val KEY = "cache_v1"
+        const val KEY_MISSED = "missed_v1"
+        const val MAX_MISSED = 10
     }
 }

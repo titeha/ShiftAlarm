@@ -65,6 +65,8 @@ import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.ui.AlarmEditorScreen
 import ru.titeha.shiftalarm.ui.AlarmListViewModel
+import ru.titeha.shiftalarm.alarm.CachedAlarm
+import ru.titeha.shiftalarm.alarm.DirectBootAlarmStore
 import ru.titeha.shiftalarm.alarm.VendorSetup
 import ru.titeha.shiftalarm.ui.AlarmReadinessBanner
 import ru.titeha.shiftalarm.ui.VendorSetupScreen
@@ -75,8 +77,11 @@ import ru.titeha.shiftalarm.ui.SettingsScreen
 import ru.titeha.shiftalarm.ui.theme.AppTheme
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,6 +108,10 @@ class MainActivity : ComponentActivity() {
         // Инструкция по автозапуску для агрессивных прошивок (Xiaomi и т.п.); null — прошивка не из них.
         val vendorGuide = remember { VendorSetup.forManufacturer(Build.MANUFACTURER) }
         var vendorDismissed by remember { mutableStateOf(settings.vendorSetupDismissed()) }
+
+        // Пропущенные звонки (обнаружены планировщиком): показываем карточку, пока не закроют.
+        val directBootStore = remember { DirectBootAlarmStore(applicationContext) }
+        var missedAlarms by remember { mutableStateOf(directBootStore.readMissed()) }
 
         var saveWarning by remember { mutableStateOf<String?>(null) }
 
@@ -216,6 +225,12 @@ class MainActivity : ComponentActivity() {
               onDismissVendorSetup = {
                 vendorDismissed = true
                 settings.setVendorSetupDismissed()
+              },
+              missedAlarms = missedAlarms,
+              vendorSetupAvailable = vendorGuide != null,
+              onDismissMissed = {
+                directBootStore.clearMissed()
+                missedAlarms = emptyList()
               }
             )
           }
@@ -249,6 +264,45 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier.align(Alignment.BottomCenter)
           )
         }
+      }
+    }
+  }
+}
+
+/** Карточка «звонок мог не прозвенеть» — приложение не отработало срабатывание (обычно OEM-выгрузка). */
+@Composable
+private fun MissedAlarmCard(
+  missed: List<CachedAlarm>,
+  vendorSetupAvailable: Boolean,
+  onOpenVendorSetup: () -> Unit,
+  onDismiss: () -> Unit,
+  modifier: Modifier = Modifier
+) {
+  Card(modifier = modifier.fillMaxWidth()) {
+    Column(Modifier.padding(12.dp)) {
+      Text(
+        "Звонок мог не прозвенеть",
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.error
+      )
+      Spacer(Modifier.height(4.dp))
+      val fmt = remember { DateTimeFormatter.ofPattern("dd.MM HH:mm") }
+      missed.takeLast(3).forEach { m ->
+        val time = Instant.ofEpochMilli(m.triggerAtMillis)
+          .atZone(ZoneId.systemDefault()).format(fmt)
+        Text("• ${m.label.ifBlank { "Будильник" }} — $time", style = MaterialTheme.typography.bodySmall)
+      }
+      Spacer(Modifier.height(8.dp))
+      Text(
+        "Похоже, система выгрузила приложение. Настройте автозапуск и энергосбережение, чтобы это не повторялось.",
+        style = MaterialTheme.typography.labelSmall
+      )
+      Spacer(Modifier.height(8.dp))
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (vendorSetupAvailable) {
+          Button(onClick = onOpenVendorSetup) { Text("Настроить телефон") }
+        }
+        TextButton(onClick = onDismiss) { Text("Понятно") }
       }
     }
   }
@@ -299,7 +353,10 @@ private fun AlarmListScreen(
   onOpenSettings: () -> Unit,
   showVendorSetupHint: Boolean = false,
   onOpenVendorSetup: () -> Unit = {},
-  onDismissVendorSetup: () -> Unit = {}
+  onDismissVendorSetup: () -> Unit = {},
+  missedAlarms: List<CachedAlarm> = emptyList(),
+  vendorSetupAvailable: Boolean = false,
+  onDismissMissed: () -> Unit = {}
 ) {
   val currentMinute = rememberCurrentMinute()
   Scaffold(
@@ -343,6 +400,17 @@ private fun AlarmListScreen(
 
       // Предупреждение о разрешениях, мешающих звонку (показывается только при проблемах).
       AlarmReadinessBanner(Modifier.padding(bottom = 12.dp))
+
+      // Пропущенный звонок (система выгрузила приложение) — реактивная подсказка.
+      if (missedAlarms.isNotEmpty()) {
+        MissedAlarmCard(
+          missed = missedAlarms,
+          vendorSetupAvailable = vendorSetupAvailable,
+          onOpenVendorSetup = onOpenVendorSetup,
+          onDismiss = onDismissMissed,
+          modifier = Modifier.padding(bottom = 12.dp)
+        )
+      }
 
       // Подсказка «Настроить телефон» для агрессивных прошивок (автозапуск). Скрываемая.
       if (showVendorSetupHint) {
