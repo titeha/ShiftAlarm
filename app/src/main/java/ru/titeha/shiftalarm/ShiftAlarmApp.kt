@@ -1,6 +1,7 @@
 package ru.titeha.shiftalarm
 
 import android.app.Application
+import android.os.UserManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,6 +23,19 @@ class ShiftAlarmApp : Application() {
 
   override fun onCreate() {
     super.onCreate()
+
+    /*
+     * Direct Boot: если процесс поднят до разблокировки (например, ради directBootAware BootReceiver
+     * после ночного ребута), credential-encrypted хранилище — Room и обычные SharedPreferences —
+     * НЕДОСТУПНО. Любое обращение к нему здесь роняет весь процесс на onCreate, и тогда не отработает
+     * даже BootReceiver. Поэтому до разблокировки пропускаем всю CE-инициализацию: перевыставление
+     * из device-protected кэша сделает сам BootReceiver, а полная инициализация — при старте после
+     * разблокировки.
+     */
+    val userManager = getSystemService(UserManager::class.java)
+    if (userManager != null && !userManager.isUserUnlocked) {
+      return
+    }
 
     val holidays = HolidayCalendarRepository(this)
     holidays.install() // движок теперь читает календарь из кэша (иначе — встроенные данные)

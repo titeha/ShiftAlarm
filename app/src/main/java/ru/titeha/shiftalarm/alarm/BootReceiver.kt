@@ -3,6 +3,7 @@ package ru.titeha.shiftalarm.alarm
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.UserManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,18 +23,26 @@ import ru.titeha.shiftalarm.data.AlarmRepository
 class BootReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     val action = intent.action
+    val appContext = context.applicationContext
 
-    if (SystemRescheduleActions.isLockedBoot(action)) {
-      /*
-       * Ранняя загрузка залоченного устройства (Direct Boot): Room и обычные prefs недоступны.
-       * Перевыставляем будильники СЛЕПО из device-protected кэша, без обращения к базе и журналу.
-       * Полный пересчёт из Room произойдёт позже — по USER_UNLOCKED / первому старту приложения.
-       */
+    val userManager = appContext.getSystemService(UserManager::class.java)
+    val locked = userManager != null && !userManager.isUserUnlocked
+
+    /*
+     * До разблокировки (Direct Boot: LOCKED_BOOT_COMPLETED, а также TIME_SET/др. события, пришедшие
+     * пока устройство залочено) credential-encrypted хранилище недоступно — Room не тронуть. Любое
+     * такое событие обрабатываем ОДИНАКОВО: перевыставляем будильники из device-protected кэша, без
+     * обращения к базе и журналу. Полный пересчёт из Room произойдёт по USER_UNLOCKED / старту после
+     * разблокировки.
+     */
+    if (SystemRescheduleActions.isLockedBoot(action) ||
+      (locked && SystemRescheduleActions.shouldReschedule(action))
+    ) {
       try {
-        AlarmScheduler.reArmFromCache(context.applicationContext)
-        Log.i(TAG, "Locked boot: будильники перевыставлены из device-protected кэша")
+        AlarmScheduler.reArmFromCache(appContext)
+        Log.i(TAG, "Direct Boot ($action): будильники перевыставлены из device-protected кэша")
       } catch (error: Exception) {
-        Log.w(TAG, "Locked boot: не удалось перевыставить из кэша", error)
+        Log.w(TAG, "Direct Boot: не удалось перевыставить из кэша", error)
       }
       return
     }
@@ -43,7 +52,6 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     val pending = goAsync()
-    val appContext = context.applicationContext
     val reason = SystemRescheduleActions.reasonOf(action)
 
     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
