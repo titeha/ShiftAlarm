@@ -23,7 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import ru.titeha.shiftalarm.data.HolidayCalendarRepository
+import ru.titeha.shiftalarm.schedule.WorkWeek
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -39,6 +41,8 @@ fun SettingsScreen(
   dynamicColor: Boolean,
   onThemeMode: (ThemeMode) -> Unit,
   onDynamicColor: (Boolean) -> Unit,
+  workWeek: WorkWeek = WorkWeek.DEFAULT,
+  onWorkWeek: (WorkWeek) -> Unit = {},
   onRunSelfTest: () -> Unit = {},
   onOpenPhoneSetup: (() -> Unit)? = null,
   onBack: () -> Unit,
@@ -132,8 +136,56 @@ fun SettingsScreen(
           style = MaterialTheme.typography.bodyMedium
         )
       }
+
+      Spacer(Modifier.height(24.dp))
+      Text("Рабочая неделя", style = MaterialTheme.typography.titleMedium)
+      Text(
+        "Сколько дней в неделе рабочих и с какого дня она начинается. Остальные дни — выходные (поверх них действуют праздники и переносы).",
+        style = MaterialTheme.typography.bodySmall
+      )
+      Spacer(Modifier.height(8.dp))
+      Text("Рабочих дней", style = MaterialTheme.typography.bodyMedium)
+      Spacer(Modifier.height(4.dp))
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(4, 5, 6).forEach { days ->
+          FilterChip(
+            selected = workWeek.workDays == days,
+            onClick = { if (workWeek.workDays != days) onWorkWeek(workWeek.copy(workDays = days)) },
+            label = { Text(days.toString()) }
+          )
+        }
+      }
+      Spacer(Modifier.height(8.dp))
+      Text("Начало недели", style = MaterialTheme.typography.bodyMedium)
+      Spacer(Modifier.height(4.dp))
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(DayOfWeek.MONDAY to "Пн", DayOfWeek.SUNDAY to "Вс").forEach { (day, title) ->
+          FilterChip(
+            selected = workWeek.weekStart == day,
+            onClick = { if (workWeek.weekStart != day) onWorkWeek(workWeek.copy(weekStart = day)) },
+            label = { Text(title) }
+          )
+        }
+      }
+      Spacer(Modifier.height(6.dp))
+      Text(
+        "Выходные: ${weekendLabel(workWeek)}",
+        style = MaterialTheme.typography.labelSmall
+      )
     }
   }
+}
+
+private val WEEKDAY_SHORT = mapOf(
+  DayOfWeek.MONDAY to "Пн", DayOfWeek.TUESDAY to "Вт", DayOfWeek.WEDNESDAY to "Ср",
+  DayOfWeek.THURSDAY to "Чт", DayOfWeek.FRIDAY to "Пт", DayOfWeek.SATURDAY to "Сб",
+  DayOfWeek.SUNDAY to "Вс"
+)
+
+/** «Сб, Вс» — выходные дни недели по порядку от понедельника (или «нет», если рабочих 7). */
+private fun weekendLabel(week: WorkWeek): String {
+  val weekend = DayOfWeek.entries.filter { week.isWeekend(it) }
+  return if (weekend.isEmpty()) "нет" else weekend.joinToString(", ") { WEEKDAY_SHORT.getValue(it) }
 }
 
 private val STAMP_FMT: DateTimeFormatter =

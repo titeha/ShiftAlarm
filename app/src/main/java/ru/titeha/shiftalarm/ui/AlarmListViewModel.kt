@@ -27,6 +27,9 @@ import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
+import ru.titeha.shiftalarm.data.SettingsStore
+import ru.titeha.shiftalarm.schedule.ProductionCalendars
+import ru.titeha.shiftalarm.schedule.WorkWeek
 
 /** Состояние экрана списка будильников и сгруппированных дочерних данных. */
 data class AlarmListUiState(
@@ -164,6 +167,23 @@ class AlarmListViewModel(
         } catch (error: Exception) {
             Log.e(TAG, "Не удалось переключить будильник id=${alarm.id}", error)
             _userMessages.send("Не удалось изменить будильник")
+        }
+    }
+
+    /**
+     * Применить новую рабочую неделю: сохранить в настройки, обновить глобальную неделю движка и
+     * перепланировать все включённые будильники, чтобы смена выходных подействовала сразу.
+     */
+    fun applyWorkWeek(week: WorkWeek) = viewModelScope.launch {
+        try {
+            SettingsStore(context()).setWorkWeek(week)
+            ProductionCalendars.workWeek = week
+            AlarmScheduler.rescheduleAll(context(), repo, repo.enabled())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.e(TAG, "Не удалось применить рабочую неделю", error)
+            _userMessages.send("Не удалось применить рабочую неделю")
         }
     }
 
