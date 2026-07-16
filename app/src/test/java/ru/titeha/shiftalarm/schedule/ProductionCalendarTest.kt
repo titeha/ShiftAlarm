@@ -27,6 +27,43 @@ class ProductionCalendarTest {
   }
 
   @Test
+  fun kindOf_derivedFromBooleanSets() {
+    val holiday = LocalDate.of(2026, 6, 12)
+    val workSat = LocalDate.of(2026, 7, 4)
+    val cal = ProductionCalendar(holidays = setOf(holiday), workingWeekends = setOf(workSat))
+    assertEquals(StateDayKind.HOLIDAY, cal.kindOf(holiday))
+    assertEquals(StateDayKind.TRANSFER_WORK, cal.kindOf(workSat))
+    assertEquals(StateDayKind.NONE, cal.kindOf(LocalDate.of(2026, 7, 6))) // обычный понедельник
+  }
+
+  @Test
+  fun explicitKinds_takePriority_andPreHolidayIsWorking() {
+    val pre = LocalDate.of(2026, 4, 30)   // сокращённый предпраздничный (Чт)
+    val cal = ProductionCalendar(kinds = mapOf(pre to StateDayKind.PRE_HOLIDAY))
+    assertEquals(StateDayKind.PRE_HOLIDAY, cal.kindOf(pre))
+    assertTrue(cal.isWorking(pre))        // сокращённый — всё же рабочий
+  }
+
+  @Test
+  fun transferOff_isNonWorking() {
+    val transferOff = LocalDate.of(2026, 3, 9) // перенос выходного (Пн)
+    val cal = ProductionCalendar(kinds = mapOf(transferOff to StateDayKind.TRANSFER_OFF))
+    assertTrue(cal.isNonWorking(transferOff))
+  }
+
+  @Test
+  fun ru2026_typedKinds() {
+    val cal = ProductionCalendars.RU_2026
+    assertEquals(StateDayKind.HOLIDAY, cal.kindOf(LocalDate.of(2026, 1, 1)))      // Новый год
+    assertEquals(StateDayKind.HOLIDAY, cal.kindOf(LocalDate.of(2026, 6, 12)))     // День России
+    assertEquals(StateDayKind.TRANSFER_OFF, cal.kindOf(LocalDate.of(2026, 3, 9))) // перенос с 8 марта
+    assertEquals(StateDayKind.TRANSFER_OFF, cal.kindOf(LocalDate.of(2026, 5, 11)))// перенос с 9 мая
+    assertEquals(StateDayKind.NONE, cal.kindOf(LocalDate.of(2026, 7, 6)))         // обычный день
+    // Поведение (isNonWorking) прежнее.
+    assertTrue(cal.isNonWorking(LocalDate.of(2026, 3, 9)))
+  }
+
+  @Test
   fun holiday_onWeekday_isNonWorking() {
     val cal = ProductionCalendar(holidays = setOf(LocalDate.of(2026, 6, 12)))
     assertTrue(cal.isNonWorking(LocalDate.of(2026, 6, 12)))    // День России (Пт)
@@ -104,6 +141,20 @@ class ProductionCalendarTest {
     assertTrue(cal.isWorking(LocalDate.of(2026, 1, 3)))       // рабочая суббота
     assertTrue(cal.isNonWorking(LocalDate.of(2026, 1, 4)))    // обычное воскресенье
     assertTrue(cal.isWorking(LocalDate.of(2026, 1, 2)))       // обычная пятница
+    // Типы: нерабочий будень → HOLIDAY, рабочая суббота → TRANSFER_WORK.
+    assertEquals(StateDayKind.HOLIDAY, cal.kindOf(LocalDate.of(2026, 1, 1)))
+    assertEquals(StateDayKind.TRANSFER_WORK, cal.kindOf(LocalDate.of(2026, 1, 3)))
+  }
+
+  @Test
+  fun fromIsDayOff_typesPreHoliday() {
+    // Строка на 2026: всё рабочее (0), кроме одного сокращённого предпраздничного дня (код 2).
+    val chars = CharArray(365) { '0' }
+    val preHoliday = LocalDate.of(2026, 4, 30) // Чт
+    chars[preHoliday.dayOfYear - 1] = '2'
+    val cal = ProductionCalendars.fromIsDayOff(2026, String(chars))
+    assertEquals(StateDayKind.PRE_HOLIDAY, cal.kindOf(preHoliday))
+    assertTrue(cal.isWorking(preHoliday)) // сокращённый — рабочий
   }
 
   @Test(expected = IllegalArgumentException::class)

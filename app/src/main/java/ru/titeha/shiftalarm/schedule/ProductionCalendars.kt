@@ -21,19 +21,18 @@ object ProductionCalendars {
    * «Рабочие субботы» (workingWeekends) не заданы — сверить с постановлением на 2026.
    */
   val RU_2026 = ProductionCalendar(
-    holidays = setOf(
-      // Новогодние каникулы и Рождество.
-      d(2026, 1, 1), d(2026, 1, 2), d(2026, 1, 3), d(2026, 1, 4),
-      d(2026, 1, 5), d(2026, 1, 6), d(2026, 1, 7), d(2026, 1, 8),
-      d(2026, 2, 23),           // День защитника Отечества (Пн)
-      d(2026, 3, 8),            // Международный женский день (Вс)
-      d(2026, 3, 9),            // перенос выходного с 8 марта
-      d(2026, 5, 1),            // Праздник Весны и Труда (Пт)
-      d(2026, 5, 9),            // День Победы (Сб)
-      d(2026, 5, 11),           // перенос выходного с 9 мая
-      d(2026, 6, 12),           // День России (Пт)
-      d(2026, 11, 4)            // День народного единства (Ср)
-    )
+    kinds = buildMap {
+      // Новогодние каникулы и Рождество — праздники.
+      for (day in 1..8) put(d(2026, 1, day), StateDayKind.HOLIDAY)
+      put(d(2026, 2, 23), StateDayKind.HOLIDAY)  // День защитника Отечества (Пн)
+      put(d(2026, 3, 8), StateDayKind.HOLIDAY)   // Международный женский день (Вс)
+      put(d(2026, 3, 9), StateDayKind.TRANSFER_OFF)  // перенос выходного с 8 марта
+      put(d(2026, 5, 1), StateDayKind.HOLIDAY)   // Праздник Весны и Труда (Пт)
+      put(d(2026, 5, 9), StateDayKind.HOLIDAY)   // День Победы (Сб)
+      put(d(2026, 5, 11), StateDayKind.TRANSFER_OFF)  // перенос выходного с 9 мая
+      put(d(2026, 6, 12), StateDayKind.HOLIDAY)  // День России (Пт)
+      put(d(2026, 11, 4), StateDayKind.HOLIDAY)  // День народного единства (Ср)
+    }
   )
 
   /** Календарь по коду страны и году; null — данных нет. Сейчас только "RU"/2026. */
@@ -69,7 +68,11 @@ object ProductionCalendars {
     val b = resolve(country, fromYear + 1)
     return when {
       a != null && b != null ->
-        ProductionCalendar(a.holidays + b.holidays, a.workingWeekends + b.workingWeekends)
+        ProductionCalendar(
+          a.holidays + b.holidays,
+          a.workingWeekends + b.workingWeekends,
+          a.kinds + b.kinds,
+        )
       else -> a ?: b
     }
   }
@@ -80,9 +83,10 @@ object ProductionCalendars {
    * `1` нерабочий (выходной/праздник), `2` сокращённый предпраздничный (рабочий), `4` рабочий день
    * (перенос). Всё, кроме `1`, считаем рабочим.
    *
-   * Чистая функция (без сети): переводит строку в [ProductionCalendar] относительно нашей модели —
-   * будни-нерабочие уходят в `holidays`, рабочие Сб/Вс — в `workingWeekends`. Сетевой запрос и кэш —
-   * отдельный слой.
+   * Чистая функция (без сети): переводит строку в типизированный [ProductionCalendar] — нерабочий
+   * будень → [StateDayKind.HOLIDAY] (API не отличает праздник от перенесённого выходного — тонкий
+   * TRANSFER_OFF приходит из встроенного списка), сокращённый (`2`) → [StateDayKind.PRE_HOLIDAY],
+   * рабочий выходной → [StateDayKind.TRANSFER_WORK]. Сетевой запрос и кэш — отдельный слой.
    *
    * @throws IllegalArgumentException если длина не совпадает с числом дней в году (защита от мусора).
    */
@@ -98,17 +102,23 @@ object ProductionCalendars {
     require(digits.all { it in "0124" }) {
       "isDayOff: недопустимые символы в ответе для $year"
     }
-    val holidays = mutableSetOf<LocalDate>()
-    val workingWeekends = mutableSetOf<LocalDate>()
+    val kinds = mutableMapOf<LocalDate, StateDayKind>()
     var date = start
     for (ch in digits) {
-      val nonWorking = ch == '1'
       val isWeekend = date.dayOfWeek == java.time.DayOfWeek.SATURDAY ||
         date.dayOfWeek == java.time.DayOfWeek.SUNDAY
-      if (nonWorking && !isWeekend) holidays += date       // праздник/перенос на будень
-      if (!nonWorking && isWeekend) workingWeekends += date // рабочая суббота/воскресенье
+      when {
+        // Нерабочий будень: праздник или перенесённый на будень выходной. API их не различает —
+        // берём HOLIDAY (тонкий тип TRANSFER_OFF, если нужен, приходит из встроенного списка).
+        ch == '1' -> if (!isWeekend) kinds[date] = StateDayKind.HOLIDAY
+        // Рабочий выходной (перенос): любой рабочий код на Сб/Вс.
+        isWeekend -> kinds[date] = StateDayKind.TRANSFER_WORK
+        // Сокращённый предпраздничный будень (рабочий).
+        ch == '2' -> kinds[date] = StateDayKind.PRE_HOLIDAY
+        // '0'/'4' в будень — обычный рабочий день, особого типа нет.
+      }
       date = date.plusDays(1)
     }
-    return ProductionCalendar(holidays, workingWeekends)
+    return ProductionCalendar(kinds = kinds)
   }
 }
