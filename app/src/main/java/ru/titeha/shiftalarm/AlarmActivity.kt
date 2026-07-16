@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,7 +28,13 @@ import androidx.compose.material3.OutlinedButton
 import ru.titeha.shiftalarm.alarm.AlarmScheduler
 import ru.titeha.shiftalarm.alarm.AlarmService
 import ru.titeha.shiftalarm.alarm.AlarmSignalState
+import ru.titeha.shiftalarm.alarm.DismissMode
+import ru.titeha.shiftalarm.alarm.FeatureFlags
 import ru.titeha.shiftalarm.alarm.RingSessionController
+import ru.titeha.shiftalarm.data.SettingsStore
+import ru.titeha.shiftalarm.ui.MathChallengeView
+import ru.titeha.shiftalarm.ui.ShakeChallengeView
+import ru.titeha.shiftalarm.ui.StepsChallengeView
 
 /**
  * Полноэкранный экран активного сигнала.
@@ -45,6 +52,9 @@ class AlarmActivity : ComponentActivity() {
     private var snoozeRemaining by mutableStateOf(0)
     private var snoozeIntervalMinutes by mutableStateOf(0)
 
+    /** Способ выключения (жёсткий режим): задание усложняет «Стоп». «Отложить» работает всегда. */
+    private var dismissMode by mutableStateOf(DismissMode.NORMAL)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -55,10 +65,13 @@ class AlarmActivity : ComponentActivity() {
         }
 
         updateFromIntent(intent)
+        dismissMode =
+            if (FeatureFlags.HARD_MODE) SettingsStore(this).dismissMode() else DismissMode.NORMAL
 
         setContent {
             val isRinging by
                 AlarmSignalState.isRinging.collectAsStateWithLifecycle()
+            var challengeActive by remember { mutableStateOf(false) }
 
             /*
              * Уведомление останавливает сервис напрямую. Когда сервис сообщает,
@@ -93,10 +106,34 @@ class AlarmActivity : ComponentActivity() {
                         Spacer(Modifier.height(16.dp))
                     }
 
-                    Button(
-                        onClick = ::stopAlarm
-                    ) {
-                        Text("Стоп")
+                    if (challengeActive) {
+                        // Задание жёсткого режима вместо простого «Стоп»; «Отложить» выше работает всегда.
+                        when (dismissMode) {
+                            DismissMode.MATH -> MathChallengeView(
+                                onSuccess = ::stopAlarm,
+                                onCancel = { challengeActive = false }
+                            )
+
+                            DismissMode.STEPS -> StepsChallengeView(
+                                onSuccess = ::stopAlarm,
+                                onCancel = { challengeActive = false }
+                            )
+
+                            DismissMode.SHAKE -> ShakeChallengeView(
+                                onSuccess = ::stopAlarm,
+                                onCancel = { challengeActive = false }
+                            )
+
+                            DismissMode.NORMAL -> LaunchedEffect(Unit) { stopAlarm() }
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                if (dismissMode == DismissMode.NORMAL) stopAlarm() else challengeActive = true
+                            }
+                        ) {
+                            Text("Стоп")
+                        }
                     }
                 }
             }
