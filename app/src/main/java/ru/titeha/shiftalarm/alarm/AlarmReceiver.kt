@@ -42,6 +42,19 @@ class AlarmReceiver : BroadcastReceiver() {
     val appContext = context.applicationContext
 
     /*
+     * Снуз-срабатывание — продолжение сессии звонка, а не плановое: валидатор актуальности пропускаем
+     * (снуз-время не совпадает с расписанием), звоним по метке из extras без обращения к Room. Снуз-
+     * запись в кэше «использована» — убираем, чтобы после ребута уже отзвонивший снуз не повторился.
+     */
+    if (intent.getBooleanExtra(AlarmScheduler.EXTRA_IS_SNOOZE, false)) {
+      val label = intent.getStringExtra(AlarmService.EXTRA_LABEL).orEmpty()
+      DirectBootAlarmStore(appContext).removeSnooze(id)
+      Log.i(TAG, "Снуз-срабатывание id=$id — звоним без валидатора")
+      AlarmService.start(appContext, label)
+      return
+    }
+
+    /*
      * До разблокировки (Direct Boot) credential-encrypted хранилище недоступно: Room не прочитать,
      * валидатор и репозиторий использовать нельзя. Звоним по данным из RingCache/extras, ничего не
      * трогая в базе. Полный пересчёт произойдёт по USER_UNLOCKED / первому старту приложения.

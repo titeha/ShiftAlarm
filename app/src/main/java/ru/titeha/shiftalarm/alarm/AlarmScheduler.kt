@@ -27,6 +27,9 @@ object AlarmScheduler {
   const val EXTRA_ALARM_ID = "alarm_id"
   const val EXTRA_TRIGGER_AT_MILLIS = "trigger_at_millis"
 
+  /** Метка снуз-звонка: срабатывание — продолжение сессии, а не плановое (валидатор пропускаем). */
+  const val EXTRA_IS_SNOOZE = "is_snooze"
+
   const val NO_ID = -1L
   const val NO_TRIGGER_AT_MILLIS = AlarmFireValidator.MISSING_TRIGGER_AT_MILLIS
 
@@ -219,6 +222,34 @@ object AlarmScheduler {
   }
 
   /**
+   * Поставить снуз-звонок будильника [alarmId] на [atMillis] — отдельным (снуз-)неймспейсом, чтобы не
+   * затирать базовое расписание. Пишется в device-protected снуз-кэш, чтобы пережить ребут в снуз-окне.
+   * true — сигнал поставлен.
+   */
+  fun scheduleSnoozeAt(context: Context, alarmId: Long, atMillis: Long, label: String): Boolean {
+    val alarmManager = context.getSystemService(AlarmManager::class.java)
+    val info = AlarmManager.AlarmClockInfo(atMillis, snoozeShowPendingIntent(context, alarmId))
+
+    return try {
+      alarmManager.setAlarmClock(info, snoozeFirePendingIntent(context, alarmId, atMillis, label))
+      DirectBootAlarmStore(context).putSnooze(
+        CachedAlarm(alarmId = alarmId, triggerAtMillis = atMillis, label = label)
+      )
+      true
+    } catch (error: SecurityException) {
+      Log.e(TAG, "Не удалось поставить снуз id=$alarmId: нет разрешения на точные будильники", error)
+      false
+    }
+  }
+
+  /** Снять снуз-звонок будильника и убрать его из снуз-кэша. */
+  fun cancelSnooze(context: Context, alarmId: Long) {
+    context.getSystemService(AlarmManager::class.java)
+      .cancel(snoozeFirePendingIntent(context, alarmId, NO_TRIGGER_AT_MILLIS, ""))
+    DirectBootAlarmStore(context).removeSnooze(alarmId)
+  }
+
+  /**
    * Пересобрать device-protected кэш ближайших звонков — чтобы после ночного ребута залоченным
    * `directBootAware`-ресивер мог перевыставить будильники, не обращаясь к Room.
    *
@@ -281,6 +312,20 @@ object AlarmScheduler {
         triggerAtMillis = maxOf(entry.triggerAtMillis, now)
       )
     }
+
+    // Отложенные (снуз) звонки — тем же правилом грейса, но снуз-неймспейсом, чтобы ребут внутри
+    // снуз-окна не потерял звонок и сессия продолжилась (счётчик снуза лежит в RingSessionStore).
+    DirectBootAlarmStore(context).readSnoozes().forEach { snooze ->
+      if (snooze.triggerAtMillis < now - LOCKED_BOOT_OVERDUE_GRACE_MS) {
+        return@forEach
+      }
+      scheduleSnoozeAt(
+        context = context,
+        alarmId = snooze.alarmId,
+        atMillis = maxOf(snooze.triggerAtMillis, now),
+        label = snooze.label
+      )
+    }
   }
 
   private suspend fun offPeriodsFor(
@@ -321,6 +366,36 @@ object AlarmScheduler {
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
   }
+
+  /** PendingIntent снуз-срабатывания: тот же AlarmReceiver, но снуз-неймспейс + метка EXTRA_IS_SNOOZE. */
+  private fun snoozeFirePendingIntent(
+    context: Context,
+    alarmId: Long,
+    atMillis: Long,
+    label: String
+  ): PendingIntent {
+    val intent = Intent(context, AlarmReceiver::class.java)
+      .putExtra(EXTRA_ALARM_ID, alarmId)
+      .putExtra(EXTRA_TRIGGER_AT_MILLIS, atMillis)
+      .putExtra(EXTRA_IS_SNOOZE, true)
+      .putExtra(AlarmService.EXTRA_LABEL, label)
+
+    return PendingIntent.getBroadcast(
+      context,
+      AlarmRequestCodes.snooze(alarmId),
+      intent,
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
+  }
+
+  /** Show-PendingIntent для AlarmClockInfo (иконка будущего сигнала); одинаков для базы и снуза. */
+  private fun snoozeShowPendingIntent(context: Context, alarmId: Long): PendingIntent =
+    PendingIntent.getActivity(
+      context,
+      showRequest(alarmId),
+      Intent(context, AlarmActivity::class.java),
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
 
   /*
    * Разные requestCode для «сработать» и «показать экран» — уникальны по id будильника, чтобы

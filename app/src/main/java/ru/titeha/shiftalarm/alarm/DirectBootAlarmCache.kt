@@ -89,6 +89,31 @@ class DirectBootAlarmStore(context: Context) {
             ?.let { DirectBootAlarmCacheCodec.decodeOrNull(it) }
             ?: emptyList()
 
+    /**
+     * Отложенные (снуз) звонки — отдельный список, чтобы перевыставление после ребута внутри снуз-окна
+     * не теряло звонок. Тот же формат [CachedAlarm]; принадлежность к снузу задаётся самим списком.
+     */
+    fun readSnoozes(): List<CachedAlarm> =
+        prefs.getString(KEY_SNOOZE, null)
+            ?.let { DirectBootAlarmCacheCodec.decodeOrNull(it) }
+            ?: emptyList()
+
+    /** Вставить/обновить снуз-звонок будильника (по alarmId — один активный снуз на будильник). */
+    fun putSnooze(snooze: CachedAlarm) {
+        val others = readSnoozes().filterNot { it.alarmId == snooze.alarmId }
+        prefs.edit()
+            .putString(KEY_SNOOZE, DirectBootAlarmCacheCodec.encode(others + snooze))
+            .apply()
+    }
+
+    /** Убрать снуз-звонок будильника (стоп/отмена/исчерпание). */
+    fun removeSnooze(alarmId: Long) {
+        val remaining = readSnoozes().filterNot { it.alarmId == alarmId }
+        prefs.edit()
+            .putString(KEY_SNOOZE, DirectBootAlarmCacheCodec.encode(remaining))
+            .apply()
+    }
+
     /** Пропущенные звонки (обнаружены как «застрявшие» в кэше после гэпа), для показа пользователю. */
     fun readMissed(): List<CachedAlarm> =
         prefs.getString(KEY_MISSED, null)
@@ -112,6 +137,7 @@ class DirectBootAlarmStore(context: Context) {
         const val PREFS = "direct_boot_alarms"
         const val KEY = "cache_v1"
         const val KEY_MISSED = "missed_v1"
+        const val KEY_SNOOZE = "snoozes_v1"
         const val MAX_MISSED = 10
     }
 }
