@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
       var dynamicColor by remember { mutableStateOf(settings.dynamicColor()) }
       var ringConfig by remember { mutableStateOf(settings.ringConfig()) }
       var dismissMode by remember { mutableStateOf(settings.dismissMode()) }
+      var weekStart by remember { mutableStateOf(settings.weekStart()) }
       val darkTheme = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
@@ -164,6 +165,8 @@ class MainActivity : ComponentActivity() {
               onDynamicColor = { dynamicColor = it; settings.setDynamicColor(it) },
               ringConfig = ringConfig,
               onRingConfig = { ringConfig = it; settings.setRingConfig(it) },
+              weekStart = weekStart,
+              onWeekStart = { weekStart = it; settings.setWeekStart(it) },
               dismissMode = dismissMode,
               onDismissMode = { mode ->
                 dismissMode = mode

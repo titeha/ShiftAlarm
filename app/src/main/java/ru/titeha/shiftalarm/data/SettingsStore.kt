@@ -3,6 +3,7 @@ package ru.titeha.shiftalarm.data
 import android.content.Context
 import ru.titeha.shiftalarm.alarm.DismissMode
 import ru.titeha.shiftalarm.alarm.RingConfig
+import ru.titeha.shiftalarm.schedule.WeekStart
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
 
 /**
@@ -81,6 +82,13 @@ class SettingsStore(context: Context) {
   fun setDismissMode(mode: DismissMode) =
     alarmPrefs.edit().putString(KEY_DISMISS_MODE, mode.name).apply()
 
+  /** Начало недели (только отображение). По умолчанию авто (из локали). */
+  fun weekStart(): WeekStart = runCatching {
+    WeekStart.valueOf(prefs.getString(KEY_WEEK_START, WeekStart.AUTO.name)!!)
+  }.getOrDefault(WeekStart.AUTO)
+
+  fun setWeekStart(start: WeekStart) = prefs.edit().putString(KEY_WEEK_START, start.name).apply()
+
   private companion object {
     const val PREFS = "app_settings"
     const val PREFS_ALARM_DE = "alarm_settings_de"
@@ -93,5 +101,6 @@ class SettingsStore(context: Context) {
     const val KEY_MAX_SNOOZES = "max_snoozes"
     const val KEY_AUTO_REPEAT = "auto_repeat_enabled"
     const val KEY_DISMISS_MODE = "dismiss_mode"
+    const val KEY_WEEK_START = "week_start"
   }
 }

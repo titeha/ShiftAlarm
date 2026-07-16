@@ -29,6 +29,7 @@ import android.hardware.SensorManager
 import ru.titeha.shiftalarm.alarm.DismissMode
 import ru.titeha.shiftalarm.alarm.FeatureFlags
 import ru.titeha.shiftalarm.alarm.RingConfig
+import ru.titeha.shiftalarm.schedule.WeekStart
 import ru.titeha.shiftalarm.data.HolidayCalendarRepository
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
 import java.time.Instant
@@ -50,6 +51,8 @@ fun SettingsScreen(
   onRingConfig: (RingConfig) -> Unit = {},
   dismissMode: DismissMode = DismissMode.NORMAL,
   onDismissMode: (DismissMode) -> Unit = {},
+  weekStart: WeekStart = WeekStart.AUTO,
+  onWeekStart: (WeekStart) -> Unit = {},
   onRunSelfTest: () -> Unit = {},
   onOpenPhoneSetup: (() -> Unit)? = null,
   onBack: () -> Unit,
@@ -234,6 +237,28 @@ fun SettingsScreen(
               label = { Text("Тряска") }
             )
           }
+        }
+      }
+
+      Spacer(Modifier.height(24.dp))
+      Text("Начало недели", style = MaterialTheme.typography.titleMedium)
+      Text(
+        "Только вид: порядок колонок в календаре и чипов дней. На расчёт звонка не влияет.",
+        style = MaterialTheme.typography.bodySmall
+      )
+      Spacer(Modifier.height(8.dp))
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(
+          WeekStart.AUTO to "Авто",
+          WeekStart.MONDAY to "Пн",
+          WeekStart.SUNDAY to "Вс",
+          WeekStart.SATURDAY to "Сб",
+        ).forEach { (value, title) ->
+          FilterChip(
+            selected = weekStart == value,
+            onClick = { if (weekStart != value) onWeekStart(value) },
+            label = { Text(title) }
+          )
         }
       }
 

@@ -71,6 +71,10 @@ import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
 import ru.titeha.shiftalarm.schedule.ShiftType
 import ru.titeha.shiftalarm.schedule.VacationSick
+import ru.titeha.shiftalarm.schedule.orderedDaysOfWeek
+import ru.titeha.shiftalarm.schedule.resolve
+import ru.titeha.shiftalarm.data.SettingsStore
+import androidx.compose.ui.platform.LocalContext
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -204,7 +208,7 @@ fun AlarmEditorScreen(
     Spacer(Modifier.height(12.dp))
     when (method) {
       EditMethod.ONCE -> OnceContent(draft) { draft = it }
-      EditMethod.WEEKLY -> WeeklyDaysContent(draft) { draft = it }
+      EditMethod.WEEKLY -> WeeklyDaysContent(draft, { draft = it }, rememberEditorWeekStart())
       EditMethod.SHIFT -> {
         ShiftCycleEditor(draft = draft, onChange = { draft = it })
         Spacer(Modifier.height(12.dp))
@@ -445,9 +449,20 @@ private fun OnceContent(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   }
 }
 
+/** Фактический день начала недели из настройки (AUTO → из локали) — только для порядка отображения. */
+@Composable
+private fun rememberEditorWeekStart(): DayOfWeek {
+  val context = LocalContext.current
+  return remember { SettingsStore(context).weekStart().resolve(Locale.getDefault()) }
+}
+
 /** Способ «По дням недели»: время + пресеты дней + чекбоксы дней. */
 @Composable
-private fun WeeklyDaysContent(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
+private fun WeeklyDaysContent(
+  draft: AlarmEntity,
+  onChange: (AlarmEntity) -> Unit,
+  weekStart: DayOfWeek = DayOfWeek.MONDAY,
+) {
   TimeButton(draft, onChange)
   Spacer(Modifier.height(16.dp))
 
@@ -471,7 +486,7 @@ private fun WeeklyDaysContent(draft: AlarmEntity, onChange: (AlarmEntity) -> Uni
     modifier = Modifier.fillMaxWidth(),
     horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)
   ) {
-    DayOfWeek.entries.forEach { day ->
+    orderedDaysOfWeek(weekStart).forEach { day ->
       val on = AlarmTimes.maskHas(draft.daysMask, day)
       val toggle = {
         val bit = AlarmTimes.bitOf(day)
@@ -823,7 +838,7 @@ private fun WeeklyCalendarSection(alarm: AlarmEntity) {
   TextButton(onClick = { show = !show }) {
     Text(if (show) "Скрыть календарь" else "Календарь")
   }
-  if (show) WeeklyCalendar(alarm)
+  if (show) WeeklyCalendar(alarm, weekStart = rememberEditorWeekStart())
 }
 
 /**
@@ -885,6 +900,7 @@ private fun ShiftCalendarAndOverrides(
         },
         highlightDay = rangeStart,
         honorHolidays = draft.honorHolidays,
+        weekStart = rememberEditorWeekStart(),
         onRangeSelected = { from, to -> pending = from to to; rangeStart = null }
       )
     } else {

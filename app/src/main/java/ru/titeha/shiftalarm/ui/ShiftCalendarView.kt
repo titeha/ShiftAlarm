@@ -48,6 +48,8 @@ import ru.titeha.shiftalarm.schedule.ProductionCalendars
 import ru.titeha.shiftalarm.schedule.ShiftCategory
 import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
+import ru.titeha.shiftalarm.schedule.orderedDaysOfWeek
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
@@ -130,11 +132,11 @@ internal fun MonthHeader(month: YearMonth, onPrev: () -> Unit, onNext: () -> Uni
 
 /** Строка дней недели Пн..Вс. */
 @Composable
-internal fun WeekdayHeader() {
+internal fun WeekdayHeader(weekStart: DayOfWeek = DayOfWeek.MONDAY) {
   Row(Modifier.fillMaxWidth()) {
-    WEEKDAYS.forEach { d ->
+    orderedDaysOfWeek(weekStart).forEach { day ->
       Text(
-        d,
+        WEEKDAYS[day.value - 1],
         modifier = Modifier.weight(1f),
         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         style = MaterialTheme.typography.labelSmall
@@ -149,7 +151,11 @@ internal fun WeekdayHeader() {
  * календаря на конкретный месяц. Листание — стрелки/свайп.
  */
 @Composable
-fun WeeklyCalendar(alarm: AlarmEntity, modifier: Modifier = Modifier) {
+fun WeeklyCalendar(
+  alarm: AlarmEntity,
+  modifier: Modifier = Modifier,
+  weekStart: DayOfWeek = DayOfWeek.MONDAY,
+) {
   var month by remember { mutableStateOf(YearMonth.now()) }
   val today = LocalDate.now()
   val calendar = remember(month, alarm.honorHolidays) {
@@ -164,9 +170,9 @@ fun WeeklyCalendar(alarm: AlarmEntity, modifier: Modifier = Modifier) {
   ) {
     MonthHeader(month, { month = month.minusMonths(1) }, { month = month.plusMonths(1) })
     Spacer(Modifier.height(4.dp))
-    WeekdayHeader()
+    WeekdayHeader(weekStart)
 
-    val lead = month.atDay(1).dayOfWeek.value - 1
+    val lead = (month.atDay(1).dayOfWeek.value - weekStart.value + 7) % 7
     val cells: List<LocalDate?> =
       List(lead) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
     cells.chunked(7).forEach { week ->
@@ -219,6 +225,7 @@ fun ShiftCalendarView(
   onDayClick: ((LocalDate) -> Unit)? = null,
   highlightDay: LocalDate? = null,
   honorHolidays: Boolean = false,
+  weekStart: DayOfWeek = DayOfWeek.MONDAY,
   onRangeSelected: ((LocalDate, LocalDate) -> Unit)? = null
 ) {
   var month by remember { mutableStateOf(YearMonth.now()) }
@@ -238,11 +245,11 @@ fun ShiftCalendarView(
   ) {
     MonthHeader(month, { month = month.minusMonths(1) }, { month = month.plusMonths(1) })
     Spacer(Modifier.height(4.dp))
-    WeekdayHeader()
+    WeekdayHeader(weekStart)
 
-    // Сетка месяца. Ведущие пустые ячейки — до первого дня (неделя с понедельника).
+    // Сетка месяца. Ведущие пустые ячейки — до первого дня относительно начала недели.
     val firstDay = month.atDay(1)
-    val lead = firstDay.dayOfWeek.value - 1
+    val lead = (firstDay.dayOfWeek.value - weekStart.value + 7) % 7
     val cells: List<LocalDate?> =
       List(lead) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
     val weeks = cells.chunked(7)
