@@ -4,6 +4,7 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import ru.titeha.shiftalarm.AlarmActivity
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmEventLog
@@ -28,6 +29,8 @@ object AlarmScheduler {
 
   const val NO_ID = -1L
   const val NO_TRIGGER_AT_MILLIS = AlarmFireValidator.MISSING_TRIGGER_AT_MILLIS
+
+  private const val TAG = "AlarmScheduler"
 
   /**
    * Запланировать, подгрузив периоды отпуска и правки календаря из репозитория.
@@ -87,11 +90,55 @@ object AlarmScheduler {
   /**
    * Перепланировать набор будильников после загрузки, перезагрузки устройства
    * или массового изменения настроек.
+   *
+   * Ошибка одной записи не прекращает обработку остальных. Каждая ошибка
+   * попадает в диагностический журнал, а вызывающий код получает сводный отчёт.
    */
-  suspend fun rescheduleAll(context: Context, repo: AlarmRepository, alarms: List<AlarmEntity>) {
-    alarms.forEach { alarm ->
-      reschedule(context, repo, alarm)
+  suspend fun rescheduleAll(
+    context: Context,
+    repo: AlarmRepository,
+    alarms: List<AlarmEntity>
+  ): AlarmRescheduleReport {
+    val report = AlarmRescheduleBatch.run(
+      alarms = alarms,
+      operation = { alarm ->
+        reschedule(
+          context = context,
+          repo = repo,
+          alarm = alarm
+        )
+      }
+    )
+
+    if (report.failures.isNotEmpty()) {
+      val eventLog = AlarmEventLog(context)
+      val now = System.currentTimeMillis()
+
+      report.failures.forEach { failure ->
+        val detail =
+          "Массовое перепланирование: " +
+                  "id=${failure.alarmId}, ${failure.reason}"
+
+        /*
+         * Ошибка диагностического журнала не должна снова
+         * сломать уже завершённый пакет.
+         */
+        runCatching {
+          eventLog.record(
+            AlarmEventType.ERROR,
+            detail,
+            now
+          )
+        }
+
+        Log.w(
+          TAG,
+          detail
+        )
+      }
     }
+
+    return report
   }
 
   fun scheduleAt(context: Context, alarmId: Long, triggerAtMillis: Long) {

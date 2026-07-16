@@ -23,6 +23,7 @@
 | [ALARM_NAME_INPUT.md](ALARM_NAME_INPUT.md) | Правила капитализации и IME-действия для названия будильника. |
 | [SHIFT_HOLIDAY_POLICY.md](SHIFT_HOLIDAY_POLICY.md) | Семантика производственного календаря и отсутствие REST в сменном режиме. |
 | [CONSOLIDATED_REVIEW_2026-07-16.md](CONSOLIDATED_REVIEW_2026-07-16.md) | Сверка внешнего ревью с кодом и консолидированный план стабилизации. |
+| [BATCH_RESCHEDULE.md](BATCH_RESCHEDULE.md) | Изоляция ошибок отдельных будильников при массовом перепланировании. |
 
 ## Архитектура
 

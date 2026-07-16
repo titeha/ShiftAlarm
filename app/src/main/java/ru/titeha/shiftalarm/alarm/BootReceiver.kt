@@ -35,29 +35,63 @@ class BootReceiver : BroadcastReceiver() {
       try {
         val repo = AlarmRepository(appContext)
         val alarms = repo.enabled()
+        val eventLog = AlarmEventLog(appContext)
 
-        AlarmScheduler.rescheduleAll(
+        val report = AlarmScheduler.rescheduleAll(
           context = appContext,
           repo = repo,
           alarms = alarms
         )
 
-        AlarmEventLog(appContext).record(
+        val failedIds = report.failedIds()
+
+        val detail = buildString {
+          append(reason)
+          append(", успешно: ")
+          append(report.succeededCount)
+          append(", ошибок: ")
+          append(report.failedCount)
+
+          if (failedIds.isNotBlank()) {
+            append(", id: ")
+            append(failedIds)
+          }
+        }
+
+        eventLog.record(
           AlarmEventType.RESCHEDULED,
-          "$reason, будильников: ${alarms.size}",
+          detail,
           System.currentTimeMillis()
         )
 
-        Log.i(
-          TAG,
-          "Будильники перепланированы: $reason, включённых будильников: ${alarms.size}"
-        )
+        if (report.allSucceeded) {
+          Log.i(
+            TAG,
+            "Будильники перепланированы: $detail"
+          )
+        } else {
+          Log.w(
+            TAG,
+            "Перепланирование завершено частично: $detail"
+          )
+        }
       } catch (error: Exception) {
-        Log.w(TAG, "Не удалось перепланировать будильники: $reason", error)
-        AlarmEventLog(appContext).record(
-          AlarmEventType.ERROR,
-          "перепланирование ($reason): ${error.message ?: error.javaClass.simpleName}",
-          System.currentTimeMillis()
+        val detail =
+          "Не удалось начать массовое перепланирование: " +
+                  "$reason, ${error.javaClass.simpleName}"
+
+        runCatching {
+          AlarmEventLog(appContext).record(
+            AlarmEventType.ERROR,
+            detail,
+            System.currentTimeMillis()
+          )
+        }
+
+        Log.w(
+          TAG,
+          detail,
+          error
         )
       } finally {
         pending.finish()
