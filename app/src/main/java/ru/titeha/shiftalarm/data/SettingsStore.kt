@@ -1,6 +1,7 @@
 package ru.titeha.shiftalarm.data
 
 import android.content.Context
+import ru.titeha.shiftalarm.alarm.DismissMode
 import ru.titeha.shiftalarm.alarm.RingConfig
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
 
@@ -57,6 +58,14 @@ class SettingsStore(context: Context) {
     .putBoolean(KEY_AUTO_REPEAT, config.autoRepeatEnabled)
     .apply()
 
+  /** Способ выключения звонка (жёсткий режим). По умолчанию обычное «Стоп». */
+  fun dismissMode(): DismissMode = runCatching {
+    DismissMode.valueOf(prefs.getString(KEY_DISMISS_MODE, DismissMode.NORMAL.name)!!)
+  }.getOrDefault(DismissMode.NORMAL)
+
+  fun setDismissMode(mode: DismissMode) =
+    prefs.edit().putString(KEY_DISMISS_MODE, mode.name).apply()
+
   private companion object {
     const val PREFS = "app_settings"
     const val KEY_THEME = "theme_mode"
@@ -67,5 +76,6 @@ class SettingsStore(context: Context) {
     const val KEY_SNOOZE_INTERVAL = "snooze_interval_minutes"
     const val KEY_MAX_SNOOZES = "max_snoozes"
     const val KEY_AUTO_REPEAT = "auto_repeat_enabled"
+    const val KEY_DISMISS_MODE = "dismiss_mode"
   }
 }

@@ -22,6 +22,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.hardware.Sensor
+import android.hardware.SensorManager
+import ru.titeha.shiftalarm.alarm.DismissMode
+import ru.titeha.shiftalarm.alarm.FeatureFlags
 import ru.titeha.shiftalarm.alarm.RingConfig
 import ru.titeha.shiftalarm.data.HolidayCalendarRepository
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
@@ -42,6 +46,8 @@ fun SettingsScreen(
   onDynamicColor: (Boolean) -> Unit,
   ringConfig: RingConfig = RingConfig(),
   onRingConfig: (RingConfig) -> Unit = {},
+  dismissMode: DismissMode = DismissMode.NORMAL,
+  onDismissMode: (DismissMode) -> Unit = {},
   onRunSelfTest: () -> Unit = {},
   onOpenPhoneSetup: (() -> Unit)? = null,
   onBack: () -> Unit,
@@ -188,6 +194,46 @@ fun SettingsScreen(
         }
       }
 
+      if (FeatureFlags.HARD_MODE) {
+        val sensorCtx = LocalContext.current
+        val hasStepDetector = remember { sensorPresent(sensorCtx, Sensor.TYPE_STEP_DETECTOR) }
+        val hasAccelerometer = remember { sensorPresent(sensorCtx, Sensor.TYPE_ACCELEROMETER) }
+
+        Spacer(Modifier.height(24.dp))
+        Text("Выключение звонка", style = MaterialTheme.typography.titleMedium)
+        Text(
+          "Задание усложняет «Стоп»; «Отложить» работает всегда.",
+          style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          FilterChip(
+            selected = dismissMode == DismissMode.NORMAL,
+            onClick = { onDismissMode(DismissMode.NORMAL) },
+            label = { Text("Обычное") }
+          )
+          FilterChip(
+            selected = dismissMode == DismissMode.MATH,
+            onClick = { onDismissMode(DismissMode.MATH) },
+            label = { Text("Пример") }
+          )
+          if (hasStepDetector) {
+            FilterChip(
+              selected = dismissMode == DismissMode.STEPS,
+              onClick = { onDismissMode(DismissMode.STEPS) },
+              label = { Text("Шаги") }
+            )
+          }
+          if (hasAccelerometer) {
+            FilterChip(
+              selected = dismissMode == DismissMode.SHAKE,
+              onClick = { onDismissMode(DismissMode.SHAKE) },
+              label = { Text("Тряска") }
+            )
+          }
+        }
+      }
+
       Spacer(Modifier.height(24.dp))
       Text("Праздничный календарь", style = MaterialTheme.typography.titleMedium)
       Spacer(Modifier.height(8.dp))
@@ -211,6 +257,10 @@ fun SettingsScreen(
     }
   }
 }
+
+/** Есть ли на устройстве датчик [type] — иначе опцию жёсткого режима не показываем. */
+private fun sensorPresent(context: android.content.Context, type: Int): Boolean =
+  context.getSystemService(SensorManager::class.java)?.getDefaultSensor(type) != null
 
 private val STAMP_FMT: DateTimeFormatter =
   DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
