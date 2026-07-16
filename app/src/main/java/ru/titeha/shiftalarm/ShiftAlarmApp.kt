@@ -9,8 +9,6 @@ import kotlinx.coroutines.launch
 import ru.titeha.shiftalarm.alarm.AlarmScheduler
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.data.HolidayCalendarRepository
-import ru.titeha.shiftalarm.data.SettingsStore
-import ru.titeha.shiftalarm.schedule.ProductionCalendars
 import java.time.LocalDate
 
 /**
@@ -38,9 +36,6 @@ class ShiftAlarmApp : Application() {
     if (userManager != null && !userManager.isUserUnlocked) {
       return
     }
-
-    // Рабочая неделя (глобально) — до перепланирования, чтобы движок сразу считал по ней выходные.
-    ProductionCalendars.workWeek = SettingsStore(this).workWeek()
 
     val holidays = HolidayCalendarRepository(this)
     holidays.install() // движок теперь читает календарь из кэша (иначе — встроенные данные)

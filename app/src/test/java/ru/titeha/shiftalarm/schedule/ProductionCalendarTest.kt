@@ -15,15 +15,6 @@ class ProductionCalendarTest {
   @After
   fun resetSource() {
     ProductionCalendars.source = null // не протекать между тестами (глобальный источник)
-    ProductionCalendars.workWeek = WorkWeek.DEFAULT // и глобальная рабочая неделя
-  }
-
-  @Test
-  fun resolve_appliesGlobalWorkWeek() {
-    ProductionCalendars.workWeek = WorkWeek(workDays = 6) // суббота рабочая
-    val cal = ProductionCalendars.resolve("RU", 2026)!!
-    assertTrue(cal.isWorking(LocalDate.of(2026, 7, 4)))       // суббота — рабочая по глобальной неделе
-    assertTrue(cal.isNonWorking(LocalDate.of(2026, 1, 1)))    // праздник по-прежнему нерабочий
   }
 
   @Test
@@ -33,32 +24,6 @@ class ProductionCalendarTest {
     assertTrue(cal.isNonWorking(LocalDate.of(2026, 7, 4)))
     assertTrue(cal.isNonWorking(LocalDate.of(2026, 7, 5)))
     assertFalse(cal.isNonWorking(LocalDate.of(2026, 7, 6)))
-  }
-
-  @Test
-  fun sixDayWeek_saturdayIsWorking() {
-    val cal = ProductionCalendar(workWeek = WorkWeek(workDays = 6))
-    // 2026-07-04 суббота, 2026-07-05 воскресенье.
-    assertTrue(cal.isWorking(LocalDate.of(2026, 7, 4)))        // суббота рабочая при шестидневке
-    assertTrue(cal.isNonWorking(LocalDate.of(2026, 7, 5)))     // воскресенье всё ещё выходной
-  }
-
-  @Test
-  fun fourDayWeek_fridayIsNonWorking() {
-    val cal = ProductionCalendar(workWeek = WorkWeek(workDays = 4))
-    // 2026-07-03 пятница, 2026-07-06 понедельник.
-    assertTrue(cal.isNonWorking(LocalDate.of(2026, 7, 3)))     // пятница выходная при четырёхдневке
-    assertTrue(cal.isWorking(LocalDate.of(2026, 7, 6)))        // понедельник рабочий
-  }
-
-  @Test
-  fun customWeek_holidayStillBeatsWorkingWeekday() {
-    // Праздник в рабочий день недели остаётся нерабочим и при нестандартной неделе.
-    val cal = ProductionCalendar(
-      holidays = setOf(LocalDate.of(2026, 7, 6)),              // понедельник
-      workWeek = WorkWeek(workDays = 6)
-    )
-    assertTrue(cal.isNonWorking(LocalDate.of(2026, 7, 6)))
   }
 
   @Test

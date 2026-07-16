@@ -90,7 +90,6 @@ class MainActivity : ComponentActivity() {
       val settings = remember { SettingsStore(applicationContext) }
       var themeMode by remember { mutableStateOf(settings.themeMode()) }
       var dynamicColor by remember { mutableStateOf(settings.dynamicColor()) }
-      var workWeek by remember { mutableStateOf(settings.workWeek()) }
       val darkTheme = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
@@ -153,8 +152,6 @@ class MainActivity : ComponentActivity() {
               dynamicColor = dynamicColor,
               onThemeMode = { themeMode = it; settings.setThemeMode(it) },
               onDynamicColor = { dynamicColor = it; settings.setDynamicColor(it) },
-              workWeek = workWeek,
-              onWorkWeek = { workWeek = it; vm.applyWorkWeek(it) },
               onRunSelfTest = { vm.runSelfTest() },
               onOpenPhoneSetup = if (vendorGuide != null) {
                 { showSettings = false; showVendorSetup = true }

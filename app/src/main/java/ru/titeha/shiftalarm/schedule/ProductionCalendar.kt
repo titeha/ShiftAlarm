@@ -1,5 +1,6 @@
 package ru.titeha.shiftalarm.schedule
 
+import java.time.DayOfWeek
 import java.time.LocalDate
 
 /** Официальный статус календарного дня по производственному календарю. */
@@ -9,11 +10,10 @@ enum class DayStatus { WORKING, NONWORKING }
  * Производственный календарь: официальный статус каждого дня с учётом праздников и переносов
  * выходных. Чистая логика (без Android/I-O); данные по стране/году — в [ProductionCalendars].
  *
- * Базовый статус дня недели задаёт [workWeek] (по умолчанию [WorkWeek.DEFAULT] = пятидневка с
- * понедельника → выходные Сб/Вс, как было захардкожено). [holidays] добавляет нерабочие дни
- * (праздники и перенесённые на будни выходные). [workingWeekends] делает отдельные выходные-по-неделе
- * рабочими (переносы, когда выходной «отрабатывают» в субботу). Приоритет: перенос в рабочий день >
- * праздник > базовый выходной рабочей недели.
+ * По умолчанию суббота и воскресенье — нерабочие. [holidays] добавляет нерабочие дни (праздники и
+ * перенесённые на будни выходные). [workingWeekends] делает отдельные Сб/Вс рабочими (переносы,
+ * когда выходной «отрабатывают» в субботу). Приоритет: перенос в рабочую субботу > праздник >
+ * обычные Сб/Вс.
  *
  * Модель НЕ привязана к режиму будильника: она лишь отвечает «рабочий/нерабочий день». Как это
  * влияет на звонок — задаёт «полярность» будильника (буди по рабочим / по выходным); на первом
@@ -21,14 +21,14 @@ enum class DayStatus { WORKING, NONWORKING }
  */
 class ProductionCalendar(
   val holidays: Set<LocalDate> = emptySet(),
-  val workingWeekends: Set<LocalDate> = emptySet(),
-  val workWeek: WorkWeek = WorkWeek.DEFAULT
+  val workingWeekends: Set<LocalDate> = emptySet()
 ) {
 
   fun isNonWorking(date: LocalDate): Boolean = when {
-    date in workingWeekends -> false                 // перенос: рабочий выходной-по-неделе
+    date in workingWeekends -> false                 // перенос: рабочая суббота/воскресенье
     date in holidays -> true                         // праздник / перенесённый на будень выходной
-    workWeek.isWeekend(date.dayOfWeek) -> true       // базовый выходной рабочей недели
+    date.dayOfWeek == DayOfWeek.SATURDAY -> true
+    date.dayOfWeek == DayOfWeek.SUNDAY -> true
     else -> false
   }
 
@@ -36,9 +36,4 @@ class ProductionCalendar(
 
   fun status(date: LocalDate): DayStatus =
     if (isNonWorking(date)) DayStatus.NONWORKING else DayStatus.WORKING
-
-  /** Тот же календарь (праздники/переносы), но с другой рабочей неделей (если та же — этот же объект). */
-  fun withWorkWeek(workWeek: WorkWeek): ProductionCalendar =
-    if (this.workWeek == workWeek) this
-    else ProductionCalendar(holidays, workingWeekends, workWeek)
 }
