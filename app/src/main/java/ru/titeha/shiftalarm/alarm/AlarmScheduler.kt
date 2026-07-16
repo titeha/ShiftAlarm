@@ -315,10 +315,10 @@ object AlarmScheduler {
   }
 
   /*
-   * Разные requestCode для «сработать» и «показать экран».
-   * Они уникальны по id будильника, чтобы несколько будильников не затирали друг друга.
+   * Разные requestCode для «сработать» и «показать экран» — уникальны по id будильника, чтобы
+   * несколько будильников не затирали друг друга. Логика — в чистом [AlarmRequestCodes] (покрыта тестом).
    */
-  private fun fireRequest(id: Long): Int = (id * 2).toInt()
+  private fun fireRequest(id: Long): Int = AlarmRequestCodes.fire(id)
 
-  private fun showRequest(id: Long): Int = (id * 2 + 1).toInt()
+  private fun showRequest(id: Long): Int = AlarmRequestCodes.show(id)
 }
