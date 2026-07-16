@@ -15,6 +15,15 @@ class ProductionCalendarTest {
   @After
   fun resetSource() {
     ProductionCalendars.source = null // не протекать между тестами (глобальный источник)
+    ProductionCalendars.workWeek = WorkWeek.DEFAULT // и глобальная рабочая неделя
+  }
+
+  @Test
+  fun resolve_appliesGlobalWorkWeek() {
+    ProductionCalendars.workWeek = WorkWeek(workDays = 6) // суббота рабочая
+    val cal = ProductionCalendars.resolve("RU", 2026)!!
+    assertTrue(cal.isWorking(LocalDate.of(2026, 7, 4)))       // суббота — рабочая по глобальной неделе
+    assertTrue(cal.isNonWorking(LocalDate.of(2026, 1, 1)))    // праздник по-прежнему нерабочий
   }
 
   @Test

@@ -36,4 +36,9 @@ class ProductionCalendar(
 
   fun status(date: LocalDate): DayStatus =
     if (isNonWorking(date)) DayStatus.NONWORKING else DayStatus.WORKING
+
+  /** Тот же календарь (праздники/переносы), но с другой рабочей неделей (если та же — этот же объект). */
+  fun withWorkWeek(workWeek: WorkWeek): ProductionCalendar =
+    if (this.workWeek == workWeek) this
+    else ProductionCalendar(holidays, workingWeekends, workWeek)
 }

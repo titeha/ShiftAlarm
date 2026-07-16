@@ -51,12 +51,25 @@ object ProductionCalendars {
   var source: ((country: String, year: Int) -> ProductionCalendar?)? = null
 
   /**
+   * Глобальная «рабочая неделя» (сколько дней рабочих + начало недели). Устанавливается Android-слоем
+   * из настроек при старте и при изменении настройки. По умолчанию [WorkWeek.DEFAULT] (5/Пн = Сб/Вс
+   * выходные) — движок остаётся чисто тестируемым. Применяется ко всем выдаваемым календарям
+   * ([resolve]/[merged]). Читается из фонового планировщика, поэтому `@Volatile`.
+   *
+   * NB (v1): неделя задаёт лишь БАЗОВЫЙ выходной поверх праздничного календаря страны. Праздники и
+   * переносы берутся из RU-фида в его Сб/Вс-рамке, поэтому при 6-дневке праздник, выпавший на субботу,
+   * может «потеряться». Приемлемо для v1; глубокая переклассификация дней — отдельная задача.
+   */
+  @Volatile
+  var workWeek: WorkWeek = WorkWeek.DEFAULT
+
+  /**
    * Календарь ИМЕННО для [country]/[year]: внешний источник (кэш) → встроенные данные этого года.
    * null — данных для этого года нет (НЕ подставляем календарь другого года — праздники не совпадут).
-   * Синхронно и оффлайн-безопасно (сеть не трогается).
+   * Синхронно и оффлайн-безопасно (сеть не трогается). К результату применяется текущая [workWeek].
    */
   fun resolve(country: String, year: Int): ProductionCalendar? =
-    source?.invoke(country, year) ?: of(country, year)
+    (source?.invoke(country, year) ?: of(country, year))?.withWorkWeek(workWeek)
 
   /**
    * Календарь, покрывающий [fromYear] и следующий год — для поиска ближайшего звонка, который может
@@ -69,7 +82,8 @@ object ProductionCalendars {
     val b = resolve(country, fromYear + 1)
     return when {
       a != null && b != null ->
-        ProductionCalendar(a.holidays + b.holidays, a.workingWeekends + b.workingWeekends)
+        // a/b уже несут текущую workWeek (из resolve); новый объединённый строим с ней же.
+        ProductionCalendar(a.holidays + b.holidays, a.workingWeekends + b.workingWeekends, workWeek)
       else -> a ?: b
     }
   }
