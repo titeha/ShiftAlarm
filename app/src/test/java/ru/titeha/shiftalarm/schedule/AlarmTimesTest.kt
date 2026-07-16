@@ -169,8 +169,9 @@ class AlarmTimesTest {
   // --- Производственный календарь (honorHolidays) ---
 
   @Test
-  fun `next — смена с учётом праздников пропускает праздник и выходные`() {
-    // Цикл «звонок каждый день 7:00», honorHolidays. 12 июня 2026 — праздник (Пт), 13-14 — выходные.
+  fun `next — смена с учётом праздников пропускает только праздник, не выходные`() {
+    // Цикл «звонок каждый день 7:00», honorHolidays. 12 июня 2026 — праздник (Пт). На смены влияет
+    // только HOLIDAY: выходные 13-14 решает цикл (звонок каждый день) → звонит в субботу 13-го.
     val spec = ShiftCycleCodec.encode(listOf(ShiftType("w", "Работа", LocalTime.of(7, 0))))
     val alarm = AlarmEntity(
       mode = AlarmEntity.MODE_SHIFT,
@@ -180,7 +181,7 @@ class AlarmTimesTest {
     )
     val from = LocalDate.of(2026, 6, 11).atTime(8, 0) // четверг, звонок 7:00 прошёл
     val next = AlarmTimes.next(alarm, emptyList(), emptyList(), from)
-    assertEquals(LocalDate.of(2026, 6, 15).atTime(7, 0), next) // понедельник
+    assertEquals(LocalDate.of(2026, 6, 13).atTime(7, 0), next) // суббота (праздник 12-го пропущен)
   }
 
   @Test

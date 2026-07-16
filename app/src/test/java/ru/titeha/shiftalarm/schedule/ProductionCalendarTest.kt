@@ -112,11 +112,11 @@ class ProductionCalendarTest {
       ShiftPattern(listOf(ShiftType("w", "Работа", LocalTime.of(7, 0))), anchor)
     )
     val cal = ProductionCalendar(holidays = setOf(LocalDate.of(2026, 6, 12))) // Пт — праздник
-    // Отсчёт с 11 июня 8:00 (сегодняшний звонок прошёл): 12-е — праздник (пропуск),
-    // 13-14 — выходные, ближайший рабочий звонок — понедельник 15 июня 7:00.
+    // Отсчёт с 11 июня 8:00 (сегодняшний звонок прошёл): 12-е — праздник (пропуск). На смены влияет
+    // только HOLIDAY, выходные решает цикл (звонок каждый день) → ближайший звонок в субботу 13-го.
     val from = LocalDate.of(2026, 6, 11).atTime(8, 0)
     val next = ShiftEngine.nextAlarm(from, everyDay, calendar = cal)
-    assertEquals(LocalDate.of(2026, 6, 15).atTime(7, 0), next)
+    assertEquals(LocalDate.of(2026, 6, 13).atTime(7, 0), next)
   }
 
   @Test

@@ -180,8 +180,9 @@ object ShiftEngine {
 
     /**
      * Как [wakeTimeOn], но с учётом производственного календаря: звонок «скрывается», если
-     * ОБСЛУЖИВАЕМЫЙ день ([servedDateForAlarmOn]) нерабочий. Нужно календарю редактора, чтобы
-     * точка-звонок совпадала с тем, что реально запланирует будильник при «Учитывать праздники».
+     * ОБСЛУЖИВАЕМЫЙ день ([servedDateForAlarmOn]) — государственный ПРАЗДНИК. На смены влияет только
+     * [StateDayKind.HOLIDAY]: выходные и переносы решает сам цикл (вахтовик работает и в Сб/Вс).
+     * Нужно календарю редактора, чтобы точка-звонок совпадала с реальным планированием.
      */
     fun wakeTimeOn(
         date: LocalDate,
@@ -189,7 +190,9 @@ object ShiftEngine {
         calendar: ProductionCalendar?,
     ): LocalTime? {
         val wake = wakeTimeOn(date, schedule) ?: return null
-        if (calendar != null && !calendar.isWorking(servedDateForAlarmOn(date, schedule))) return null
+        if (calendar != null &&
+            calendar.kindOf(servedDateForAlarmOn(date, schedule)) == StateDayKind.HOLIDAY
+        ) return null
         return wake
     }
 
@@ -201,6 +204,9 @@ object ShiftEngine {
      * блока Варианта Б это важно: звонок вечером D-1 обслуживает ночь, помеченную на D, поэтому отпуск
      * (и праздник) на D должны глушить именно этот звонок. Само время звонка берётся из слота дня
      * (без вычёркивания периодом), чтобы период не стирал слот, обслуживающий следующую ночь.
+     *
+     * На смены из госкалендаря влияет ТОЛЬКО [StateDayKind.HOLIDAY]: выходные и переносы решает сам
+     * цикл (смены/вахта идут и по Сб/Вс).
      */
     fun nextAlarm(
         from: LocalDateTime,
@@ -212,7 +218,8 @@ object ShiftEngine {
 
         repeat(searchDays) {
             val servedDate = servedDateForAlarmOn(date, schedule)
-            val calendarWorking = calendar == null || calendar.isWorking(servedDate)
+            val calendarWorking = calendar == null ||
+                calendar.kindOf(servedDate) != StateDayKind.HOLIDAY
             val onLeave = schedule.offPeriods.any { it.covers(servedDate) }
 
             if (calendarWorking && !onLeave) {
