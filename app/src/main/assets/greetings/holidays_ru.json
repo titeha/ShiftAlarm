@@ -1,0 +1,21 @@
+[
+  { "id": "new-year", "name": "Новый год", "kind": "state", "date": "01-01",
+    "description": "Начало календарного года — главный семейный праздник." },
+  { "id": "cat-day-ru", "name": "День кошек в России", "kind": "fun", "date": "03-01",
+    "description": "Неофициальный день домашних кошек." },
+  { "id": "womens-day", "name": "Международный женский день", "kind": "state", "date": "03-08",
+    "description": "Весенний праздник, в который поздравляют женщин." },
+  { "id": "cosmonautics-day", "name": "День космонавтики", "kind": "state", "date": "04-12",
+    "description": "В этот день в 1961 году состоялся первый полёт человека в космос." },
+  { "id": "earth-day", "name": "День Земли", "kind": "international", "date": "04-22",
+    "description": "Международный день внимания к экологии планеты." },
+  { "id": "victory-day", "name": "День Победы", "kind": "state", "date": "05-09",
+    "description": "День победы в Великой Отечественной войне 1941–1945 годов." },
+  { "id": "miner-day", "name": "День шахтёра", "kind": "professional",
+    "rule": { "month": 8, "dayOfWeek": "SUNDAY", "ordinal": -1 },
+    "description": "Профессиональный праздник горняков — последнее воскресенье августа." },
+  { "id": "knowledge-day", "name": "День знаний", "kind": "state", "date": "09-01",
+    "description": "Начало учебного года." },
+  { "id": "teacher-day", "name": "День учителя", "kind": "professional", "date": "10-05",
+    "description": "Профессиональный праздник педагогов." }
+]
