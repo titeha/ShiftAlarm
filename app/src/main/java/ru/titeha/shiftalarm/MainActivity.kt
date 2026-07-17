@@ -96,6 +96,7 @@ class MainActivity : ComponentActivity() {
       var ringConfig by remember { mutableStateOf(settings.ringConfig()) }
       var dismissMode by remember { mutableStateOf(settings.dismissMode()) }
       var weekStart by remember { mutableStateOf(settings.weekStart()) }
+      var weekPairNaming by remember { mutableStateOf(settings.weekPairNaming()) }
       val darkTheme = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
@@ -167,6 +168,8 @@ class MainActivity : ComponentActivity() {
               onRingConfig = { ringConfig = it; settings.setRingConfig(it) },
               weekStart = weekStart,
               onWeekStart = { weekStart = it; settings.setWeekStart(it) },
+              weekPairNaming = weekPairNaming,
+              onWeekPairNaming = { weekPairNaming = it; settings.setWeekPairNaming(it) },
               dismissMode = dismissMode,
               onDismissMode = { mode ->
                 dismissMode = mode

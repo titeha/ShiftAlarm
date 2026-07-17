@@ -39,6 +39,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import ru.titeha.shiftalarm.data.SettingsStore
+import ru.titeha.shiftalarm.schedule.WeekPairNaming
+import ru.titeha.shiftalarm.schedule.resolve
+import java.time.DayOfWeek
+import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
@@ -77,6 +83,11 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
 
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
+  val context = LocalContext.current
+  val weekStart = remember { SettingsStore(context).weekStart().resolve(Locale.getDefault()) }
+  val pairNaming = remember { SettingsStore(context).weekPairNaming() }
+  var showStudyWizard by remember { mutableStateOf(false) }
+
   Text("График:", style = MaterialTheme.typography.titleMedium)
   Spacer(Modifier.height(8.dp))
 
@@ -114,6 +125,26 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
         )
       )
     }
+    // Учебный шаблон: мастер собирает 7/14-дневный цикл поверх сменного режима.
+    ModeChip("Учёба", false) { showStudyWizard = true }
+  }
+
+  if (showStudyWizard) {
+    StudyWizard(
+      weekStart = weekStart,
+      naming = pairNaming,
+      onDone = { plan ->
+        onChange(
+          draft.copy(
+            cycleSpec = ShiftCycleCodec.encode(plan.slots),
+            anchorEpochDay = plan.anchorDate.toEpochDay(),
+            label = draft.label.ifBlank { "Учёба" }
+          )
+        )
+        showStudyWizard = false
+      },
+      onDismiss = { showStudyWizard = false }
+    )
   }
 
   if (!custom) {

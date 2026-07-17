@@ -3,6 +3,7 @@ package ru.titeha.shiftalarm.data
 import android.content.Context
 import ru.titeha.shiftalarm.alarm.DismissMode
 import ru.titeha.shiftalarm.alarm.RingConfig
+import ru.titeha.shiftalarm.schedule.WeekPairNaming
 import ru.titeha.shiftalarm.schedule.WeekStart
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
 
@@ -89,6 +90,14 @@ class SettingsStore(context: Context) {
 
   fun setWeekStart(start: WeekStart) = prefs.edit().putString(KEY_WEEK_START, start.name).apply()
 
+  /** Нейминг пары учебных недель (вуз, чёт/нечёт). По умолчанию «Нечётная/Чётная». */
+  fun weekPairNaming(): WeekPairNaming = runCatching {
+    WeekPairNaming.valueOf(prefs.getString(KEY_WEEK_PAIR_NAMING, WeekPairNaming.PARITY.name)!!)
+  }.getOrDefault(WeekPairNaming.PARITY)
+
+  fun setWeekPairNaming(naming: WeekPairNaming) =
+    prefs.edit().putString(KEY_WEEK_PAIR_NAMING, naming.name).apply()
+
   private companion object {
     const val PREFS = "app_settings"
     const val PREFS_ALARM_DE = "alarm_settings_de"
@@ -102,5 +111,6 @@ class SettingsStore(context: Context) {
     const val KEY_AUTO_REPEAT = "auto_repeat_enabled"
     const val KEY_DISMISS_MODE = "dismiss_mode"
     const val KEY_WEEK_START = "week_start"
+    const val KEY_WEEK_PAIR_NAMING = "week_pair_naming"
   }
 }

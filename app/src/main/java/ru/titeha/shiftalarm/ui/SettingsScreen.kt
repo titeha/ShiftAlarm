@@ -29,6 +29,7 @@ import android.hardware.SensorManager
 import ru.titeha.shiftalarm.alarm.DismissMode
 import ru.titeha.shiftalarm.alarm.FeatureFlags
 import ru.titeha.shiftalarm.alarm.RingConfig
+import ru.titeha.shiftalarm.schedule.WeekPairNaming
 import ru.titeha.shiftalarm.schedule.WeekStart
 import ru.titeha.shiftalarm.data.HolidayCalendarRepository
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
@@ -53,6 +54,8 @@ fun SettingsScreen(
   onDismissMode: (DismissMode) -> Unit = {},
   weekStart: WeekStart = WeekStart.AUTO,
   onWeekStart: (WeekStart) -> Unit = {},
+  weekPairNaming: WeekPairNaming = WeekPairNaming.PARITY,
+  onWeekPairNaming: (WeekPairNaming) -> Unit = {},
   onRunSelfTest: () -> Unit = {},
   onOpenPhoneSetup: (() -> Unit)? = null,
   onBack: () -> Unit,
@@ -258,6 +261,25 @@ fun SettingsScreen(
             selected = weekStart == value,
             onClick = { if (weekStart != value) onWeekStart(value) },
             label = { Text(title) }
+          )
+        }
+      }
+
+      Spacer(Modifier.height(24.dp))
+      Text("Учебные недели (чёт/нечёт)", style = MaterialTheme.typography.titleMedium)
+      Text(
+        "Как называть пару чередующихся недель в учебных будильниках.",
+        style = MaterialTheme.typography.bodySmall
+      )
+      Spacer(Modifier.height(8.dp))
+      androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        WeekPairNaming.entries.forEach { naming ->
+          FilterChip(
+            selected = weekPairNaming == naming,
+            onClick = { if (weekPairNaming != naming) onWeekPairNaming(naming) },
+            label = { Text("${naming.odd}/${naming.even}") }
           )
         }
       }
