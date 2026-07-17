@@ -3,8 +3,10 @@ package ru.titeha.shiftalarm
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.UserManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +38,8 @@ import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.ui.MathChallengeView
 import ru.titeha.shiftalarm.ui.ShakeChallengeView
 import ru.titeha.shiftalarm.ui.StepsChallengeView
+import ru.titeha.shiftalarm.ui.theme.AppTheme
+import ru.titeha.shiftalarm.ui.theme.ThemeMode
 
 /**
  * Полноэкранный экран активного сигнала.
@@ -83,7 +88,31 @@ class AlarmActivity : ComponentActivity() {
                 }
             }
 
-            MaterialTheme {
+            // Тема экрана звонка следует настройкам пользователя, как MainActivity, — но только когда
+            // устройство разблокировано. Экран может срабатывать залоченным (Direct Boot), где
+            // CE-настройки недоступны и любое обращение к ним роняет процесс; тогда берём безопасный
+            // системный фолбэк (тема по системе + системные динамические цвета, без чтения CE).
+            // Раньше здесь был голый MaterialTheme{} — дефолтная светлая тема, выбивавшаяся из приложения.
+            val unlocked = remember {
+                this@AlarmActivity.getSystemService(UserManager::class.java)?.isUserUnlocked ?: true
+            }
+            val settings = remember { if (unlocked) SettingsStore(applicationContext) else null }
+            val darkTheme = when (settings?.themeMode() ?: ThemeMode.SYSTEM) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            AppTheme(
+                darkTheme = darkTheme,
+                dynamicColor = settings?.dynamicColor() ?: true,
+                fontScale = settings?.fontScale() ?: 1f,
+            ) {
+              // Surface (а не .background) задаёт и фон, и цвет контента onBackground — иначе голый
+              // Text берёт дефолтный чёрный и на тёмной теме сливается с фоном.
+              Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+              ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -136,6 +165,7 @@ class AlarmActivity : ComponentActivity() {
                         }
                     }
                 }
+              }
             }
         }
     }
