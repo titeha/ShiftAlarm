@@ -189,10 +189,13 @@ object ShiftEngine {
         schedule: ShiftSchedule,
         calendar: ProductionCalendar?,
     ): LocalTime? {
-        val wake = wakeTimeOn(date, schedule) ?: return null
-        if (calendar != null &&
-            calendar.kindOf(servedDateForAlarmOn(date, schedule)) == StateDayKind.HOLIDAY
-        ) return null
+        val served = servedDateForAlarmOn(date, schedule)
+        // Зеркалим nextAlarm: время звонка — из слота дня БЕЗ применения периодов (чтобы период на дне
+        // звонка не стирал звонок, служащий следующей ночи), а глушим по ОБСЛУЖИВАЕМОМУ дню. Иначе
+        // точка-звонок в календаре расходилась бы с реальным планированием на краю «отпуск + ночь».
+        val wake = shiftOnIgnoringOffPeriods(date, schedule).wakeTime ?: return null
+        if (schedule.offPeriods.any { it.covers(served) }) return null
+        if (calendar != null && calendar.kindOf(served) == StateDayKind.HOLIDAY) return null
         return wake
     }
 
