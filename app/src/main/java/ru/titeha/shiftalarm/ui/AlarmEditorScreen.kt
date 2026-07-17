@@ -71,6 +71,7 @@ import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
 import ru.titeha.shiftalarm.schedule.ShiftType
 import ru.titeha.shiftalarm.schedule.VacationSick
+import ru.titeha.shiftalarm.schedule.WeekPairNaming
 import ru.titeha.shiftalarm.schedule.orderedDaysOfWeek
 import ru.titeha.shiftalarm.schedule.resolve
 import ru.titeha.shiftalarm.data.SettingsStore
@@ -454,6 +455,13 @@ private fun OnceContent(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
 private fun rememberEditorWeekStart(): DayOfWeek {
   val context = LocalContext.current
   return remember { SettingsStore(context).weekStart().resolve(Locale.getDefault()) }
+}
+
+/** Нейминг пары учебных недель из настроек — для бейджа «сейчас: …» в календаре. */
+@Composable
+private fun rememberEditorWeekPairNaming(): WeekPairNaming {
+  val context = LocalContext.current
+  return remember { SettingsStore(context).weekPairNaming() }
 }
 
 /** Способ «По дням недели»: время + пресеты дней + чекбоксы дней. */
@@ -901,6 +909,7 @@ private fun ShiftCalendarAndOverrides(
         highlightDay = rangeStart,
         honorHolidays = draft.honorHolidays,
         weekStart = rememberEditorWeekStart(),
+        weekPairNaming = rememberEditorWeekPairNaming(),
         onRangeSelected = { from, to -> pending = from to to; rangeStart = null }
       )
     } else {

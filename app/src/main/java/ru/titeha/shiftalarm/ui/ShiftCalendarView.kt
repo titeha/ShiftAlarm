@@ -48,6 +48,8 @@ import ru.titeha.shiftalarm.schedule.ProductionCalendars
 import ru.titeha.shiftalarm.schedule.ShiftCategory
 import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
+import ru.titeha.shiftalarm.schedule.StudyPlanBuilder
+import ru.titeha.shiftalarm.schedule.WeekPairNaming
 import ru.titeha.shiftalarm.schedule.orderedDaysOfWeek
 import ru.titeha.shiftalarm.schedule.stateDayKindLabel
 import java.time.DayOfWeek
@@ -250,6 +252,7 @@ fun ShiftCalendarView(
   highlightDay: LocalDate? = null,
   honorHolidays: Boolean = false,
   weekStart: DayOfWeek = DayOfWeek.MONDAY,
+  weekPairNaming: WeekPairNaming = WeekPairNaming.PARITY,
   onRangeSelected: ((LocalDate, LocalDate) -> Unit)? = null
 ) {
   var month by remember { mutableStateOf(YearMonth.now()) }
@@ -268,6 +271,16 @@ fun ShiftCalendarView(
       .monthSwipe({ month = month.minusMonths(1) }, { month = month.plusMonths(1) })
   ) {
     MonthHeader(month, { month = month.minusMonths(1) }, { month = month.plusMonths(1) })
+
+    // Бейдж текущей недели для учебного двухнедельного цикла (эвристика 14 слотов + якорь-понедельник).
+    StudyPlanBuilder.currentParity(schedule.base.slots.size, schedule.base.anchorDate, today)?.let { parity ->
+      Text(
+        "сейчас: ${weekPairNaming.labelFor(parity)}",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary
+      )
+    }
+
     Spacer(Modifier.height(4.dp))
     WeekdayHeader(weekStart)
 

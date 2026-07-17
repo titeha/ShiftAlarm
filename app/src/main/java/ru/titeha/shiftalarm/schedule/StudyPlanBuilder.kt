@@ -3,6 +3,7 @@ package ru.titeha.shiftalarm.schedule
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 
 /** Чётность учебной недели (вуз). Считать из номера календарной недели НЕЛЬЗЯ — вузы считают по-разному. */
@@ -53,5 +54,16 @@ object StudyPlanBuilder {
         }
 
         return StudyPlan(slots, anchor)
+    }
+
+    /**
+     * Чётность ТЕКУЩЕЙ недели для учебного двухнедельного цикла. ЭВРИСТИКА (не флаг в данных): цикл
+     * считается вуз-двухнедельным, если длина 14 и якорь — понедельник. null — цикл не такой.
+     * Нужна для бейджа «сейчас: Нечётная/Чётная» в календаре.
+     */
+    fun currentParity(cycleLength: Int, anchor: LocalDate, today: LocalDate): Parity? {
+        if (cycleLength != 14 || anchor.dayOfWeek != DayOfWeek.MONDAY) return null
+        val weekIndex = Math.floorDiv(ChronoUnit.DAYS.between(anchor, today), 7)
+        return if (Math.floorMod(weekIndex, 2L) == 0L) Parity.ODD else Parity.EVEN
     }
 }

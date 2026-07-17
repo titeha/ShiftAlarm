@@ -99,6 +99,18 @@ class StudyPlanBuilderTest {
   }
 
   @Test
+  fun `currentParity — чётность текущей недели по эвристике`() {
+    val anchor = LocalDate.of(2026, 6, 22) // понедельник
+    assertEquals(Parity.ODD, StudyPlanBuilder.currentParity(14, anchor, anchor))            // неделя А
+    assertEquals(Parity.ODD, StudyPlanBuilder.currentParity(14, anchor, anchor.plusDays(3)))
+    assertEquals(Parity.EVEN, StudyPlanBuilder.currentParity(14, anchor, anchor.plusDays(7))) // неделя Б
+    assertEquals(Parity.ODD, StudyPlanBuilder.currentParity(14, anchor, anchor.plusDays(14))) // снова А
+    // Не двухнедельный / якорь не понедельник → null.
+    assertEquals(null, StudyPlanBuilder.currentParity(7, anchor, anchor))
+    assertEquals(null, StudyPlanBuilder.currentParity(14, anchor.plusDays(1), anchor.plusDays(1)))
+  }
+
+  @Test
   fun `выходные дают слоты-выходные`() {
     val plan = StudyPlanBuilder.build(sevenDay(), null, wed)
     assertEquals(ShiftCategory.OFF, plan.slots[5].category) // суббота
