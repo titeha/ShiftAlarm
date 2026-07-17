@@ -70,7 +70,6 @@ import ru.titeha.shiftalarm.schedule.ShiftCycle
 import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
 import ru.titeha.shiftalarm.schedule.ShiftType
-import ru.titeha.shiftalarm.schedule.StudyPlanBuilder
 import ru.titeha.shiftalarm.schedule.VacationSick
 import ru.titeha.shiftalarm.schedule.WeekPairNaming
 import ru.titeha.shiftalarm.schedule.orderedDaysOfWeek
@@ -181,7 +180,8 @@ fun AlarmEditorScreen(
         if (method != EditMethod.ONCE) {
           method = EditMethod.ONCE
           // Разовый по умолчанию удаляется после срабатывания (для нового способа — вкл).
-          draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY, deleteAfterFiring = true)
+          // honorHolidays сбрасываем: праздничная переклассификация к разовому неприменима.
+          draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY, deleteAfterFiring = true, honorHolidays = false)
         }
       }
       ModeChip("По дням недели", method == EditMethod.WEEKLY) {
@@ -219,11 +219,13 @@ fun AlarmEditorScreen(
     }
 
     // ── Когда не звонить ──
-    SectionHeader("Когда не звонить")
-    HolidaySection(draft = draft, allowRestPolarity = method != EditMethod.SHIFT, onChange = { draft = it })
-    // Периоды-глушилки (отпуск/больничный/за свой счёт/сессия) — и сменам, и «по дням недели»
-    // (офисные 5/2 тоже уходят в отпуск). Разовому не нужны.
+    // Разовому вся секция не нужна: он срабатывает один раз в конкретное время — ни праздники
+    // (переклассификация дней), ни периоды-глушилки, ни заморозка цикла к нему не применимы.
     if (method != EditMethod.ONCE) {
+      SectionHeader("Когда не звонить")
+      HolidaySection(draft = draft, allowRestPolarity = method != EditMethod.SHIFT, onChange = { draft = it })
+      // Периоды-глушилки (отпуск/больничный/за свой счёт/сессия) — и сменам, и «по дням недели»
+      // (офисные 5/2 тоже уходят в отпуск).
       Spacer(Modifier.height(16.dp))
       VacationSection(
         alarmId = draft.id,
@@ -232,10 +234,10 @@ fun AlarmEditorScreen(
         onAdd = { periods = periods + it },
         onRemove = { p -> periods = periods - p }
       )
-    }
-    if (method == EditMethod.SHIFT) {
-      Spacer(Modifier.height(16.dp))
-      FreezeCycleToggle(draft) { draft = it }
+      if (method == EditMethod.SHIFT) {
+        Spacer(Modifier.height(16.dp))
+        FreezeCycleToggle(draft) { draft = it }
+      }
     }
 
     // ── Проверка ──
@@ -990,17 +992,13 @@ private fun applyPeriodRange(
 }
 
 /**
- * Типы периодов, уместные для будильника. Учебному циклу (7/14 дней, якорь-понедельник) — каникулы,
- * сессия, больничный; остальным (офис 5/2, смены) — рабочие + сессия (для заочника). Больничный есть
- * везде. Эвристика по циклу, а не флаг в данных (профиль «смены/учёба» не вводим).
+ * Типы периодов, уместные для будильника. Учебному будильнику (флаг [AlarmEntity.isStudy]) — каникулы,
+ * сессия, больничный; остальным (офис 5/2, смены, вахта неделя/неделя) — рабочие + сессия (для
+ * заочника). Больничный есть везде. Флаг явный, а не эвристика по форме цикла: «14 дней + понедельник»
+ * неотличимо от вахты неделя/неделя.
  */
 private fun periodKindsFor(alarm: AlarmEntity): List<PeriodKind> {
-  val study = alarm.mode == AlarmEntity.MODE_SHIFT &&
-    StudyPlanBuilder.looksLikeStudy(
-      AlarmTimes.shiftBase(alarm)?.slots?.size ?: 0,
-      LocalDate.ofEpochDay(alarm.anchorEpochDay)
-    )
-  return if (study) {
+  return if (alarm.isStudy) {
     listOf(PeriodKind.SCHOOL_BREAK, PeriodKind.SESSION, PeriodKind.SICK)
   } else {
     listOf(PeriodKind.VACATION, PeriodKind.SICK, PeriodKind.DAYOFF, PeriodKind.UNPAID, PeriodKind.SESSION)
@@ -1068,6 +1066,7 @@ private fun ShiftCalendarAndOverrides(
         honorHolidays = draft.honorHolidays,
         weekStart = rememberEditorWeekStart(),
         weekPairNaming = rememberEditorWeekPairNaming(),
+        isStudy = draft.isStudy,
         onRangeSelected = { from, to -> pending = from to to; rangeStart = null }
       )
     } else {
