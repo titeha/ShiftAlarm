@@ -62,6 +62,8 @@ fun SettingsScreen(
   onOpenPhoneSetup: (() -> Unit)? = null,
   dayGreetingCard: Boolean = true,
   onDayGreetingCard: (Boolean) -> Unit = {},
+  dayGreetingNotification: Boolean = false,
+  onDayGreetingNotification: (Boolean) -> Unit = {},
   onBack: () -> Unit,
 ) {
   Scaffold { padding ->
@@ -340,6 +342,18 @@ fun SettingsScreen(
         Switch(checked = dayGreetingCard, onCheckedChange = onDayGreetingCard)
         Spacer(Modifier.width(8.dp))
         Text("Карточка после «Стоп»", style = MaterialTheme.typography.bodyMedium)
+      }
+      Spacer(Modifier.height(8.dp))
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = dayGreetingNotification, onCheckedChange = onDayGreetingNotification)
+        Spacer(Modifier.width(8.dp))
+        Column {
+          Text("Уведомление", style = MaterialTheme.typography.bodyMedium)
+          Text(
+            "Отдельный канал «Настроение дня» — можно отключить, на звонок не влияет.",
+            style = MaterialTheme.typography.bodySmall
+          )
+        }
       }
     }
   }

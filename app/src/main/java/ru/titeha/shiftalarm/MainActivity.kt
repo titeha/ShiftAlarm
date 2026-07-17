@@ -100,6 +100,7 @@ class MainActivity : ComponentActivity() {
       var ringConfig by remember { mutableStateOf(settings.ringConfig()) }
       var dismissMode by remember { mutableStateOf(settings.dismissMode()) }
       var dayGreetingCard by remember { mutableStateOf(settings.dayGreetingCardEnabled()) }
+      var dayGreetingNotif by remember { mutableStateOf(settings.dayGreetingNotificationEnabled()) }
       var weekStart by remember { mutableStateOf(settings.weekStart()) }
       var weekPairNaming by remember { mutableStateOf(settings.weekPairNaming()) }
       val darkTheme = when (themeMode) {
@@ -199,6 +200,8 @@ class MainActivity : ComponentActivity() {
               },
               dayGreetingCard = dayGreetingCard,
               onDayGreetingCard = { dayGreetingCard = it; settings.setDayGreetingCardEnabled(it) },
+              dayGreetingNotification = dayGreetingNotif,
+              onDayGreetingNotification = { dayGreetingNotif = it; settings.setDayGreetingNotificationEnabled(it) },
               onBack = { showSettings = false }
             )
           }

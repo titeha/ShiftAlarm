@@ -136,6 +136,12 @@ class SettingsStore(context: Context) {
   fun setGreetingCardHandled(epochDay: Long) =
     alarmPrefs.edit().putLong(KEY_GREETING_CARD_HANDLED, epochDay).apply()
 
+  /** День, за который уведомление «Настроение дня» уже показывали (показываем раз в день, на первый «Стоп»). */
+  fun greetingNotifPostedEpochDay(): Long = alarmPrefs.getLong(KEY_GREETING_NOTIF_POSTED, -1L)
+
+  fun setGreetingNotifPosted(epochDay: Long) =
+    alarmPrefs.edit().putLong(KEY_GREETING_NOTIF_POSTED, epochDay).apply()
+
   private companion object {
     const val PREFS = "app_settings"
     const val PREFS_ALARM_DE = "alarm_settings_de"
@@ -155,5 +161,6 @@ class SettingsStore(context: Context) {
     const val KEY_GREETING_NOTIF = "day_greeting_notif_enabled"
     const val KEY_LAST_DISMISSED_DAY = "day_greeting_last_dismissed_day"
     const val KEY_GREETING_CARD_HANDLED = "day_greeting_card_handled_day"
+    const val KEY_GREETING_NOTIF_POSTED = "day_greeting_notif_posted_day"
   }
 }

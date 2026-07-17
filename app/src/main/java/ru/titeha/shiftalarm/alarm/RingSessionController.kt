@@ -10,6 +10,7 @@ import ru.titeha.shiftalarm.MainActivity
 import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.SettingsStore
+import ru.titeha.shiftalarm.greetings.DayGreetingNotifier
 import java.time.Instant
 import java.time.ZoneId
 
@@ -112,6 +113,8 @@ object RingSessionController {
                     val day = Instant.ofEpochMilli(nowMillis).atZone(ZoneId.systemDefault())
                         .toLocalDate().toEpochDay()
                     SettingsStore(context).recordDismissed(day)
+                    // Уведомление «Настроение дня» (если включено) — на ПЕРВЫЙ «Стоп» за день.
+                    DayGreetingNotifier.maybePost(context, nowMillis)
                 }
                 return
             }
