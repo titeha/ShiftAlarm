@@ -71,6 +71,8 @@ internal fun colorOf(kind: DayKind, dark: Boolean): Color = if (!dark) when (kin
   DayKind.SICK -> Color(0xFF7C8A3E)     // больничный — болотный
   DayKind.DAYOFF -> Color(0xFF4DB6AC)   // отгул — бирюзовый
   DayKind.UNPAID -> Color(0xFF9575CD)   // за свой счёт — сиреневый
+  DayKind.SCHOOL_BREAK -> Color(0xFF26C6DA) // каникулы — голубой
+  DayKind.SESSION -> Color(0xFFAB47BC)      // сессия — фиолетовый
 } else when (kind) {
   DayKind.MORNING -> Color(0xFF6D5A16)
   DayKind.DAY -> Color(0xFF8A5200)
@@ -80,6 +82,8 @@ internal fun colorOf(kind: DayKind, dark: Boolean): Color = if (!dark) when (kin
   DayKind.SICK -> Color(0xFF444C22)
   DayKind.DAYOFF -> Color(0xFF2A6560)
   DayKind.UNPAID -> Color(0xFF4E3E73)
+  DayKind.SCHOOL_BREAK -> Color(0xFF15707A)
+  DayKind.SESSION -> Color(0xFF5E2A69)
 }
 
 /** Цвет текста/значка на цветной ячейке: чёрный на светлой теме, белый на тёмной. */
@@ -102,6 +106,8 @@ private fun labelOf(kind: DayKind): String = when (kind) {
   DayKind.SICK -> "Больничный"
   DayKind.DAYOFF -> "Отгул"
   DayKind.UNPAID -> "Свой счёт"
+  DayKind.SCHOOL_BREAK -> "Каникулы"
+  DayKind.SESSION -> "Сессия"
 }
 
 /** Модификатор: горизонтальный свайп листает месяцы (порог 48dp), в дополнение к стрелкам ‹ ›. */

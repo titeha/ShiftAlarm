@@ -8,7 +8,9 @@ enum class PeriodKind(val label: String) {
   VACATION("Отпуск"),
   SICK("Больничный"),
   DAYOFF("Отгул"),
-  UNPAID("За свой счёт");
+  UNPAID("За свой счёт"),
+  SCHOOL_BREAK("Каникулы"),
+  SESSION("Сессия");
 
   companion object {
     /** Тип по строке причины; неизвестное/старое значение → [VACATION]. */

@@ -14,6 +14,15 @@ class PeriodKindTest {
   }
 
   @Test
+  fun `учебные периоды — каникулы и сессия`() {
+    assertEquals(PeriodKind.SCHOOL_BREAK, PeriodKind.fromReason("Каникулы"))
+    assertEquals(PeriodKind.SESSION, PeriodKind.fromReason("сессия"))
+    // Метки в reason (обратная совместимость: старая версия прочитает их как отпуск — тоже глушит).
+    assertEquals("Каникулы", PeriodKind.SCHOOL_BREAK.label)
+    assertEquals("Сессия", PeriodKind.SESSION.label)
+  }
+
+  @Test
   fun `неизвестная или старая причина — отпуск`() {
     assertEquals(PeriodKind.VACATION, PeriodKind.fromReason("что-то своё"))
     assertEquals(PeriodKind.VACATION, PeriodKind.fromReason(""))

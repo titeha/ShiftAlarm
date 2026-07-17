@@ -16,10 +16,12 @@ object ShiftCalendar {
     DAY,       // дневная смена
     NIGHT,     // ночная смена
     OFF,       // выходной/отсыпной по ротации
-    VACATION,  // отпуск
-    SICK,      // больничный
-    DAYOFF,    // отгул
-    UNPAID     // за свой счёт
+    VACATION,     // отпуск
+    SICK,         // больничный
+    DAYOFF,       // отгул
+    UNPAID,       // за свой счёт
+    SCHOOL_BREAK, // каникулы (учебный модуль)
+    SESSION       // сессия (учебный модуль)
   }
 
   /** Категория дня [date] по расписанию [schedule]. */
@@ -31,6 +33,8 @@ object ShiftCalendar {
         PeriodKind.SICK -> DayKind.SICK
         PeriodKind.DAYOFF -> DayKind.DAYOFF
         PeriodKind.UNPAID -> DayKind.UNPAID
+        PeriodKind.SCHOOL_BREAK -> DayKind.SCHOOL_BREAK
+        PeriodKind.SESSION -> DayKind.SESSION
       }
     }
 
