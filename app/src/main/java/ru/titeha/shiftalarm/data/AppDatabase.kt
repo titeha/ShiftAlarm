@@ -23,10 +23,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *    см. [MIGRATION_3_4]).
  *  - v5 — праздничный модуль: колонки `alarms.honorHolidays` + `alarms.polarity`
  *    (см. [MIGRATION_4_5]).
+ *  - v6 — учебный профиль: колонка `alarms.isStudy` (явный флаг «учебный будильник»,
+ *    см. [MIGRATION_5_6]).
  */
 @Database(
   entities = [AlarmEntity::class, AlarmPeriod::class, AlarmOverride::class],
-  version = 5,
+  version = 6,
   exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -123,6 +125,17 @@ abstract class AppDatabase : RoomDatabase() {
       }
     }
 
+    /**
+     * Миграция 5→6 (учебный профиль): колонка `alarms.isStudy` — явный флаг «учебный будильник»
+     * вместо эвристики по форме цикла. Простой ALTER с дефолтом 0 (старые будильники — не учебные).
+     * Проверяется в `AppDatabaseMigrationTest`.
+     */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `alarms` ADD COLUMN `isStudy` INTEGER NOT NULL DEFAULT 0")
+      }
+    }
+
     fun get(context: Context): AppDatabase =
       instance ?: synchronized(this) {
         instance ?: Room.databaseBuilder(
@@ -130,7 +143,7 @@ abstract class AppDatabase : RoomDatabase() {
           AppDatabase::class.java,
           "shiftalarm.db"
         )
-          .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+          .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
           .build().also { instance = it }
       }
   }

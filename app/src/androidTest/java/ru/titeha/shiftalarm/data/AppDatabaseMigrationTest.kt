@@ -150,4 +150,28 @@ class AppDatabaseMigrationTest {
     }
     db.close()
   }
+
+  @Test
+  fun migrate5To6_addsIsStudyColumn_withDefault() {
+    // v5: будильник-смена (колонки isStudy ещё нет).
+    helper.createDatabase(dbName, 5).apply {
+      execSQL(
+        "INSERT INTO alarms " +
+          "(label, enabled, hour, minute, mode, daysMask, presetId, anchorEpochDay, " +
+          "deleteAfterFiring, freezeCycleDuringOff, cycleSpec, honorHolidays, polarity) " +
+          "VALUES ('Смена', 1, 7, 0, 'shift', 0, '2x2', 20000, 0, 0, NULL, 0, 'WORK')"
+      )
+      close()
+    }
+
+    val db = helper.runMigrationsAndValidate(dbName, 6, true, AppDatabase.MIGRATION_5_6)
+
+    // Данные на месте, новая колонка получила дефолт 0 (не учебный).
+    db.query("SELECT label, isStudy FROM alarms").use { c ->
+      assertTrue(c.moveToFirst())
+      assertEquals("Смена", c.getString(0))
+      assertEquals(0, c.getInt(1))
+    }
+    db.close()
+  }
 }

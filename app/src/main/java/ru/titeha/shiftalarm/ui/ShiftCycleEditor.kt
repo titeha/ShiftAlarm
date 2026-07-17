@@ -107,7 +107,8 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
             draft.copy(
               presetId = preset.id,
               cycleSpec = null,
-              anchorEpochDay = LocalDate.now().toEpochDay()
+              anchorEpochDay = LocalDate.now().toEpochDay(),
+              isStudy = false
             )
           )
         }
@@ -121,7 +122,8 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
         draft.copy(
           cycleSpec = ShiftCycleCodec.encode(templateSlotsOf(draft.presetId)),
           anchorEpochDay = if (draft.anchorEpochDay == 0L)
-            LocalDate.now().toEpochDay() else draft.anchorEpochDay
+            LocalDate.now().toEpochDay() else draft.anchorEpochDay,
+          isStudy = false
         )
       )
     }
@@ -138,7 +140,8 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
           draft.copy(
             cycleSpec = ShiftCycleCodec.encode(plan.slots),
             anchorEpochDay = plan.anchorDate.toEpochDay(),
-            label = draft.label.ifBlank { "Учёба" }
+            label = draft.label.ifBlank { "Учёба" },
+            isStudy = true
           )
         )
         showStudyWizard = false
@@ -155,6 +158,9 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
 
   // --- Сегментная лента блоков цикла; редактирование выбранного блока — в bottom sheet ---
   val runs = ShiftCycle.group(slots)
+  // Учебный цикл (флаг isStudy) держит фиксированную длину 7/14, чтобы слоты совпадали с днями
+  // недели. «+блок» сдвинул бы всё расписание — прячем его; правка дней остаётся тапом по блоку.
+  val looksLikeStudy = draft.isStudy
   Spacer(Modifier.height(12.dp))
   Text(
     "Цикл ${slots.size} дн. (${runs.size} бл.): повторяется по кругу. Блок — несколько одинаковых " +
@@ -185,36 +191,40 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
 
   Spacer(Modifier.height(8.dp))
 
-  Button(
-    onClick = {
-      /*
-       * Новый блок пока существует только как локальный черновик.
-       * cycleSpec изменится после подтверждения галочкой.
-       */
-      val at = (
-              (selected ?: runs.lastIndex) + 1
-              ).coerceIn(0, runs.size)
+  // «+блок» — только для произвольного графика. В учебном цикле он ломал бы привязку слотов к дням
+  // недели (см. looksLikeStudy выше): менять расписание учёбы — тапом по блоку или заново «Учёба».
+  if (!looksLikeStudy) {
+    Button(
+      onClick = {
+        /*
+         * Новый блок пока существует только как локальный черновик.
+         * cycleSpec изменится после подтверждения галочкой.
+         */
+        val at = (
+                (selected ?: runs.lastIndex) + 1
+                ).coerceIn(0, runs.size)
 
-      val neighbours = setOfNotNull(
-        runs.getOrNull(at - 1)?.slot?.category,
-        runs.getOrNull(at)?.slot?.category
-      )
-
-      val category = ShiftCycle.distinctCategoryFrom(neighbours)
-
-      pendingNew = PendingNewBlock(
-        insertAt = at,
-        block = SlotRun(
-          slot = ShiftCycle.blockOf(category),
-          count = 1
+        val neighbours = setOfNotNull(
+          runs.getOrNull(at - 1)?.slot?.category,
+          runs.getOrNull(at)?.slot?.category
         )
-      )
 
-      editing = null
-    },
-    enabled = ShiftCycleEditLimits.canAddBlock(slots.size)
-  ) {
-    Text("+ блок")
+        val category = ShiftCycle.distinctCategoryFrom(neighbours)
+
+        pendingNew = PendingNewBlock(
+          insertAt = at,
+          block = SlotRun(
+            slot = ShiftCycle.blockOf(category),
+            count = 1
+          )
+        )
+
+        editing = null
+      },
+      enabled = ShiftCycleEditLimits.canAddBlock(slots.size)
+    ) {
+      Text("+ блок")
+    }
   }
 
   if (slots.isEmpty()) {

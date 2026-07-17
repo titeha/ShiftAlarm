@@ -46,7 +46,14 @@ data class AlarmEntity(
    * [POLARITY_WORK] — буди по рабочим (нерабочие глушатся); [POLARITY_REST] — буди по выходным.
    * Действует только при [honorHolidays] = true.
    */
-  val polarity: String = POLARITY_WORK
+  val polarity: String = POLARITY_WORK,
+  /**
+   * Учебный будильник (собран мастером «Учёба»). Явный флаг вместо эвристики по форме цикла:
+   * цикл «14 дней + якорь-понедельник» неотличим от вахты неделя/неделя. Управляет учебными
+   * типами периодов (Каникулы/Сессия), скрытием «+блок» и бейджем чётной/нечётной недели.
+   * Сбрасывается в false при выборе пресета или «Свой цикл».
+   */
+  val isStudy: Boolean = false
 ) {
   companion object {
     const val MODE_WEEKLY = "weekly"

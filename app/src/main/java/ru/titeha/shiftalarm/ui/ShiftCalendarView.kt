@@ -330,6 +330,7 @@ fun ShiftCalendarView(
   honorHolidays: Boolean = false,
   weekStart: DayOfWeek = DayOfWeek.MONDAY,
   weekPairNaming: WeekPairNaming = WeekPairNaming.PARITY,
+  isStudy: Boolean = false,
   onRangeSelected: ((LocalDate, LocalDate) -> Unit)? = null
 ) {
   var month by remember { mutableStateOf(YearMonth.now()) }
@@ -349,7 +350,9 @@ fun ShiftCalendarView(
   ) {
     MonthHeader(month, { month = month.minusMonths(1) }, { month = month.plusMonths(1) })
 
-    // Бейдж текущей недели для учебного двухнедельного цикла (эвристика 14 слотов + якорь-понедельник).
+    // Бейдж текущей недели — только для учебного будильника (флаг isStudy) с двухнедельным циклом.
+    // currentParity вернёт null, если цикл не 14-дневный/не с понедельника, поэтому вахте не покажем.
+    if (isStudy)
     StudyPlanBuilder.currentParity(schedule.base.slots.size, schedule.base.anchorDate, today)?.let { parity ->
       Text(
         "сейчас: ${weekPairNaming.labelFor(parity)}",

@@ -37,7 +37,8 @@ internal data class AlarmEditorSessionSnapshot(
  * пользовательского состояния, а не для хранения произвольно больших наборов данных.
  */
 internal object AlarmEditorSessionSnapshotCodec {
-    private const val FORMAT_VERSION = 1
+    // v2 — добавлено поле alarm.isStudy. Старые снимки v1 отбрасываются (восстановление best-effort).
+    private const val FORMAT_VERSION = 2
 
     /** Около 96 КиБ до Base64 и около 128 КиБ после кодирования. */
     private const val MAX_RAW_BYTES = 96 * 1024
@@ -165,6 +166,7 @@ internal object AlarmEditorSessionSnapshotCodec {
         writeBoolean(alarm.freezeCycleDuringOff)
         writeBoolean(alarm.honorHolidays)
         writeStringValue(alarm.polarity)
+        writeBoolean(alarm.isStudy)
     }
 
     private fun DataInputStream.readAlarm(): AlarmEntity {
@@ -182,7 +184,8 @@ internal object AlarmEditorSessionSnapshotCodec {
             deleteAfterFiring = readBoolean(),
             freezeCycleDuringOff = readBoolean(),
             honorHolidays = readBoolean(),
-            polarity = readStringValue()
+            polarity = readStringValue(),
+            isStudy = readBoolean()
         )
 
         require(alarm.id >= 0L) {
