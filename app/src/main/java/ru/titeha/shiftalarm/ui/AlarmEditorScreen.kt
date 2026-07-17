@@ -250,7 +250,7 @@ fun AlarmEditorScreen(
       )
     } else if (method == EditMethod.WEEKLY) {
       Spacer(Modifier.height(8.dp))
-      WeeklyCalendarSection(currentAlarm, periods)
+      WeeklyCalendarSection(currentAlarm, periods, onPeriodsChange = { periods = it })
     }
 
     if (!validation.canSave) {
@@ -843,18 +843,147 @@ private fun StartDatePickerDialog(initial: LocalDate, onPick: (LocalDate) -> Uni
 
 /** Сворачиваемый календарь недельного будильника (наглядно видно эффект «учитывать праздники»). */
 @Composable
-private fun WeeklyCalendarSection(alarm: AlarmEntity, periods: List<AlarmPeriod>) {
+private fun WeeklyCalendarSection(
+  alarm: AlarmEntity,
+  periods: List<AlarmPeriod>,
+  onPeriodsChange: (List<AlarmPeriod>) -> Unit,
+) {
   var show by remember { mutableStateOf(false) }
+  var rangeMode by remember { mutableStateOf(false) }
+  var rangeStart by remember { mutableStateOf<LocalDate?>(null) }
+  var pending by remember { mutableStateOf<Pair<LocalDate, LocalDate>?>(null) }
+
   TextButton(onClick = { show = !show }) {
     Text(if (show) "Скрыть календарь" else "Календарь")
   }
-  if (show) WeeklyCalendar(alarm, weekStart = rememberEditorWeekStart(), periods = periods)
+  if (show) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      ModeChip("Один день", !rangeMode) { rangeMode = false; rangeStart = null }
+      ModeChip("Диапазон", rangeMode) { rangeMode = true; rangeStart = null }
+    }
+    Spacer(Modifier.height(4.dp))
+    Text(
+      when {
+        !rangeMode -> "Нажми на день, чтобы добавить/убрать период (отпуск, больничный…)."
+        rangeStart == null -> "Диапазон: нажми первый день."
+        else -> "Начало: ${rangeStart!!.localized()}. Нажми второй день."
+      },
+      style = MaterialTheme.typography.bodySmall
+    )
+    Text("Или зажми день и веди пальцем — выделит диапазон.", style = MaterialTheme.typography.labelSmall)
+    Spacer(Modifier.height(4.dp))
+    WeeklyCalendar(
+      alarm = alarm,
+      weekStart = rememberEditorWeekStart(),
+      periods = periods,
+      highlightDay = rangeStart,
+      onDayClick = { day ->
+        if (!rangeMode) {
+          pending = day to day
+        } else {
+          val start = rangeStart
+          if (start == null) {
+            rangeStart = day
+          } else {
+            pending = if (day.isBefore(start)) day to start else start to day
+            rangeStart = null
+          }
+        }
+      },
+      onRangeSelected = { from, to -> pending = from to to; rangeStart = null }
+    )
+  }
+
+  pending?.let { (from, to) ->
+    val title = if (from == to) from.localized() else "${from.localized()} — ${to.localized()}"
+    WeeklyPeriodDialog(
+      title = title,
+      onPickPeriod = { kind ->
+        onPeriodsChange(applyPeriodRange(periods, alarm.id, from, to, kind))
+        pending = null
+      },
+      onClear = {
+        onPeriodsChange(clearPeriodRange(periods, from, to))
+        pending = null
+      },
+      onDismiss = { pending = null }
+    )
+  }
+}
+
+/** Диалог периода без будильника для недельного календаря (без подмен смен). */
+@Composable
+private fun WeeklyPeriodDialog(
+  title: String,
+  onPickPeriod: (PeriodKind) -> Unit,
+  onClear: () -> Unit,
+  onDismiss: () -> Unit,
+) {
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    title = { Text(title) },
+    text = {
+      Column(Modifier.verticalScroll(rememberScrollState())) {
+        Text("Период (без будильника):", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(4.dp))
+        PeriodKind.entries.forEach { kind ->
+          TextButton(onClick = { onPickPeriod(kind) }, modifier = Modifier.fillMaxWidth()) {
+            Text(kind.label, modifier = Modifier.fillMaxWidth())
+          }
+        }
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = onClear, modifier = Modifier.fillMaxWidth()) {
+          Text("Убрать период на этих днях", modifier = Modifier.fillMaxWidth())
+        }
+      }
+    },
+    confirmButton = {},
+    dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
+  )
 }
 
 /**
- * Сворачиваемый блок «Календарь и правки» (по умолчанию свёрнут): наглядный календарь резолва смен
- * от текущего черновика + диалог подмены смены/периода на день или диапазон. Только для графика.
+ * Применить период типа [kind] на диапазон [from]..[to] к списку [periods]. Больничный, попавший в
+ * отпуск, продлевает отпуск (ТК РФ, [VacationSick.applySick]); прочие типы заменяют только выбранную
+ * часть. Общий помощник для сменного и недельного календарей.
  */
+private fun applyPeriodRange(
+  periods: List<AlarmPeriod>,
+  alarmId: Long,
+  from: LocalDate,
+  to: LocalDate,
+  kind: PeriodKind,
+): List<AlarmPeriod> {
+  val fromEpochDay = from.toEpochDay()
+  val toEpochDay = to.toEpochDay()
+  if (kind != PeriodKind.SICK) {
+    return CalendarRangeEdits.replacePeriod(
+      periods = periods,
+      replacement = AlarmPeriod(alarmId = alarmId, fromEpochDay = fromEpochDay, toEpochDay = toEpochDay, reason = kind.label)
+    )
+  }
+  // Больничный: обычные периоды режем на диапазоне, отпуск — продлеваем по правилу.
+  val nonVacation = CalendarRangeEdits.removeFromPeriods(
+    periods = periods.filter { PeriodKind.fromReason(it.reason) != PeriodKind.VACATION },
+    fromEpochDay = fromEpochDay,
+    toEpochDay = toEpochDay
+  )
+  val vacationSpans = periods
+    .filter { PeriodKind.fromReason(it.reason) == PeriodKind.VACATION }
+    .map { VacationSick.Span(from = it.fromEpochDay, to = it.toEpochDay, kind = PeriodKind.VACATION) }
+  val sick = VacationSick.Span(from = fromEpochDay, to = toEpochDay, kind = PeriodKind.SICK)
+  val vacationAndSick = VacationSick.applySick(periods = vacationSpans, sick = sick).map {
+    AlarmPeriod(alarmId = alarmId, fromEpochDay = it.from, toEpochDay = it.to, reason = it.kind.label)
+  }
+  return (nonVacation + vacationAndSick).sortedWith(
+    compareBy<AlarmPeriod> { it.fromEpochDay }.thenBy { it.toEpochDay }.thenBy { it.reason }
+  )
+}
+
+/** Убрать периоды на диапазоне [from]..[to]. */
+private fun clearPeriodRange(periods: List<AlarmPeriod>, from: LocalDate, to: LocalDate): List<AlarmPeriod> =
+  CalendarRangeEdits.removeFromPeriods(periods = periods, fromEpochDay = from.toEpochDay(), toEpochDay = to.toEpochDay())
+
 @Composable
 private fun ShiftCalendarAndOverrides(
   draft: AlarmEntity,
@@ -958,74 +1087,7 @@ private fun ShiftCalendarAndOverrides(
             toEpochDay = to.toEpochDay()
           )
         )
-        if (kind == PeriodKind.SICK) {
-          // Больничный: если попал в отпуск — продлить отпуск (ТК РФ), см. VacationSick.
-          val fromEpochDay = from.toEpochDay()
-          val toEpochDay = to.toEpochDay()
-
-          /*
-           * Отпуск обрабатывается отдельным правилом продления.
-           * У прочих периодов заменяется только выбранная часть.
-           */
-          val nonVacationPeriods = CalendarRangeEdits.removeFromPeriods(
-            periods = periods.filter {
-              PeriodKind.fromReason(it.reason) != PeriodKind.VACATION
-            },
-            fromEpochDay = fromEpochDay,
-            toEpochDay = toEpochDay
-          )
-
-          val vacationSpans = periods
-            .filter {
-              PeriodKind.fromReason(it.reason) == PeriodKind.VACATION
-            }
-            .map {
-              VacationSick.Span(
-                from = it.fromEpochDay,
-                to = it.toEpochDay,
-                kind = PeriodKind.VACATION
-              )
-            }
-
-          val sick = VacationSick.Span(
-            from = fromEpochDay,
-            to = toEpochDay,
-            kind = PeriodKind.SICK
-          )
-
-          val vacationAndSick = VacationSick.applySick(
-            periods = vacationSpans,
-            sick = sick
-          ).map {
-            AlarmPeriod(
-              alarmId = draft.id,
-              fromEpochDay = it.from,
-              toEpochDay = it.to,
-              reason = it.kind.label
-            )
-          }
-
-          onPeriodsChange(
-            (nonVacationPeriods + vacationAndSick)
-              .sortedWith(
-                compareBy<AlarmPeriod> { it.fromEpochDay }
-                  .thenBy { it.toEpochDay }
-                  .thenBy { it.reason }
-              )
-          )
-        } else {
-          onPeriodsChange(
-            CalendarRangeEdits.replacePeriod(
-              periods = periods,
-              replacement = AlarmPeriod(
-                alarmId = draft.id,
-                fromEpochDay = from.toEpochDay(),
-                toEpochDay = to.toEpochDay(),
-                reason = kind.label
-              )
-            )
-          )
-        }
+        onPeriodsChange(applyPeriodRange(periods, draft.id, from, to, kind))
         pending = null
       },
       onClear = {

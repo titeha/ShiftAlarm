@@ -177,6 +177,9 @@ fun WeeklyCalendar(
   modifier: Modifier = Modifier,
   weekStart: DayOfWeek = DayOfWeek.MONDAY,
   periods: List<AlarmPeriod> = emptyList(),
+  highlightDay: LocalDate? = null,
+  onDayClick: ((LocalDate) -> Unit)? = null,
+  onRangeSelected: ((LocalDate, LocalDate) -> Unit)? = null,
 ) {
   var month by remember { mutableStateOf(YearMonth.now()) }
   val today = LocalDate.now()
@@ -184,7 +187,7 @@ fun WeeklyCalendar(
     if (alarm.honorHolidays) ProductionCalendars.merged("RU", month.year) else null
   }
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-  // Выбранный день — для подписи причины под календарём (сбрасывается при смене месяца).
+  // Выбранный день — для подписи причины под календарём (только когда календарь не интерактивный).
   var selected by remember(month) { mutableStateOf<LocalDate?>(null) }
 
   Column(
@@ -199,7 +202,57 @@ fun WeeklyCalendar(
     val lead = (month.atDay(1).dayOfWeek.value - weekStart.value + 7) % 7
     val cells: List<LocalDate?> =
       List(lead) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
-    cells.chunked(7).forEach { week ->
+    val weeks = cells.chunked(7)
+    val rows = weeks.size
+
+    // Выделение диапазона жестом long-press + drag (как в календаре смен).
+    var gridSize by remember { mutableStateOf(IntSize.Zero) }
+    var dragStart by remember { mutableStateOf<LocalDate?>(null) }
+    var dragEnd by remember { mutableStateOf<LocalDate?>(null) }
+    val haptic = LocalHapticFeedback.current
+
+    fun dayAt(pos: Offset): LocalDate {
+      val cw = if (gridSize.width > 0) gridSize.width / 7f else 1f
+      val ch = if (rows > 0 && gridSize.height > 0) gridSize.height / rows.toFloat() else 1f
+      val col = (pos.x / cw).toInt().coerceIn(0, 6)
+      val row = (pos.y / ch).toInt().coerceIn(0, rows - 1)
+      val day = (row * 7 + col - lead + 1).coerceIn(1, month.lengthOfMonth())
+      return month.atDay(day)
+    }
+
+    val dragRange: ClosedRange<LocalDate>? = dragStart?.let { s ->
+      dragEnd?.let { e -> minOf(s, e)..maxOf(s, e) }
+    }
+
+    Column(
+      Modifier
+        .fillMaxWidth()
+        .onSizeChanged { gridSize = it }
+        .then(
+          if (onRangeSelected != null) Modifier.pointerInput(rows, lead, month) {
+            detectDragGesturesAfterLongPress(
+              onDragStart = { off ->
+                val d = dayAt(off); dragStart = d; dragEnd = d
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+              },
+              onDrag = { change, _ ->
+                val d = dayAt(change.position)
+                if (d != dragEnd) {
+                  dragEnd = d
+                  haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                }
+              },
+              onDragEnd = {
+                val s = dragStart; val e = dragEnd
+                if (s != null && e != null) onRangeSelected(minOf(s, e), maxOf(s, e))
+                dragStart = null; dragEnd = null
+              },
+              onDragCancel = { dragStart = null; dragEnd = null }
+            )
+          } else Modifier
+        )
+    ) {
+    weeks.forEach { week ->
       Row(Modifier.fillMaxWidth()) {
         for (i in 0 until 7) {
           val date = week.getOrNull(i)
@@ -215,16 +268,21 @@ fun WeeklyCalendar(
             kind = cellKind,
             rings = date != null && AlarmTimes.weeklyFiresOn(alarm, date, calendar, periods),
             isToday = date == today,
-            isHighlighted = date != null && date == selected,
-            isInDragRange = false,
+            isHighlighted = date != null && date == (highlightDay ?: selected),
+            isInDragRange = date != null && dragRange != null && date in dragRange,
             dark = dark,
             onClick = if (date != null) {
-              { selected = date }
+              if (onDayClick != null) {
+                { onDayClick(date) }
+              } else {
+                { selected = date }
+              }
             } else null,
             modifier = Modifier.weight(1f)
           )
         }
       }
+    }
     }
 
     // Подпись причины по выбранному дню (только при «Учитывать праздники» — иначе календаря нет).
