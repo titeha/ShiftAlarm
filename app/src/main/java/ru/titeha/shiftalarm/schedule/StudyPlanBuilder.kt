@@ -66,4 +66,12 @@ object StudyPlanBuilder {
         val weekIndex = Math.floorDiv(ChronoUnit.DAYS.between(anchor, today), 7)
         return if (Math.floorMod(weekIndex, 2L) == 0L) Parity.ODD else Parity.EVEN
     }
+
+    /**
+     * Похож ли цикл на учебный (школа 7 / вуз 14 дней, якорь-понедельник). ЭВРИСТИКА, а не флаг в
+     * данных — используется, чтобы предложить в календаре учебные типы периодов (каникулы/сессия)
+     * вместо рабочих (отпуск/отгул/за свой счёт).
+     */
+    fun looksLikeStudy(cycleLength: Int, anchor: LocalDate): Boolean =
+        (cycleLength == 7 || cycleLength == 14) && anchor.dayOfWeek == DayOfWeek.MONDAY
 }

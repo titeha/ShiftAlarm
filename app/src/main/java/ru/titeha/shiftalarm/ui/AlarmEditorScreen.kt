@@ -70,6 +70,7 @@ import ru.titeha.shiftalarm.schedule.ShiftCycle
 import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
 import ru.titeha.shiftalarm.schedule.ShiftType
+import ru.titeha.shiftalarm.schedule.StudyPlanBuilder
 import ru.titeha.shiftalarm.schedule.VacationSick
 import ru.titeha.shiftalarm.schedule.WeekPairNaming
 import ru.titeha.shiftalarm.schedule.orderedDaysOfWeek
@@ -227,6 +228,7 @@ fun AlarmEditorScreen(
       VacationSection(
         alarmId = draft.id,
         periods = periods,
+        periodKinds = periodKindsFor(draft),
         onAdd = { periods = periods + it },
         onRemove = { p -> periods = periods - p }
       )
@@ -898,6 +900,7 @@ private fun WeeklyCalendarSection(
     val title = if (from == to) from.localized() else "${from.localized()} — ${to.localized()}"
     WeeklyPeriodDialog(
       title = title,
+      periodKinds = periodKindsFor(alarm),
       onPickPeriod = { kind ->
         onPeriodsChange(applyPeriodRange(periods, alarm.id, from, to, kind))
         pending = null
@@ -915,6 +918,7 @@ private fun WeeklyCalendarSection(
 @Composable
 private fun WeeklyPeriodDialog(
   title: String,
+  periodKinds: List<PeriodKind>,
   onPickPeriod: (PeriodKind) -> Unit,
   onClear: () -> Unit,
   onDismiss: () -> Unit,
@@ -926,7 +930,7 @@ private fun WeeklyPeriodDialog(
       Column(Modifier.verticalScroll(rememberScrollState())) {
         Text("Период (без будильника):", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(4.dp))
-        PeriodKind.entries.forEach { kind ->
+        periodKinds.forEach { kind ->
           TextButton(onClick = { onPickPeriod(kind) }, modifier = Modifier.fillMaxWidth()) {
             Text(kind.label, modifier = Modifier.fillMaxWidth())
           }
@@ -962,9 +966,14 @@ private fun applyPeriodRange(
       replacement = AlarmPeriod(alarmId = alarmId, fromEpochDay = fromEpochDay, toEpochDay = toEpochDay, reason = kind.label)
     )
   }
-  // Больничный: обычные периоды режем на диапазоне, отпуск — продлеваем по правилу.
+  // Больничный: отпуск ПРОДЛЕВАЕМ (ТК РФ); каникулы НЕ трогаем (строго фиксированы, это не отпуск);
+  // прочие периоды режем на диапазоне.
+  val fixedBreaks = periods.filter { PeriodKind.fromReason(it.reason) == PeriodKind.SCHOOL_BREAK }
   val nonVacation = CalendarRangeEdits.removeFromPeriods(
-    periods = periods.filter { PeriodKind.fromReason(it.reason) != PeriodKind.VACATION },
+    periods = periods.filter {
+      val k = PeriodKind.fromReason(it.reason)
+      k != PeriodKind.VACATION && k != PeriodKind.SCHOOL_BREAK
+    },
     fromEpochDay = fromEpochDay,
     toEpochDay = toEpochDay
   )
@@ -975,9 +984,27 @@ private fun applyPeriodRange(
   val vacationAndSick = VacationSick.applySick(periods = vacationSpans, sick = sick).map {
     AlarmPeriod(alarmId = alarmId, fromEpochDay = it.from, toEpochDay = it.to, reason = it.kind.label)
   }
-  return (nonVacation + vacationAndSick).sortedWith(
+  return (fixedBreaks + nonVacation + vacationAndSick).sortedWith(
     compareBy<AlarmPeriod> { it.fromEpochDay }.thenBy { it.toEpochDay }.thenBy { it.reason }
   )
+}
+
+/**
+ * Типы периодов, уместные для будильника. Учебному циклу (7/14 дней, якорь-понедельник) — каникулы,
+ * сессия, больничный; остальным (офис 5/2, смены) — рабочие + сессия (для заочника). Больничный есть
+ * везде. Эвристика по циклу, а не флаг в данных (профиль «смены/учёба» не вводим).
+ */
+private fun periodKindsFor(alarm: AlarmEntity): List<PeriodKind> {
+  val study = alarm.mode == AlarmEntity.MODE_SHIFT &&
+    StudyPlanBuilder.looksLikeStudy(
+      AlarmTimes.shiftBase(alarm)?.slots?.size ?: 0,
+      LocalDate.ofEpochDay(alarm.anchorEpochDay)
+    )
+  return if (study) {
+    listOf(PeriodKind.SCHOOL_BREAK, PeriodKind.SESSION, PeriodKind.SICK)
+  } else {
+    listOf(PeriodKind.VACATION, PeriodKind.SICK, PeriodKind.DAYOFF, PeriodKind.UNPAID, PeriodKind.SESSION)
+  }
 }
 
 /** Убрать периоды на диапазоне [from]..[to]. */
@@ -1053,6 +1080,7 @@ private fun ShiftCalendarAndOverrides(
     // Периоды, пересекающие выбранный диапазон (для замены/снятия).
     DayOverrideDialog(
       title = title,
+      periodKinds = periodKindsFor(draft),
       onPickCategory = { category ->
         // Умная отмена ночи: одиночный «Выходной» на ночь-дне снимает звонок, будящий на ЭТУ
         // ночь (он на предыдущем дне), но сохраняет исходящий звонок (см. ScheduleOverrides).
@@ -1168,6 +1196,7 @@ private fun List<AlarmOverride>.withExactOverride(
 @Composable
 private fun DayOverrideDialog(
   title: String,
+  periodKinds: List<PeriodKind>,
   onPickCategory: (ShiftCategory) -> Unit,
   onPickPeriod: (PeriodKind) -> Unit,
   onClear: () -> Unit,
@@ -1195,7 +1224,7 @@ private fun DayOverrideDialog(
         Spacer(Modifier.height(8.dp))
         Text("Период (без будильника):", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(4.dp))
-        PeriodKind.entries.forEach { kind ->
+        periodKinds.forEach { kind ->
           TextButton(
             onClick = { onPickPeriod(kind) },
             modifier = Modifier.fillMaxWidth()

@@ -111,6 +111,16 @@ class StudyPlanBuilderTest {
   }
 
   @Test
+  fun `looksLikeStudy — 7 и 14 дней с якорём-понедельником`() {
+    val mon = LocalDate.of(2026, 6, 22) // понедельник
+    val tue = LocalDate.of(2026, 6, 23)
+    assertEquals(true, StudyPlanBuilder.looksLikeStudy(7, mon))
+    assertEquals(true, StudyPlanBuilder.looksLikeStudy(14, mon))
+    assertEquals(false, StudyPlanBuilder.looksLikeStudy(4, mon))   // не 7/14 — не учебный (смена 2/2)
+    assertEquals(false, StudyPlanBuilder.looksLikeStudy(7, tue))   // якорь не понедельник
+  }
+
+  @Test
   fun `выходные дают слоты-выходные`() {
     val plan = StudyPlanBuilder.build(sevenDay(), null, wed)
     assertEquals(ShiftCategory.OFF, plan.slots[5].category) // суббота

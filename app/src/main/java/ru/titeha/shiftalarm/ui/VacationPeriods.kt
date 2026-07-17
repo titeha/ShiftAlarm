@@ -45,13 +45,14 @@ import java.time.ZoneOffset
 fun VacationSection(
   alarmId: Long,
   periods: List<AlarmPeriod>,
+  periodKinds: List<PeriodKind>,
   onAdd: (AlarmPeriod) -> Unit,
   onRemove: (AlarmPeriod) -> Unit
 ) {
   var showAdd by remember { mutableStateOf(false) }
 
   Column(Modifier.fillMaxWidth()) {
-    Text("Отпуск / больничный / отгул:", style = MaterialTheme.typography.titleMedium)
+    Text("Периоды без будильника:", style = MaterialTheme.typography.titleMedium)
     Spacer(Modifier.height(8.dp))
 
     if (periods.isEmpty()) {
@@ -84,6 +85,7 @@ fun VacationSection(
   if (showAdd) {
     AddPeriodDialog(
       alarmId = alarmId,
+      periodKinds = periodKinds,
       onConfirm = { onAdd(it); showAdd = false },
       onDismiss = { showAdd = false }
     )
@@ -100,6 +102,7 @@ fun VacationSection(
 @Composable
 fun AddPeriodDialog(
   alarmId: Long,
+  periodKinds: List<PeriodKind>,
   onConfirm: (AlarmPeriod) -> Unit,
   onDismiss: () -> Unit
 ) {
@@ -107,7 +110,7 @@ fun AddPeriodDialog(
   var from by remember { mutableStateOf<LocalDate?>(null) }
   var to by remember { mutableStateOf<LocalDate?>(null) }
   var days by remember { mutableStateOf("7") }
-  var kind by remember { mutableStateOf(PeriodKind.VACATION) }
+  var kind by remember { mutableStateOf(periodKinds.first()) }
   var showRangePicker by remember { mutableStateOf(false) }
   var showStartPicker by remember { mutableStateOf(false) }
 
@@ -174,7 +177,7 @@ fun AddPeriodDialog(
       Text("Тип:", style = MaterialTheme.typography.bodyMedium)
       Spacer(Modifier.height(4.dp))
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        PeriodKind.entries.forEach { k ->
+        periodKinds.forEach { k ->
           FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(k.label) })
         }
       }
