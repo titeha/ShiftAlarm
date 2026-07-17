@@ -41,6 +41,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import ru.titeha.shiftalarm.data.AlarmEntity
+import ru.titeha.shiftalarm.data.AlarmPeriod
+import ru.titeha.shiftalarm.schedule.PeriodKind
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftCalendar
 import ru.titeha.shiftalarm.schedule.ShiftCalendar.DayKind
@@ -90,6 +92,16 @@ internal fun colorOf(kind: DayKind, dark: Boolean): Color = if (!dark) when (kin
 
 /** Цвет текста/значка на цветной ячейке: чёрный на светлой теме, белый на тёмной. */
 internal fun onCellColor(dark: Boolean): Color = if (dark) Color.White else Color.Black
+
+/** Тип периода (по причине) → тип дня календаря для цвета. */
+private fun periodDayKind(reason: String): DayKind = when (PeriodKind.fromReason(reason)) {
+  PeriodKind.VACATION -> DayKind.VACATION
+  PeriodKind.SICK -> DayKind.SICK
+  PeriodKind.DAYOFF -> DayKind.DAYOFF
+  PeriodKind.UNPAID -> DayKind.UNPAID
+  PeriodKind.SCHOOL_BREAK -> DayKind.SCHOOL_BREAK
+  PeriodKind.SESSION -> DayKind.SESSION
+}
 
 /** Категория смены → тип дня календаря (для переиспользования палитры в ленте цикла). */
 internal fun categoryToDayKind(category: ShiftCategory): DayKind = when (category) {
@@ -164,6 +176,7 @@ fun WeeklyCalendar(
   alarm: AlarmEntity,
   modifier: Modifier = Modifier,
   weekStart: DayOfWeek = DayOfWeek.MONDAY,
+  periods: List<AlarmPeriod> = emptyList(),
 ) {
   var month by remember { mutableStateOf(YearMonth.now()) }
   val today = LocalDate.now()
@@ -190,11 +203,17 @@ fun WeeklyCalendar(
       Row(Modifier.fillMaxWidth()) {
         for (i in 0 until 7) {
           val date = week.getOrNull(i)
+          val period = date?.let { d -> periods.firstOrNull { d.toEpochDay() in it.fromEpochDay..it.toEpochDay } }
           val nonWorking = date != null && calendar != null && !calendar.isWorking(date)
+          val cellKind = when {
+            period != null -> periodDayKind(period.reason) // отпуск/больничный/сессия — своим цветом
+            nonWorking -> DayKind.OFF
+            else -> null
+          }
           DayCell(
             date = date,
-            kind = if (nonWorking) DayKind.OFF else null,
-            rings = date != null && AlarmTimes.weeklyFiresOn(alarm, date, calendar),
+            kind = cellKind,
+            rings = date != null && AlarmTimes.weeklyFiresOn(alarm, date, calendar, periods),
             isToday = date == today,
             isHighlighted = date != null && date == selected,
             isInDragRange = false,

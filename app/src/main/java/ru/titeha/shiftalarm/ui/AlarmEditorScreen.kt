@@ -220,7 +220,9 @@ fun AlarmEditorScreen(
     // ── Когда не звонить ──
     SectionHeader("Когда не звонить")
     HolidaySection(draft = draft, allowRestPolarity = method != EditMethod.SHIFT, onChange = { draft = it })
-    if (method == EditMethod.SHIFT) {
+    // Периоды-глушилки (отпуск/больничный/за свой счёт/сессия) — и сменам, и «по дням недели»
+    // (офисные 5/2 тоже уходят в отпуск). Разовому не нужны.
+    if (method != EditMethod.ONCE) {
       Spacer(Modifier.height(16.dp))
       VacationSection(
         alarmId = draft.id,
@@ -228,10 +230,10 @@ fun AlarmEditorScreen(
         onAdd = { periods = periods + it },
         onRemove = { p -> periods = periods - p }
       )
+    }
+    if (method == EditMethod.SHIFT) {
       Spacer(Modifier.height(16.dp))
       FreezeCycleToggle(draft) { draft = it }
-    } else {
-      // TODO: periods for weekly (AlarmTimes) — движок weekly периоды пока не умеет (non-goals ТЗ).
     }
 
     // ── Проверка ──
@@ -248,7 +250,7 @@ fun AlarmEditorScreen(
       )
     } else if (method == EditMethod.WEEKLY) {
       Spacer(Modifier.height(8.dp))
-      WeeklyCalendarSection(currentAlarm)
+      WeeklyCalendarSection(currentAlarm, periods)
     }
 
     if (!validation.canSave) {
@@ -841,12 +843,12 @@ private fun StartDatePickerDialog(initial: LocalDate, onPick: (LocalDate) -> Uni
 
 /** Сворачиваемый календарь недельного будильника (наглядно видно эффект «учитывать праздники»). */
 @Composable
-private fun WeeklyCalendarSection(alarm: AlarmEntity) {
+private fun WeeklyCalendarSection(alarm: AlarmEntity, periods: List<AlarmPeriod>) {
   var show by remember { mutableStateOf(false) }
   TextButton(onClick = { show = !show }) {
     Text(if (show) "Скрыть календарь" else "Календарь")
   }
-  if (show) WeeklyCalendar(alarm, weekStart = rememberEditorWeekStart())
+  if (show) WeeklyCalendar(alarm, weekStart = rememberEditorWeekStart(), periods = periods)
 }
 
 /**
