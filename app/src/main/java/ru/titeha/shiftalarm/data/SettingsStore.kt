@@ -106,6 +106,36 @@ class SettingsStore(context: Context) {
   fun setWeekPairNaming(naming: WeekPairNaming) =
     prefs.edit().putString(KEY_WEEK_PAIR_NAMING, naming.name).apply()
 
+  // ── «Настроение дня» (праздник + фраза дня) ──
+  // Флаги и сигнал в DE: сигнал dismissed пишется в момент «Стоп», который может случиться
+  // залоченным (Direct Boot); флаг уведомления читается там же. Чисто информационный модуль —
+  // на путь звонка не влияет.
+
+  /** Показывать карточку «Настроение дня» после «Стоп». По умолчанию включено. */
+  fun dayGreetingCardEnabled(): Boolean = alarmPrefs.getBoolean(KEY_GREETING_CARD, true)
+
+  fun setDayGreetingCardEnabled(enabled: Boolean) =
+    alarmPrefs.edit().putBoolean(KEY_GREETING_CARD, enabled).apply()
+
+  /** Показывать уведомление «Настроение дня». По умолчанию выключено. */
+  fun dayGreetingNotificationEnabled(): Boolean = alarmPrefs.getBoolean(KEY_GREETING_NOTIF, false)
+
+  fun setDayGreetingNotificationEnabled(enabled: Boolean) =
+    alarmPrefs.edit().putBoolean(KEY_GREETING_NOTIF, enabled).apply()
+
+  /** День (epochDay) последнего выключения будильника «Стоп»; -1 если не было. Сигнал для карточки. */
+  fun lastDismissedEpochDay(): Long = alarmPrefs.getLong(KEY_LAST_DISMISSED_DAY, -1L)
+
+  /** Только для реального «Стоп» (не снуз/не пропуск): отметить день выключения будильника. */
+  fun recordDismissed(epochDay: Long) =
+    alarmPrefs.edit().putLong(KEY_LAST_DISMISSED_DAY, epochDay).apply()
+
+  /** День, для которого карточку «Настроение дня» уже показали/закрыли (не навязываем повторно). */
+  fun greetingCardHandledEpochDay(): Long = alarmPrefs.getLong(KEY_GREETING_CARD_HANDLED, -1L)
+
+  fun setGreetingCardHandled(epochDay: Long) =
+    alarmPrefs.edit().putLong(KEY_GREETING_CARD_HANDLED, epochDay).apply()
+
   private companion object {
     const val PREFS = "app_settings"
     const val PREFS_ALARM_DE = "alarm_settings_de"
@@ -121,5 +151,9 @@ class SettingsStore(context: Context) {
     const val KEY_DISMISS_MODE = "dismiss_mode"
     const val KEY_WEEK_START = "week_start"
     const val KEY_WEEK_PAIR_NAMING = "week_pair_naming"
+    const val KEY_GREETING_CARD = "day_greeting_card_enabled"
+    const val KEY_GREETING_NOTIF = "day_greeting_notif_enabled"
+    const val KEY_LAST_DISMISSED_DAY = "day_greeting_last_dismissed_day"
+    const val KEY_GREETING_CARD_HANDLED = "day_greeting_card_handled_day"
   }
 }

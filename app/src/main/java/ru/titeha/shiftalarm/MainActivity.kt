@@ -72,6 +72,9 @@ import ru.titeha.shiftalarm.alarm.CachedAlarm
 import ru.titeha.shiftalarm.alarm.DirectBootAlarmStore
 import ru.titeha.shiftalarm.alarm.VendorSetup
 import ru.titeha.shiftalarm.ui.AlarmReadinessBanner
+import ru.titeha.shiftalarm.ui.GreetingCard
+import ru.titeha.shiftalarm.ui.GreetingSheet
+import ru.titeha.shiftalarm.ui.rememberDayGreeting
 import ru.titeha.shiftalarm.ui.VendorSetupScreen
 import ru.titeha.shiftalarm.ui.AlarmSaveState
 import ru.titeha.shiftalarm.ui.DiagnosticsScreen
@@ -96,6 +99,7 @@ class MainActivity : ComponentActivity() {
       var fontScale by remember { mutableStateOf(settings.fontScale()) }
       var ringConfig by remember { mutableStateOf(settings.ringConfig()) }
       var dismissMode by remember { mutableStateOf(settings.dismissMode()) }
+      var dayGreetingCard by remember { mutableStateOf(settings.dayGreetingCardEnabled()) }
       var weekStart by remember { mutableStateOf(settings.weekStart()) }
       var weekPairNaming by remember { mutableStateOf(settings.weekPairNaming()) }
       val darkTheme = when (themeMode) {
@@ -193,6 +197,8 @@ class MainActivity : ComponentActivity() {
               } else {
                 null
               },
+              dayGreetingCard = dayGreetingCard,
+              onDayGreetingCard = { dayGreetingCard = it; settings.setDayGreetingCardEnabled(it) },
               onBack = { showSettings = false }
             )
           }
@@ -396,6 +402,7 @@ private fun AlarmListScreen(
   onDismissMissed: () -> Unit = {}
 ) {
   val currentMinute = rememberCurrentMinute()
+  val dayGreeting = rememberDayGreeting()
   Scaffold(
     floatingActionButton = {
       // Плавающая кнопка «+»: правый нижний угол, поверх списка, чуть крупнее стандартной, круглая.
@@ -456,6 +463,20 @@ private fun AlarmListScreen(
           onDismiss = onDismissVendorSetup,
           modifier = Modifier.padding(bottom = 12.dp)
         )
+      }
+
+      // Карточка «Настроение дня» после «Стоп» (праздник + фраза дня). Информационная, необязательная.
+      dayGreeting.greeting?.let { greeting ->
+        var showGreetingSheet by remember { mutableStateOf(false) }
+        GreetingCard(
+          greeting = greeting,
+          onClick = { showGreetingSheet = true },
+          onClose = dayGreeting.onClose,
+          modifier = Modifier.padding(bottom = 12.dp)
+        )
+        if (showGreetingSheet) {
+          GreetingSheet(greeting = greeting, onDismiss = { showGreetingSheet = false })
+        }
       }
 
       if (alarms.isEmpty()) {

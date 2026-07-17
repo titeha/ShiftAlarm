@@ -10,6 +10,8 @@ import ru.titeha.shiftalarm.MainActivity
 import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.SettingsStore
+import java.time.Instant
+import java.time.ZoneId
 
 /**
  * Android-исполнитель «сессии звонка»: загружает состояние и настройки, применяет чистый
@@ -99,8 +101,20 @@ object RingSessionController {
             RingJournalEntry.Missed ->
                 AlarmEventType.MISSED to "id=$alarmId звонок не был выключен"
 
-            // Остановлен/отменён — исходный FIRED уже в журнале, не шумим.
-            RingJournalEntry.Stopped, RingJournalEntry.Cancelled -> return
+            // Отменён внешне (тумблер/удаление/сохранение) — не пробуждение, «Настроением дня» не считаем.
+            RingJournalEntry.Cancelled -> return
+
+            // Реальное «Стоп» = будильник выключен пользователем → сигнал для карточки «Настроение дня»
+            // (не снуз и не пропуск). Пишем в DE (locked-safe); любую ошибку глушим, чтобы фича никогда
+            // не влияла на путь звонка. Исходный FIRED уже в журнале — отдельно не шумим.
+            RingJournalEntry.Stopped -> {
+                runCatching {
+                    val day = Instant.ofEpochMilli(nowMillis).atZone(ZoneId.systemDefault())
+                        .toLocalDate().toEpochDay()
+                    SettingsStore(context).recordDismissed(day)
+                }
+                return
+            }
         }
 
         // Журнал (CE) может быть недоступен до разблокировки (авто-снуз залоченным) — тогда в DPS-буфер.

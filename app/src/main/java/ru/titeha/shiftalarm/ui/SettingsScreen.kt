@@ -60,6 +60,8 @@ fun SettingsScreen(
   onWeekPairNaming: (WeekPairNaming) -> Unit = {},
   onRunSelfTest: () -> Unit = {},
   onOpenPhoneSetup: (() -> Unit)? = null,
+  dayGreetingCard: Boolean = true,
+  onDayGreetingCard: (Boolean) -> Unit = {},
   onBack: () -> Unit,
 ) {
   Scaffold { padding ->
@@ -324,6 +326,20 @@ fun SettingsScreen(
           if (ts != null) "$yr — обновлён ${formatStamp(ts)}" else "$yr — встроенные данные",
           style = MaterialTheme.typography.bodyMedium
         )
+      }
+
+      Spacer(Modifier.height(24.dp))
+      Text("Настроение дня", style = MaterialTheme.typography.titleMedium)
+      Text(
+        "После «Стоп» — праздник дня и фраза дня. Показывается, только если будильник звонил; " +
+          "на надёжность звонка не влияет.",
+        style = MaterialTheme.typography.bodySmall
+      )
+      Spacer(Modifier.height(8.dp))
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = dayGreetingCard, onCheckedChange = onDayGreetingCard)
+        Spacer(Modifier.width(8.dp))
+        Text("Карточка после «Стоп»", style = MaterialTheme.typography.bodyMedium)
       }
     }
   }
