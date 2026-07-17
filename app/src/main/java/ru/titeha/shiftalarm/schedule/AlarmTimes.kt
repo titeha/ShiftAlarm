@@ -75,7 +75,7 @@ object AlarmTimes {
         )
         ShiftEngine.nextAlarm(from, schedule, calendar = calendar)
       }
-      else -> nextWeeklyResolved(alarm, from, calendar, effectivePolarity)
+      else -> nextWeeklyResolved(alarm, periods, from, calendar, effectivePolarity)
     }
   }
 
@@ -87,6 +87,7 @@ object AlarmTimes {
    */
   private fun nextWeeklyResolved(
     alarm: AlarmEntity,
+    periods: List<AlarmPeriod>,
     from: LocalDateTime,
     calendar: ProductionCalendar?,
     polarity: AlarmPolarity,
@@ -103,13 +104,21 @@ object AlarmTimes {
 
     var date = from.toLocalDate()
     repeat(370) {
-      if (resolver.ringOn(date, workWeek)) {
+      // Периоды без будильника (отпуск/больничный/за свой счёт/сессия/…) глушат звонок и в режиме
+      // «по дням недели» — как у смен.
+      if (resolver.ringOn(date, workWeek) && !coveredByPeriod(periods, date)) {
         val candidate = date.atTime(alarm.hour, alarm.minute)
         if (candidate.isAfter(from)) return candidate
       }
       date = date.plusDays(1)
     }
     return null
+  }
+
+  /** Покрыт ли день [date] периодом без будильника. */
+  private fun coveredByPeriod(periods: List<AlarmPeriod>, date: LocalDate): Boolean {
+    val day = date.toEpochDay()
+    return periods.any { day in it.fromEpochDay..it.toEpochDay }
   }
 
   /** Личная неделя из маски; для REST с пустой маской — стандартная неделя страны. */
@@ -132,8 +141,14 @@ object AlarmTimes {
    * иначе — по масочным дням, а при [AlarmEntity.honorHolidays] нерабочие глушатся. Разовый (маска 0)
    * как повтор не показываем.
    */
-  fun weeklyFiresOn(alarm: AlarmEntity, date: LocalDate, calendar: ProductionCalendar?): Boolean {
+  fun weeklyFiresOn(
+    alarm: AlarmEntity,
+    date: LocalDate,
+    calendar: ProductionCalendar?,
+    periods: List<AlarmPeriod> = emptyList(),
+  ): Boolean {
     if (alarm.mode != AlarmEntity.MODE_WEEKLY) return false
+    if (coveredByPeriod(periods, date)) return false // отпуск/больничный/… глушат и weekly
 
     // REST требует календаря; без него (тумблер выключен) — как WORK. Разовый как повтор не показываем.
     val polarity = if (calendar == null) AlarmPolarity.WORK

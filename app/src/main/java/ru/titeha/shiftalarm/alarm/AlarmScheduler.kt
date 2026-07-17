@@ -128,14 +128,17 @@ object AlarmScheduler {
     val report = AlarmRescheduleBatch.run(
       alarms = alarms,
       operation = { alarm ->
-        // Через не-repo перегрузку, чтобы кэш Direct Boot пересобрать один раз ниже, а не на
-        // каждой записи. Периоды/правки нужны только сменным будильникам (как в offPeriodsFor/overridesFor).
-        val isShift = alarm.mode == AlarmEntity.MODE_SHIFT
+        // Через не-repo перегрузку, чтобы кэш Direct Boot пересобрать один раз ниже, а не на каждой
+        // записи. Периоды применимы всем режимам; правки (подмены смен) — только сменным.
         reschedule(
           context = context,
           alarm = alarm,
-          periods = if (isShift) periodsByAlarm[alarm.id].orEmpty() else emptyList(),
-          overrides = if (isShift) overridesByAlarm[alarm.id].orEmpty() else emptyList()
+          periods = periodsByAlarm[alarm.id].orEmpty(),
+          overrides = if (alarm.mode == AlarmEntity.MODE_SHIFT) {
+            overridesByAlarm[alarm.id].orEmpty()
+          } else {
+            emptyList()
+          }
         )
       }
     )
@@ -332,11 +335,8 @@ object AlarmScheduler {
     repo: AlarmRepository,
     alarm: AlarmEntity
   ): List<AlarmPeriod> {
-    return if (alarm.mode == AlarmEntity.MODE_SHIFT) {
-      repo.periodsList(alarm.id)
-    } else {
-      emptyList()
-    }
+    // Периоды без будильника (отпуск/больничный/…) применимы и к сменам, и к «по дням недели».
+    return repo.periodsList(alarm.id)
   }
 
   private suspend fun overridesFor(

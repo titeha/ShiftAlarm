@@ -174,11 +174,8 @@ class AlarmReceiver : BroadcastReceiver() {
     repo: AlarmRepository,
     alarm: AlarmEntity
   ): List<AlarmPeriod> {
-    return if (alarm.mode == AlarmEntity.MODE_SHIFT) {
-      repo.periodsList(alarm.id)
-    } else {
-      emptyList()
-    }
+    // Периоды без будильника (отпуск/больничный/…) применимы всем режимам, не только сменам.
+    return repo.periodsList(alarm.id)
   }
 
   private suspend fun overridesFor(

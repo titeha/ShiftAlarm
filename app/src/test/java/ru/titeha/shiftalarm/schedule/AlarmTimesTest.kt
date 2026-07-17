@@ -272,4 +272,25 @@ class AlarmTimesTest {
   fun `weeklyFiresOn — разовый как повтор не показывается`() {
     assertEquals(false, AlarmTimes.weeklyFiresOn(weekly(0), wed, null))
   }
+
+  @Test
+  fun `weekly — период (отпуск) глушит звонок, дальше звонит снова`() {
+    // Будильник Пн–Пт 07:00; отпуск на неделю со среды 24 июня по вторник 30 июня.
+    val a = weekly(AlarmTimes.maskOf(
+      DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
+    )).copy(hour = 7, minute = 0)
+    val vacation = listOf(
+      AlarmPeriod(alarmId = 1, fromEpochDay = wed.toEpochDay(), toEpochDay = wed.plusDays(6).toEpochDay(), reason = "Отпуск")
+    )
+    // Отсчёт со вторника 23 июня 08:00: среда–пятница в отпуске, ближайший звонок — понедельник 30 июня…
+    // но 30-е (вт) ещё в отпуске (по 30-е вкл.), значит следующий рабочий масочный день — среда 1 июля.
+    val from = LocalDate.of(2026, 6, 23).atTime(8, 0)
+    val next = AlarmTimes.next(a, vacation, emptyList(), from)
+    assertEquals(LocalDate.of(2026, 7, 1).atTime(7, 0), next)
+
+    // Точка в календаре в день отпуска не показывается.
+    assertEquals(false, AlarmTimes.weeklyFiresOn(a, wed, null, vacation))
+    // А до отпуска (вторник 23-го) — звонит.
+    assertEquals(true, AlarmTimes.weeklyFiresOn(a, LocalDate.of(2026, 6, 23), null, vacation))
+  }
 }
