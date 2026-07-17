@@ -5,6 +5,7 @@ import ru.titeha.shiftalarm.data.AlarmPeriod
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 /**
  * Чистый (без Android и I/O) расчёт ближайшего срабатывания одного будильника.
@@ -178,6 +179,33 @@ object AlarmTimes {
     }
 
     return ShiftPresets.byId(alarm.presetId)?.build(anchor)?.base
+  }
+
+  /**
+   * Времена звонка для заголовка списка. В сменном режиме время живёт в цикле (у каждой смены
+   * свой [ShiftType.wakeTime]); поля [AlarmEntity.hour]/[AlarmEntity.minute] для смен не
+   * используются вовсе — поэтому заголовок нельзя брать из них. Возвращаем различимые времена
+   * цикла по возрастанию (обычно одно; у «сутки-трое» и т.п. — несколько). Для остальных режимов —
+   * одно время [AlarmEntity.hour]:[AlarmEntity.minute]. Пустой/битый цикл → откат на hour:minute.
+   */
+  fun headlineTimes(alarm: AlarmEntity): List<LocalTime> {
+    if (alarm.mode == AlarmEntity.MODE_SHIFT) {
+      val times = shiftBase(alarm)?.slots?.mapNotNull { it.wakeTime }?.distinct()?.sorted()
+      if (!times.isNullOrEmpty()) return times
+    }
+    return listOf(LocalTime.of(alarm.hour, alarm.minute))
+  }
+
+  /**
+   * Готовая строка времени для заголовка списка. Одно время → «HH:MM». Несколько (многосменный
+   * цикл) → диапазон «самое раннее–самое позднее» («HH:MM–HH:MM»), чтобы заголовок не мельтешил
+   * всеми временами. [headlineTimes] уже отсортирован по возрастанию.
+   */
+  fun headlineTimeLabel(alarm: AlarmEntity): String {
+    val times = headlineTimes(alarm)
+    fun fmt(t: LocalTime) = "%02d:%02d".format(t.hour, t.minute)
+    return if (times.size <= 1) fmt(times.first())
+    else "${fmt(times.first())}–${fmt(times.last())}"
   }
 
   /**

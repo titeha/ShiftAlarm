@@ -142,6 +142,89 @@ class AlarmTimesTest {
   }
 
   @Test
+  fun `headlineTimes — weekly берёт время из hour minute`() {
+    val alarm = AlarmEntity(hour = 6, minute = 30, mode = AlarmEntity.MODE_WEEKLY, daysMask = 0)
+    assertEquals(listOf(LocalTime.of(6, 30)), AlarmTimes.headlineTimes(alarm))
+  }
+
+  @Test
+  fun `headlineTimes — сменный игнорирует hour minute и берёт время цикла`() {
+    // hour=7 (дефолт), но реальное время звонка задано в цикле = 6:30 → заголовок 6:30, не 7:00.
+    val spec = ShiftCycleCodec.encode(
+      listOf(ShiftType("w", "Работа", LocalTime.of(6, 30)), ShiftType.off())
+    )
+    val alarm = AlarmEntity(
+      hour = 7, minute = 0,
+      mode = AlarmEntity.MODE_SHIFT,
+      presetId = "2x2",
+      cycleSpec = spec,
+      anchorEpochDay = wed.toEpochDay()
+    )
+    assertEquals(listOf(LocalTime.of(6, 30)), AlarmTimes.headlineTimes(alarm))
+  }
+
+  @Test
+  fun `headlineTimes — сменный пресет 2x2 показывает 7 00`() {
+    val alarm = AlarmEntity(mode = AlarmEntity.MODE_SHIFT, presetId = "2x2", anchorEpochDay = wed.toEpochDay())
+    assertEquals(listOf(LocalTime.of(7, 0)), AlarmTimes.headlineTimes(alarm))
+  }
+
+  @Test
+  fun `headlineTimes — многосменный цикл даёт различимые времена по возрастанию`() {
+    // Утро 6:00, день 14:00, выходной, ночь 22:00 → {06:00, 14:00, 22:00} отсортированы, без дублей.
+    val spec = ShiftCycleCodec.encode(
+      listOf(
+        ShiftType("m", "Утро", LocalTime.of(6, 0), ShiftCategory.MORNING),
+        ShiftType("d", "День", LocalTime.of(14, 0), ShiftCategory.DAY),
+        ShiftType.off(),
+        ShiftType("m2", "Утро", LocalTime.of(6, 0), ShiftCategory.MORNING),
+        ShiftType("n", "Ночь", LocalTime.of(22, 0), ShiftCategory.NIGHT),
+      )
+    )
+    val alarm = AlarmEntity(
+      mode = AlarmEntity.MODE_SHIFT, cycleSpec = spec, anchorEpochDay = wed.toEpochDay()
+    )
+    assertEquals(
+      listOf(LocalTime.of(6, 0), LocalTime.of(14, 0), LocalTime.of(22, 0)),
+      AlarmTimes.headlineTimes(alarm)
+    )
+  }
+
+  @Test
+  fun `headlineTimes — битый cycleSpec без пресета откатывается на hour minute`() {
+    val alarm = AlarmEntity(
+      hour = 8, minute = 15, mode = AlarmEntity.MODE_SHIFT, presetId = "нет-такого", cycleSpec = "мусор"
+    )
+    assertEquals(listOf(LocalTime.of(8, 15)), AlarmTimes.headlineTimes(alarm))
+  }
+
+  @Test
+  fun `headlineTimeLabel — одно время как есть`() {
+    val alarm = AlarmEntity(hour = 6, minute = 30, mode = AlarmEntity.MODE_WEEKLY, daysMask = 0)
+    assertEquals("06:30", AlarmTimes.headlineTimeLabel(alarm))
+  }
+
+  @Test
+  fun `headlineTimeLabel — многосменный цикл сворачивается в диапазон раннее-позднее`() {
+    // Утро 6:00, день 14:00, ночь 22:00 → «06:00–22:00», а не список всех времён.
+    val spec = ShiftCycleCodec.encode(
+      listOf(
+        ShiftType("m", "Утро", LocalTime.of(6, 0), ShiftCategory.MORNING),
+        ShiftType("d", "День", LocalTime.of(14, 0), ShiftCategory.DAY),
+        ShiftType("n", "Ночь", LocalTime.of(22, 0), ShiftCategory.NIGHT),
+      )
+    )
+    val alarm = AlarmEntity(mode = AlarmEntity.MODE_SHIFT, cycleSpec = spec, anchorEpochDay = wed.toEpochDay())
+    assertEquals("06:00–22:00", AlarmTimes.headlineTimeLabel(alarm))
+  }
+
+  @Test
+  fun `headlineTimeLabel — сменный пресет 2x2 с одним временем без диапазона`() {
+    val alarm = AlarmEntity(mode = AlarmEntity.MODE_SHIFT, presetId = "2x2", anchorEpochDay = wed.toEpochDay())
+    assertEquals("07:00", AlarmTimes.headlineTimeLabel(alarm))
+  }
+
+  @Test
   fun `next — пустой cycleSpec откатывается на пресет`() {
     val alarm = AlarmEntity(
       mode = AlarmEntity.MODE_SHIFT,

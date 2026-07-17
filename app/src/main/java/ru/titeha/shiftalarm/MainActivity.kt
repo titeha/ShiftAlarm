@@ -511,8 +511,8 @@ private fun AlarmRow(
       verticalAlignment = Alignment.CenterVertically
     ) {
       Column(modifier = Modifier.weight(1f)) {
-        val title = if (alarm.label.isBlank()) "%02d:%02d".format(alarm.hour, alarm.minute)
-        else "%02d:%02d · ${alarm.label}".format(alarm.hour, alarm.minute)
+        val timeText = remember(alarm) { AlarmTimes.headlineTimeLabel(alarm) }
+        val title = if (alarm.label.isBlank()) timeText else "$timeText · ${alarm.label}"
         Text(title, style = MaterialTheme.typography.headlineMedium)
         Text(describe(alarm), style = MaterialTheme.typography.bodyMedium)
         if (alarm.enabled) {
