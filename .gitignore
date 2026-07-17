@@ -8,3 +8,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Подпись релиза (секреты) — не коммитить
+keystore.properties
+*.keystore
+*.jks

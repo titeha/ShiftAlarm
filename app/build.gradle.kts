@@ -1,4 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.io.FileInputStream
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -6,6 +8,18 @@ plugins {
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.ksp)
 }
+
+// Подпись релиза берётся из keystore.properties (НЕ в git). Пока файла нет — release подписывается
+// debug-ключом (для смоук-проверки minified-сборки). Формат keystore.properties:
+//   storeFile=/абсолютный/путь/release.keystore
+//   storePassword=...
+//   keyAlias=...
+//   keyPassword=...
+val keystoreProps = Properties().apply {
+  val f = rootProject.file("keystore.properties")
+  if (f.exists()) FileInputStream(f).use { load(it) }
+}
+val hasReleaseKeystore = keystoreProps.getProperty("storeFile") != null
 
 android {
   namespace = "ru.titeha.shiftalarm"
@@ -16,7 +30,7 @@ android {
     minSdk = 26
     targetSdk = 36
     versionCode = 1
-    versionName = "0.1.0"
+    versionName = "1.0.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -26,10 +40,27 @@ android {
   // Эталонные JSON-схемы Room доступны инструментальному тесту миграции как assets.
   sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
 
+  signingConfigs {
+    if (hasReleaseKeystore) {
+      create("release") {
+        storeFile = file(keystoreProps.getProperty("storeFile"))
+        storePassword = keystoreProps.getProperty("storePassword")
+        keyAlias = keystoreProps.getProperty("keyAlias")
+        keyPassword = keystoreProps.getProperty("keyPassword")
+      }
+    }
+  }
+
   buildTypes {
     release {
-      isMinifyEnabled = false
+      isMinifyEnabled = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      signingConfig = if (hasReleaseKeystore) {
+        signingConfigs.getByName("release")
+      } else {
+        // Временно: без keystore.properties подписываем debug-ключом — только для смоук-теста R8.
+        signingConfigs.getByName("debug")
+      }
     }
   }
   compileOptions {
