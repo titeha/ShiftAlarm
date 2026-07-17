@@ -48,6 +48,8 @@ fun SettingsScreen(
   dynamicColor: Boolean,
   onThemeMode: (ThemeMode) -> Unit,
   onDynamicColor: (Boolean) -> Unit,
+  fontScale: Float = 1f,
+  onFontScale: (Float) -> Unit = {},
   ringConfig: RingConfig = RingConfig(),
   onRingConfig: (RingConfig) -> Unit = {},
   dismissMode: DismissMode = DismissMode.NORMAL,
@@ -110,6 +112,25 @@ fun SettingsScreen(
               style = MaterialTheme.typography.bodySmall
             )
           }
+        }
+      }
+
+      Spacer(Modifier.height(24.dp))
+      Text("Размер шрифта", style = MaterialTheme.typography.titleMedium)
+      Text(
+        "Увеличивает текст во всём приложении (поверх системного размера шрифта).",
+        style = MaterialTheme.typography.bodySmall
+      )
+      Spacer(Modifier.height(8.dp))
+      androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(
+          1.0f to "Обычный", 1.15f to "Крупнее", 1.3f to "Крупный", 1.5f to "Очень крупный"
+        ).forEach { (value, title) ->
+          FilterChip(
+            selected = kotlin.math.abs(fontScale - value) < 0.01f,
+            onClick = { onFontScale(value) },
+            label = { Text(title) }
+          )
         }
       }
 

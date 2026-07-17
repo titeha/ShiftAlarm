@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
       val settings = remember { SettingsStore(applicationContext) }
       var themeMode by remember { mutableStateOf(settings.themeMode()) }
       var dynamicColor by remember { mutableStateOf(settings.dynamicColor()) }
+      var fontScale by remember { mutableStateOf(settings.fontScale()) }
       var ringConfig by remember { mutableStateOf(settings.ringConfig()) }
       var dismissMode by remember { mutableStateOf(settings.dismissMode()) }
       var weekStart by remember { mutableStateOf(settings.weekStart()) }
@@ -102,7 +103,7 @@ class MainActivity : ComponentActivity() {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
       }
-      AppTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
+      AppTheme(darkTheme = darkTheme, dynamicColor = dynamicColor, fontScale = fontScale) {
         val vm: AlarmListViewModel = viewModel()
         val state by vm.uiState.collectAsStateWithLifecycle()
         val saveState by vm.saveState.collectAsStateWithLifecycle()
@@ -164,6 +165,8 @@ class MainActivity : ComponentActivity() {
               dynamicColor = dynamicColor,
               onThemeMode = { themeMode = it; settings.setThemeMode(it) },
               onDynamicColor = { dynamicColor = it; settings.setDynamicColor(it) },
+              fontScale = fontScale,
+              onFontScale = { fontScale = it; settings.setFontScale(it) },
               ringConfig = ringConfig,
               onRingConfig = { ringConfig = it; settings.setRingConfig(it) },
               weekStart = weekStart,

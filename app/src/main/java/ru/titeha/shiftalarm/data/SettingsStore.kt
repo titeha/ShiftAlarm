@@ -36,6 +36,14 @@ class SettingsStore(context: Context) {
 
   fun setThemeMode(mode: ThemeMode) = prefs.edit().putString(KEY_THEME, mode.name).apply()
 
+  /**
+   * Масштаб шрифта ПОВЕРХ системного (для слабовидящих). 1.0 = как в системе. Множится на системный
+   * fontScale, поэтому работает в дополнение к настройке Android «Размер шрифта». Диапазон 0.8..2.0.
+   */
+  fun fontScale(): Float = prefs.getFloat(KEY_FONT_SCALE, 1.0f).coerceIn(0.8f, 2.0f)
+
+  fun setFontScale(scale: Float) = prefs.edit().putFloat(KEY_FONT_SCALE, scale).apply()
+
   /** Динамические цвета Material You (Android 12+). По умолчанию включены. */
   fun dynamicColor(): Boolean = prefs.getBoolean(KEY_DYNAMIC, true)
 
@@ -103,6 +111,7 @@ class SettingsStore(context: Context) {
     const val PREFS_ALARM_DE = "alarm_settings_de"
     const val KEY_THEME = "theme_mode"
     const val KEY_DYNAMIC = "dynamic_color"
+    const val KEY_FONT_SCALE = "font_scale"
     const val KEY_NOTIF_PROMPT = "notification_prompt_done"
     const val KEY_VENDOR_SETUP_DISMISSED = "vendor_setup_dismissed"
     const val KEY_RING_DURATION = "ring_duration_minutes"

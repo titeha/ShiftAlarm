@@ -8,7 +8,10 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 /** Выбор темы пользователем: по системе / всегда светлая / всегда тёмная. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -35,6 +38,7 @@ private val DarkColors = darkColorScheme(
 fun AppTheme(
   darkTheme: Boolean = isSystemInDarkTheme(),
   dynamicColor: Boolean = true,
+  fontScale: Float = 1f,
   content: @Composable () -> Unit,
 ) {
   val colorScheme = when {
@@ -45,5 +49,13 @@ fun AppTheme(
     darkTheme -> DarkColors
     else -> LightColors
   }
-  MaterialTheme(colorScheme = colorScheme, content = content)
+  MaterialTheme(colorScheme = colorScheme) {
+    // Пользовательский масштаб шрифта ПОВЕРХ системного (для слабовидящих): множим системный fontScale.
+    val base = LocalDensity.current
+    CompositionLocalProvider(
+      LocalDensity provides Density(density = base.density, fontScale = base.fontScale * fontScale)
+    ) {
+      content()
+    }
+  }
 }
