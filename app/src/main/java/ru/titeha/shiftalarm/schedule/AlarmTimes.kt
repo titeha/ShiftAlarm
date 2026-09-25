@@ -83,8 +83,9 @@ object AlarmTimes {
   /**
    * Ближайшее срабатывание weekly-будильника через матрицу «личная неделя × госкалендарь»
    * ([PersonalDayResolver]). Разовый (маска 0, WORK) — ближайшее время без календаря. REST требует
-   * календаря; без него ведёт себя как WORK. Личная неделя = отмеченные дни (маска); для REST с пустой
-   * маской берём стандартную неделю страны, чтобы «по выходным» = Сб/Вс/праздники.
+   * календаря; без него ведёт себя как WORK. Личная неделя = отмеченные дни (маска) для WORK;
+   * для REST — стандартная неделя страны (маска не используется), чтобы «по выходным» означало
+   * Сб/Вс/праздники/переносы.
    */
   private fun nextWeeklyResolved(
     alarm: AlarmEntity,
@@ -122,14 +123,16 @@ object AlarmTimes {
     return periods.any { day in it.fromEpochDay..it.toEpochDay }
   }
 
-  /** Личная неделя из маски; для REST с пустой маской — стандартная неделя страны. */
+  /**
+   * Неделя для [PersonalDayResolver]. WORK — личная неделя из отмеченных дней будильника.
+   * REST — всегда стандартная неделя страны: «по выходным» означает официальные нерабочие дни
+   * (Сб, Вс, праздники, перенесённые выходные), а не инверсию отмеченных пользователем дней.
+   * Маска в REST не используется — дни повтора нейтральны и не описывают рабочую неделю
+   * (см. `docs/SHIFT_HOLIDAY_POLICY.md` и `docs/WORK_WEEK_AND_STUDY.md` §1).
+   */
   private fun personalWeek(daysMask: Int, polarity: AlarmPolarity): WorkWeek {
-    val fromMask = WorkWeek.fromMask(daysMask)
-    return if (polarity == AlarmPolarity.REST && fromMask.workingDays.isEmpty()) {
-      CountryProfile.RU.standardWeek
-    } else {
-      fromMask
-    }
+    if (polarity == AlarmPolarity.REST) return CountryProfile.RU.standardWeek
+    return WorkWeek.fromMask(daysMask)
   }
 
   /** Перегрузка без правок календаря — периоды учитывает, правки нет. */
