@@ -13,3 +13,9 @@ local.properties
 keystore.properties
 *.keystore
 *.jks
+
+# Локальные каталоги инструментов/агентов — не коммитить
+/.serena/
+/.claude/
+/.gigacode/
+/.agent/
