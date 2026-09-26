@@ -110,7 +110,7 @@ Scheduler → Receiver → Service → Activity. Расписание и дви�
 - Новых зависимостей не добавлять.
 - Каждый этап — отдельный коммит; `testDebugUnitTest` и `assembleDebug` зелёные.
 - Сборка (Windows): `JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
-  GRADLE_USER_HOME="H:\gradlecache" ./gradlew.bat testDebugUnitTest assembleDebug --console=plain`.
+  GRADLE_USER_HOME="C:\tools\gradle" ./gradlew.bat testDebugUnitTest assembleDebug --console=plain`.
 
 ## Ручная проверка (человек, на устройстве)
 
