@@ -38,7 +38,7 @@ data class AlarmEntity(
   val freezeCycleDuringOff: Boolean = false,
   /**
    * Учитывать производственный календарь (праздники/переносы). false — как раньше (календарь не
-   * влияет). true — звонок сверяется с календарём по [polarity] (см. `ShiftEngine`/`HolidayAlarms`).
+   * влияет). true — звонок сверяется с календарём по [polarity] (см. `ShiftEngine`/`PersonalDayResolver`).
    */
   val honorHolidays: Boolean = false,
   /**
