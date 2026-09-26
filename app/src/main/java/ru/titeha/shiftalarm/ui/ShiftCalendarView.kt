@@ -352,13 +352,14 @@ fun ShiftCalendarView(
 
     // Бейдж текущей недели — только для учебного будильника (флаг isStudy) с двухнедельным циклом.
     // currentParity вернёт null, если цикл не 14-дневный/не с понедельника, поэтому вахте не покажем.
-    if (isStudy)
-    StudyPlanBuilder.currentParity(schedule.base.slots.size, schedule.base.anchorDate, today)?.let { parity ->
-      Text(
-        "сейчас: ${weekPairNaming.labelFor(parity)}",
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary
-      )
+    if (isStudy) {
+      StudyPlanBuilder.currentParity(schedule.base.slots.size, schedule.base.anchorDate, today)?.let { parity ->
+        Text(
+          "сейчас: ${weekPairNaming.labelFor(parity)}",
+          style = MaterialTheme.typography.labelMedium,
+          color = MaterialTheme.colorScheme.primary
+        )
+      }
     }
 
     Spacer(Modifier.height(4.dp))
