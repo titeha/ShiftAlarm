@@ -15,6 +15,21 @@ object ProductionCalendars {
 
   private fun d(year: Int, month: Int, day: Int) = LocalDate.of(year, month, day)
 
+  /** Код страны по умолчанию; точка расширения под модуль «календарь по странам». */
+  const val DEFAULT_COUNTRY = "RU"
+
+  /**
+   * Календарь для будильника: данные на [year] и следующий год.
+   *
+   * null — только когда праздники не учитываются ([honorHolidays] = false): день считается по маске.
+   * Если данных на год нет (ни кэша, ни встроенных), возвращается **пустой** календарь, а не null:
+   * иначе полярность «По выходным» молча схлопнулась бы в «По рабочим» и будильник зазвонил бы
+   * в будни. Пустой календарь означает «нерабочие только Сб/Вс» и для сменного режима эквивалентен
+   * null — `ShiftEngine` реагирует лишь на `StateDayKind.HOLIDAY`.
+   */
+  fun forAlarm(honorHolidays: Boolean, year: Int): ProductionCalendar? =
+    if (!honorHolidays) null else merged(DEFAULT_COUNTRY, year) ?: ProductionCalendar()
+
   /**
    * РФ, 2026. Фиксированные нерабочие праздники (ТК ст. 112) + очевидные переносы дней отдыха
    * с выпавших на выходные праздников (8 марта — Вс → 9 марта; 9 мая — Сб → 11 мая).

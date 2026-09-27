@@ -184,7 +184,7 @@ fun WeeklyCalendar(
   var month by remember { mutableStateOf(YearMonth.now()) }
   val today = LocalDate.now()
   val calendar = remember(month, alarm.honorHolidays) {
-    if (alarm.honorHolidays) ProductionCalendars.merged("RU", month.year) else null
+    ProductionCalendars.forAlarm(alarm.honorHolidays, month.year)
   }
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
   // Выбранный день — для подписи причины под календарём (только когда календарь не интерактивный).
@@ -338,7 +338,7 @@ fun ShiftCalendarView(
   // Календарь праздников для точки-звонка — только если будильник учитывает праздники. Так точка
   // совпадает с тем, что реально запланирует планировщик (не рисуем звонок на празднике).
   val holidayCal = remember(month, honorHolidays) {
-    if (honorHolidays) ProductionCalendars.merged("RU", month.year) else null
+    ProductionCalendars.forAlarm(honorHolidays, month.year)
   }
   // Фактическая тема (учитывает выбор пользователя, не только систему) — по яркости поверхности.
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f

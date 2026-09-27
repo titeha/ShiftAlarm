@@ -59,7 +59,7 @@ object AlarmTimes {
     // Производственный календарь — только если будильник просит его учитывать. Страна пока РФ.
     // merged() покрывает текущий и следующий год (поиск может уйти за границу года); берёт из кэша
     // (обновляемого с офиц. источника), иначе встроенные данные. Год без данных → лишь Сб/Вс.
-    val calendar = if (alarm.honorHolidays) ProductionCalendars.merged("RU", from.toLocalDate().year) else null
+    val calendar = ProductionCalendars.forAlarm(alarm.honorHolidays, from.toLocalDate().year)
 
     val effectivePolarity = HolidayModePolicy.effectivePolarity(alarm)
 
