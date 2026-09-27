@@ -47,8 +47,8 @@ object AlarmTimes {
 
   /**
    * Ближайшее срабатывание [alarm] строго после [from] с учётом периодов отпуска [periods] и
-   * пер-дневных правок календаря [overrides] (подмены/исключения). Всё это только для режима смен;
-   * «по дням недели» ни периоды, ни правки не использует. null — ставить нечего.
+   * пер-дневных правок календаря [overrides] (подмены/исключения). Периоды глушат звонок во всех
+   * режимах; правки — только в сменном. null — ставить нечего.
    */
   fun next(
     alarm: AlarmEntity,
@@ -57,8 +57,8 @@ object AlarmTimes {
     from: LocalDateTime
   ): LocalDateTime? {
     // Производственный календарь — только если будильник просит его учитывать. Страна пока РФ.
-    // merged() покрывает текущий и следующий год (поиск может уйти за границу года); берёт из кэша
-    // (обновляемого с офиц. источника), иначе встроенные данные. Год без данных → лишь Сб/Вс.
+    // calendarFor() покрывает год отсчёта и следующий (поиск может уйти за границу года); берёт из
+    // кэша (обновляемого с офиц. источника), иначе встроенные данные. Год без данных → лишь Сб/Вс.
     val calendar = ProductionCalendars.calendarFor(alarm.honorHolidays, from.toLocalDate().year)
 
     val effectivePolarity = HolidayModePolicy.effectivePolarity(alarm)
@@ -132,6 +132,22 @@ object AlarmTimes {
    */
   private fun effectiveMode(alarm: AlarmEntity): String =
     if (alarm.mode == AlarmEntity.MODE_SHIFT) AlarmEntity.MODE_SHIFT else AlarmEntity.MODE_WEEKLY
+
+  /**
+   * Участвует ли производственный календарь в расчёте [alarm]. Если нет — отсутствие данных на год
+   * расчёт не ухудшает, поэтому диагностика о деградации таким будильникам не пишется.
+   *
+   * Праздники не запрошены — календарь не читается вовсе. Смены учитывают его как фильтр: официальные
+   * нерабочие дни глушат звонки графика. «По дням недели» календарь читается всегда, кроме разового
+   * (пустая маска при полярности WORK): у него ближайшее время возвращается до резолвера.
+   */
+  fun usesProductionCalendar(alarm: AlarmEntity): Boolean {
+    if (!alarm.honorHolidays) return false
+    return when (effectiveMode(alarm)) {
+      AlarmEntity.MODE_SHIFT -> true
+      else -> alarm.daysMask != 0 || HolidayModePolicy.effectivePolarity(alarm) == AlarmPolarity.REST
+    }
+  }
 
   /**
    * Неделя для [PersonalDayResolver]. WORK — личная неделя из отмеченных дней будильника.

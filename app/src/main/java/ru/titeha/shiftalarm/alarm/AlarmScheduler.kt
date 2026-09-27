@@ -42,6 +42,9 @@ object AlarmScheduler {
   /** Насколько должно просрочиться срабатывание из кэша, чтобы счесть его пропущенным (мс). */
   private const val MISS_GRACE_MS = 90_000L
 
+  /** Повтор «нет данных календаря» не чаще раза в сутки (мс): состояние устойчивое. */
+  private const val CALENDAR_DEGRADED_REPEAT_WINDOW_MS = 24L * 60 * 60 * 1000
+
   /** Грейс для перевыставления просроченного за время ребута звонка при locked boot (мс). */
   private const val LOCKED_BOOT_OVERDUE_GRACE_MS = 30L * 60L * 1000L
 
@@ -75,18 +78,6 @@ object AlarmScheduler {
       null
     }
 
-    // Деградация календаря: праздники включены, но данных на год звонка нет — расчёт идёт по Сб/Вс
-    // (см. ProductionCalendars.calendarFor), и без записи причина расхождения с календарём невидима.
-    // Проверяется год ЗВОНКА, а не год отсчёта: иначе невидим самый частый случай «конец декабря →
-    // в следующем году данных нет» (находка F4 ревью TE1).
-    if (next != null && alarm.honorHolidays && !ProductionCalendars.hasData(next.year)) {
-      AlarmEventLog(context).record(
-        AlarmEventType.CALENDAR_DEGRADED,
-        "id=${alarm.id}: нет данных календаря на ${next.year} — расчёт по Сб/Вс",
-        System.currentTimeMillis()
-      )
-    }
-
     if (next == null) {
       cancel(context, alarm.id)
       AlarmEventLog(context).record(
@@ -116,6 +107,37 @@ object AlarmScheduler {
           System.currentTimeMillis()
         )
       }
+
+      // Деградация календаря — ПОСЛЕ системного планирования: сбой диагностического журнала не должен
+      // оставлять будильник без сигнала. Проверяется год ЗВОНКА, а не год отсчёта: иначе невидим самый
+      // частый случай «конец декабря → в следующем году данных нет» (находка F4 ревью TE1).
+      recordCalendarDegradation(context, alarm, next)
+    }
+  }
+
+  /**
+   * Записать в журнал, что на год звонка [next] нет данных производственного календаря, а будильник
+   * его учитывает ([AlarmTimes.usesProductionCalendar]).
+   *
+   * Состояние устойчивое (данных не будет, пока не обновится кэш), поэтому повтор не пишется, если
+   * такое же событие для этого будильника и года уже есть за последние
+   * [CALENDAR_DEGRADED_REPEAT_WINDOW_MS]: иначе каждый старт процесса добавлял бы запись на каждый
+   * будильник и вытеснял срабатывания из кольцевого буфера на 200 записей.
+   *
+   * Сбой записи глушится: диагностика не должна снова сломать уже завершённое планирование.
+   */
+  private fun recordCalendarDegradation(context: Context, alarm: AlarmEntity, next: LocalDateTime) {
+    if (!AlarmTimes.usesProductionCalendar(alarm)) return
+    if (ProductionCalendars.hasData(next.year)) return
+
+    runCatching {
+      AlarmEventLog(context).recordIfFresh(
+        type = AlarmEventType.CALENDAR_DEGRADED,
+        detail = "id=${alarm.id}: нет данных календаря на ${next.year} — " +
+          "праздники и переносы выходных не учитываются",
+        atMillis = System.currentTimeMillis(),
+        windowMillis = CALENDAR_DEGRADED_REPEAT_WINDOW_MS
+      )
     }
   }
 

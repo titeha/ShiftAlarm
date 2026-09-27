@@ -134,6 +134,29 @@ class CalendarFallbackTest {
   }
 
   @Test
+  fun `календарь участвует в расчёте — кроме выключенного тумблера и разового будильника`() {
+    // Предикат решает, писать ли диагностику о деградации (F2 ревью TE2): разовому WORK-будильнику
+    // календарь не нужен вовсе, а смене он нужен как фильтр праздников.
+    assertTrue(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_REST, honor = true, mask = weekdays)))
+    assertTrue(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_WORK, honor = true, mask = weekdays)))
+    assertTrue(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_REST, honor = true, mask = 0)))
+    assertTrue(
+      AlarmTimes.usesProductionCalendar(
+        AlarmEntity(
+          mode = AlarmEntity.MODE_SHIFT,
+          presetId = "2x2",
+          anchorEpochDay = mon.toEpochDay(),
+          daysMask = 0,
+          honorHolidays = true
+        )
+      )
+    )
+
+    assertFalse(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_WORK, honor = true, mask = 0)))
+    assertFalse(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_REST, honor = false, mask = weekdays)))
+  }
+
+  @Test
   fun `точка календаря согласована с расчётом в год без данных`() {
     val a = alarm(AlarmEntity.POLARITY_REST, honor = true, mask = weekdays)
     val cal = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2027))
