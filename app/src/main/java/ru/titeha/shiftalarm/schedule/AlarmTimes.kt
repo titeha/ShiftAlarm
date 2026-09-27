@@ -127,8 +127,8 @@ object AlarmTimes {
    * Неделя для [PersonalDayResolver]. WORK — личная неделя из отмеченных дней будильника.
    * REST — всегда стандартная неделя страны: «по выходным» означает официальные нерабочие дни
    * (Сб, Вс, праздники, перенесённые выходные), а не инверсию отмеченных пользователем дней.
-   * Маска в REST не используется — дни повтора нейтральны и не описывают рабочую неделю
-   * (см. `docs/SHIFT_HOLIDAY_POLICY.md` и `docs/WORK_WEEK_AND_STUDY.md` §1).
+   * При включённом «Учитывать праздники» маска в REST на расчёт не влияет: дни повтора нейтральны
+   * и не описывают рабочую неделю (см. `docs/SHIFT_HOLIDAY_POLICY.md` и `docs/WORK_WEEK_AND_STUDY.md` §1).
    */
   private fun personalWeek(daysMask: Int, polarity: AlarmPolarity): WorkWeek {
     if (polarity == AlarmPolarity.REST) return CountryProfile.RU.standardWeek
