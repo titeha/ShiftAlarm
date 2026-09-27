@@ -20,7 +20,8 @@ MODE_SHIFT**, а не новый режим движка. Обычная уче�
 - Якорь: ближайший прошедший понедельник от даты создания. Вопросов пользователю
   не нужно — 7-дневный цикл сам выравнивается по неделям.
 - Шестидневка (Пн–Сб) — просто заполненная суббота. Праздники глушат любой день
-  цикла (HOLIDAY в сменном режиме уже работает через HolidayAlarms); переносы
+  цикла (HOLIDAY в сменном режиме уже работает через HolidayAlarms — на момент ТЗ; сейчас
+  расчёт дня идёт через `PersonalDayResolver`, объект удалён в T04); переносы
   рабочих суббот к циклам не применяются by design — для школ это корректно.
 
 ### Вуз / «две недели» (чёт/нечёт)
@@ -151,7 +152,7 @@ buildStudyPlan(
 - Новых зависимостей не добавлять.
 - Каждый этап — отдельный коммит; `testDebugUnitTest` и `assembleDebug` зелёные.
 - Сборка (Windows): `JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
-  GRADLE_USER_HOME="H:\gradlecache" ./gradlew.bat testDebugUnitTest assembleDebug --console=plain`.
+  GRADLE_USER_HOME="C:\tools\gradle" ./gradlew.bat testDebugUnitTest assembleDebug --console=plain`.
 
 ## 7. Запуск
 

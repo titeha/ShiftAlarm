@@ -515,7 +515,14 @@ private fun WeeklyDaysContent(
       }
     }
   }
-  if (draft.daysMask == 0) {
+  if (draft.honorHolidays && draft.polarity == AlarmEntity.POLARITY_REST) {
+    Spacer(Modifier.height(8.dp))
+    Text(
+      "Режим «По выходным»: звонок следует производственному календарю — суббота, воскресенье, " +
+        "праздники и перенесённые выходные. Отмеченные дни повтора на расчёт не влияют.",
+      style = MaterialTheme.typography.bodySmall
+    )
+  } else if (draft.daysMask == 0) {
     Spacer(Modifier.height(8.dp))
     Text(
       "Дни не выбраны — выбери дни повтора или воспользуйся пресетами.",

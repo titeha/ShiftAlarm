@@ -35,7 +35,7 @@
 
 ```
 JAVA_HOME="C:\Program Files\Android\Android Studio\jbr" \
-GRADLE_USER_HOME="H:\gradlecache" \
+GRADLE_USER_HOME="C:\tools\gradle" \
 ./gradlew.bat testDebugUnitTest assembleDebug --console=plain
 ```
 

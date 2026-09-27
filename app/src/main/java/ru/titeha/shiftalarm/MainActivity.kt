@@ -633,6 +633,11 @@ private fun describe(alarm: AlarmEntity): String {
     val title = ShiftPresets.byId(alarm.presetId)?.title ?: alarm.presetId
     return "Смены: $title"
   }
+  // «По выходным» считается по производственному календарю: маска дней в этом режиме не участвует,
+  // поэтому перечислять её в подписи было бы неверно.
+  if (alarm.honorHolidays && alarm.polarity == AlarmEntity.POLARITY_REST) {
+    return "По выходным и праздникам"
+  }
   val mask = alarm.daysMask
   return when {
     mask == 0 -> if (alarm.deleteAfterFiring) "Разовый (удалится)" else "Разовый"
