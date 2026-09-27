@@ -59,6 +59,19 @@ class UnknownModeTest {
   }
 
   @Test
+  fun `неизвестный режим учитывает праздники так же, как weekly`() {
+    // Путь, где effectiveMode взаимодействует с полярностью REST и резолвером по реальному календарю:
+    // в остальных тестах календарь равен null, поэтому здесь проверка отдельная.
+    val calendar = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2026))
+    val unknown = unknownMode(weekdays, honor = true).copy(polarity = AlarmEntity.POLARITY_REST)
+    val weekly = unknown.copy(mode = AlarmEntity.MODE_WEEKLY)
+
+    assertEquals(AlarmTimes.next(weekly, wed.atTime(8, 0)), AlarmTimes.next(unknown, wed.atTime(8, 0)))
+    assertTrue(AlarmTimes.weeklyFiresOn(unknown, sat, calendar))
+    assertFalse(AlarmTimes.weeklyFiresOn(unknown, wed, calendar))
+  }
+
+  @Test
   fun `сменный режим не трактуется как weekly`() {
     val shift = AlarmEntity(
       mode = AlarmEntity.MODE_SHIFT,

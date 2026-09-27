@@ -129,6 +129,10 @@ object AlarmTimes {
    * по маске, чем не позвонить вовсе; явная нормализация нужна и для того, чтобы будущий режим
    * (задача D) не попал в молчаливую ветку `else`, и чтобы расчёт и точки календаря считали
    * неизвестный режим одинаково.
+   *
+   * Исключение — пустая маска: у такого будильника [next] считает ближайший звонок (сегодня/завтра),
+   * а [weeklyFiresOn] точку не рисует, и приёмник не считает его разовым (`AlarmReceiver.isOneShot`) —
+   * известное расхождение, устраняется в задаче D вместе с явным дискриминатором режима.
    */
   private fun effectiveMode(alarm: AlarmEntity): String =
     if (alarm.mode == AlarmEntity.MODE_SHIFT) AlarmEntity.MODE_SHIFT else AlarmEntity.MODE_WEEKLY
