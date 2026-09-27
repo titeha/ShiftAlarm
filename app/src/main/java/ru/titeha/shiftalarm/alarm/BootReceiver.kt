@@ -61,15 +61,15 @@ class BootReceiver : BroadcastReceiver() {
 
     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
       try {
+        // Календарь подключаем ПЕРВОЙ строкой: процесс мог быть поднят до разблокировки (этот приёмник —
+        // directBootAware), и тогда ShiftAlarmApp.onCreate вышел рано, не установив источник. Пока его нет,
+        // расчёт и валидация звонка (AlarmReceiver) идут по встроенным данным, а диагностика пишет ложное
+        // «нет данных календаря». Здесь CE уже доступно: залоченные события уходят в ветку выше.
+        HolidayCalendarRepository(appContext).install()
+
         val repo = AlarmRepository(appContext)
         val alarms = repo.enabled()
         val eventLog = AlarmEventLog(appContext)
-
-        // Процесс мог быть поднят до разблокировки (этот приёмник — directBootAware): тогда
-        // ShiftAlarmApp.onCreate вышел рано и календарь к движку не подключён. Здесь CE уже доступно —
-        // подключаем, иначе расчёт пойдёт только по встроенным данным (мимо кэша праздников),
-        // а диагностика запишет ложное «нет данных календаря» (F9). Повторный вызов безопасен.
-        HolidayCalendarRepository(appContext).install()
 
         // Перелить события, накопленные до разблокировки (Direct Boot), в основной журнал с пометкой.
         flushDirectBootBuffer(appContext, eventLog)
