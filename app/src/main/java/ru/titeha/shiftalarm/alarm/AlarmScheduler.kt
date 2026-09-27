@@ -136,10 +136,13 @@ object AlarmScheduler {
       AlarmEventLog(context).recordIfFresh(
         type = AlarmEventType.CALENDAR_DEGRADED,
         detail = "id=${alarm.id}: нет данных календаря на ${next.year} — " +
-          "официальные нерабочие дни не учитываются",
+          "нерабочие праздники не учитываются",
         atMillis = System.currentTimeMillis(),
         windowMillis = CALENDAR_DEGRADED_REPEAT_WINDOW_MS
       )
+    }.onFailure {
+      // Глушим, но не бесследно: до правки исключение охраны доходило до отчёта батча и давало ERROR.
+      Log.w(TAG, "CALENDAR_DEGRADED: проверки или запись не удались", it)
     }
   }
 

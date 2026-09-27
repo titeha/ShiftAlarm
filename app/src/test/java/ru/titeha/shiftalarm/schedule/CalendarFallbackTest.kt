@@ -158,25 +158,55 @@ class CalendarFallbackTest {
 
   @Test
   fun `предикат участия календаря совпадает с чувствительностью расчёта`() {
-    // Связывающий тест (N7 повторного ревью): недостаточно проверить сам предикат — он должен
-    // совпадать с тем, меняет ли появление данных на год результат расчёта.
+    // Связывающий тест (N7 и F-6 повторных ревью): недостаточно проверить сам предикат — он должен
+    // совпадать с тем, меняет ли появление данных на год результат расчёта. Меняем два дня:
+    // нерабочий понедельник (глушит недельный рабочий день и смену) и рабочую субботу (глушит «по выходным»).
     val oneShot = alarm(AlarmEntity.POLARITY_WORK, honor = true, mask = 0)
     val weekly = alarm(AlarmEntity.POLARITY_WORK, honor = true, mask = weekdays)
-    val monday = LocalDate.of(2027, 1, 18)
+    val restOneShot = alarm(AlarmEntity.POLARITY_REST, honor = true, mask = 0)
+    val shift = AlarmEntity(
+      mode = AlarmEntity.MODE_SHIFT,
+      cycleSpec = ShiftCycleCodec.encode(listOf(ShiftType("w", "Работа", LocalTime.of(7, 0)))),
+      anchorEpochDay = sat.toEpochDay(),
+      honorHolidays = true
+    )
+    val shiftFrom = LocalDate.of(2027, 1, 17).atTime(8, 0) // воскресенье
 
+    // Без данных на год — расчёт по личной неделе, по Сб/Вс и по циклу смен.
     assertFalse(AlarmTimes.usesProductionCalendar(oneShot))
-    assertEquals(sat.atTime(7, 0), AlarmTimes.next(oneShot, from))
-    assertEquals(monday.atTime(7, 0), AlarmTimes.next(weekly, from))
+    assertTrue(AlarmTimes.usesProductionCalendar(weekly))
+    assertTrue(AlarmTimes.usesProductionCalendar(restOneShot))
+    assertTrue(AlarmTimes.usesProductionCalendar(shift))
 
-    // Появляются данные на 2027 год, и в понедельник — нерабочий день.
+    assertEquals(sat.atTime(7, 0), AlarmTimes.next(oneShot, from))
+    assertEquals(mon.atTime(7, 0), AlarmTimes.next(weekly, from))
+    assertEquals(sat.atTime(7, 0), AlarmTimes.next(restOneShot, from))
+    assertEquals(mon.atTime(7, 0), AlarmTimes.next(shift, shiftFrom))
+
+    // Появляются данные на 2027: нерабочий праздник в понедельник (глушит недельный рабочий день и смену).
     ProductionCalendars.source = { _, year ->
-      if (year == 2027) ProductionCalendar(kinds = mapOf(monday to StateDayKind.HOLIDAY)) else null
+      if (year == 2027) ProductionCalendar(kinds = mapOf(mon to StateDayKind.HOLIDAY)) else null
     }
     assertTrue(ProductionCalendars.hasData(2027))
 
-    // Разовый будильник календарь не читает — результат не меняется; недельный по маске — сдвигается.
+    // Разовый будильник календарь не читает — результат прежний; у остальных звонок сдвигается.
     assertEquals(sat.atTime(7, 0), AlarmTimes.next(oneShot, from))
-    assertEquals(monday.plusDays(1).atTime(7, 0), AlarmTimes.next(weekly, from))
+    assertEquals(mon.plusDays(1).atTime(7, 0), AlarmTimes.next(weekly, from))
+    assertEquals(mon.plusDays(1).atTime(7, 0), AlarmTimes.next(shift, shiftFrom))
+
+    // Добавляется рабочая суббота: «по выходным» перестаёт звонить в субботу — проверяем на REST
+    // (у WORK-будильника со стандартной неделей рабочая суббота, наоборот, становится рабочим днём).
+    ProductionCalendars.source = { _, year ->
+      if (year == 2027) {
+        ProductionCalendar(
+          kinds = mapOf(
+            mon to StateDayKind.HOLIDAY,
+            sat to StateDayKind.TRANSFER_WORK
+          )
+        )
+      } else null
+    }
+    assertEquals(sat.plusDays(1).atTime(7, 0), AlarmTimes.next(restOneShot, from))
 
     // Неизвестный режим нормализуется в weekly тем же effectiveMode, что и в предикате.
     assertTrue(AlarmTimes.usesProductionCalendar(weekly.copy(mode = "weekly_v2")))
