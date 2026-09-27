@@ -31,6 +31,12 @@ object ProductionCalendars {
     if (!honorHolidays) null else merged(DEFAULT_COUNTRY, year) ?: ProductionCalendar()
 
   /**
+   * Есть ли данные календаря на [year] (кэш или встроенные). Позволяет отличать «данных нет»
+   * от «данные есть, а день обычный» — нужно UI (подпись дня) и диагностике (TE2).
+   */
+  fun hasData(year: Int): Boolean = resolve(DEFAULT_COUNTRY, year) != null
+
+  /**
    * РФ, 2026. Фиксированные нерабочие праздники (ТК ст. 112) + очевидные переносы дней отдыха
    * с выпавших на выходные праздников (8 марта — Вс → 9 марта; 9 мая — Сб → 11 мая).
    * «Рабочие субботы» (workingWeekends) не заданы — сверить с постановлением на 2026.

@@ -3,7 +3,6 @@ package ru.titeha.shiftalarm.schedule
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -11,6 +10,7 @@ import org.junit.Test
 import ru.titeha.shiftalarm.data.AlarmEntity
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalTime
 
 /**
  * Деградация производственного календаря: при включённом «Учитывать праздники», но отсутствии
@@ -83,10 +83,54 @@ class CalendarFallbackTest {
   }
 
   @Test
-  fun `forAlarm — null при выключенном тумблере и непустой календарь при включённом`() {
+  fun `forAlarm — null при выключенном тумблере, пустой календарь при включённом без данных`() {
     assertNull(ProductionCalendars.forAlarm(honorHolidays = false, year = 2027))
-    assertNotNull(ProductionCalendars.forAlarm(honorHolidays = true, year = 2027))
-    assertNotNull(ProductionCalendars.forAlarm(honorHolidays = true, year = 2026))
+
+    val fallback = requireNotNull(ProductionCalendars.forAlarm(honorHolidays = true, year = 2027))
+    assertTrue(fallback.kinds.isEmpty())
+    assertTrue(fallback.holidays.isEmpty())
+    assertTrue(fallback.workingWeekends.isEmpty())
+
+    // Год с данными: календарь не пуст — то есть проверки выше отличают деградацию от подстановки
+    // календаря чужого года (проект такое запрещает).
+    val known = requireNotNull(ProductionCalendars.forAlarm(honorHolidays = true, year = 2026))
+    assertTrue(known.kinds.isNotEmpty())
+  }
+
+  @Test
+  fun `hasData — различает встроенный год, год без данных и год из внешнего источника`() {
+    assertTrue(ProductionCalendars.hasData(2026))
+    assertFalse(ProductionCalendars.hasData(2027))
+
+    ProductionCalendars.source = { _, year -> if (year == 2027) ProductionCalendar() else null }
+    assertTrue(ProductionCalendars.hasData(2027))
+    assertTrue(ProductionCalendars.hasData(2026))
+  }
+
+  @Test
+  fun `пустой календарь эквивалентен null для сменного режима`() {
+    val anchor = LocalDate.of(2027, 1, 1)
+    val everyDay = ShiftSchedule(
+      ShiftPattern(listOf(ShiftType("w", "Работа", LocalTime.of(7, 0))), anchor)
+    )
+    val fallback = requireNotNull(ProductionCalendars.forAlarm(honorHolidays = true, year = 2027))
+    val from = anchor.atTime(0, 0)
+
+    // Горизонт поиска совпадает: пустой календарь смены не глушит.
+    assertEquals(
+      ShiftEngine.nextAlarm(from, everyDay, calendar = null),
+      ShiftEngine.nextAlarm(from, everyDay, calendar = fallback)
+    )
+
+    // И по каждому дню года: время звонка то же, что без календаря вовсе.
+    var date = anchor
+    while (date.year == 2027) {
+      assertEquals(
+        ShiftEngine.wakeTimeOn(date, everyDay, null),
+        ShiftEngine.wakeTimeOn(date, everyDay, fallback)
+      )
+      date = date.plusDays(1)
+    }
   }
 
   @Test

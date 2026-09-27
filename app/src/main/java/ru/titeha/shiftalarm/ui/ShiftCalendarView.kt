@@ -186,6 +186,12 @@ fun WeeklyCalendar(
   val calendar = remember(month, alarm.honorHolidays) {
     ProductionCalendars.forAlarm(alarm.honorHolidays, month.year)
   }
+  // Подпись «рабочий день / выходной» — утверждение о государственном календаре. Без данных на год
+  // (например, 2027 до публикации) её показывать нельзя: пустой календарь назвал бы реальный
+  // праздник рабочим днём. Подсветка Сб/Вс при этом остаётся — это ожидаемая деградация.
+  val calendarHasData = remember(month, alarm.honorHolidays) {
+    alarm.honorHolidays && ProductionCalendars.hasData(month.year)
+  }
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
   // Выбранный день — для подписи причины под календарём (только когда календарь не интерактивный).
   var selected by remember(month) { mutableStateOf<LocalDate?>(null) }
@@ -287,7 +293,7 @@ fun WeeklyCalendar(
 
     // Подпись причины по выбранному дню (только при «Учитывать праздники» — иначе календаря нет).
     selected?.let { sel ->
-      if (calendar != null) {
+      if (calendar != null && calendarHasData) {
         Spacer(Modifier.height(6.dp))
         val label = stateDayKindLabel(calendar.kindOf(sel))
           ?: if (calendar.isWorking(sel)) "рабочий день" else "выходной"
