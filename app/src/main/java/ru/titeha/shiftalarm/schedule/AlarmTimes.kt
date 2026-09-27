@@ -63,7 +63,7 @@ object AlarmTimes {
 
     val effectivePolarity = HolidayModePolicy.effectivePolarity(alarm)
 
-    return when (alarm.mode) {
+    return when (effectiveMode(alarm)) {
       AlarmEntity.MODE_SHIFT -> shiftBase(alarm)?.let { base ->
         val schedule = ScheduleOverrides.apply(
           ShiftSchedule(base).copy(
@@ -124,6 +124,16 @@ object AlarmTimes {
   }
 
   /**
+   * Режим будильника с защитным чтением: неизвестное или повреждённое значение трактуется как
+   * «по дням недели» — так же, как [PeriodKind.fromReason] для типов периода. Лучше позвонить
+   * по маске, чем не позвонить вовсе; явная нормализация нужна и для того, чтобы будущий режим
+   * (задача D) не попал в молчаливую ветку `else`, и чтобы расчёт и точки календаря считали
+   * неизвестный режим одинаково.
+   */
+  private fun effectiveMode(alarm: AlarmEntity): String =
+    if (alarm.mode == AlarmEntity.MODE_SHIFT) AlarmEntity.MODE_SHIFT else AlarmEntity.MODE_WEEKLY
+
+  /**
    * Неделя для [PersonalDayResolver]. WORK — личная неделя из отмеченных дней будильника.
    * REST — всегда стандартная неделя страны: «по выходным» означает официальные нерабочие дни
    * (Сб, Вс, праздники, перенесённые выходные), а не инверсию отмеченных пользователем дней.
@@ -151,7 +161,7 @@ object AlarmTimes {
     calendar: ProductionCalendar?,
     periods: List<AlarmPeriod> = emptyList(),
   ): Boolean {
-    if (alarm.mode != AlarmEntity.MODE_WEEKLY) return false
+    if (effectiveMode(alarm) != AlarmEntity.MODE_WEEKLY) return false
     if (coveredByPeriod(periods, date)) return false // отпуск/больничный/… глушат и weekly
 
     // REST требует календаря; без него (тумблер выключен) — как WORK. Разовый как повтор не показываем.
