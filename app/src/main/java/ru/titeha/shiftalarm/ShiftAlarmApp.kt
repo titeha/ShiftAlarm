@@ -30,7 +30,8 @@ class ShiftAlarmApp : Application() {
      * НЕДОСТУПНО. Любое обращение к нему здесь роняет весь процесс на onCreate, и тогда не отработает
      * даже BootReceiver. Поэтому до разблокировки пропускаем всю CE-инициализацию: перевыставление
      * из device-protected кэша сделает сам BootReceiver, а полная инициализация — при старте после
-     * разблокировки.
+     * разблокировки. Процессу, поднятому до разблокировки и дожившему до неё, календарь подключит
+     * BootReceiver на USER_UNLOCKED (см. BootReceiver — иначе расчёт шёл бы мимо кэша, F9).
      */
     val userManager = getSystemService(UserManager::class.java)
     if (userManager != null && !userManager.isUserUnlocked) {
