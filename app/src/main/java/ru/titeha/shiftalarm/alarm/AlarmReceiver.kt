@@ -124,10 +124,15 @@ class AlarmReceiver : BroadcastReceiver() {
 
     when {
       isOneShot(alarm) && alarm.deleteAfterFiring -> {
+        // Разовое срабатывание не идёт через перепланирование, поэтому убираем запись из кэша
+        // ближайших звонков сами и ДО изменения базы: иначе оставшийся «призрак» на следующем
+        // обновлении кэша будет посчитан пропущенным звонком (F-1).
+        DirectBootAlarmStore(context).removeBase(alarmId)
         repo.delete(alarm)
       }
 
       isOneShot(alarm) -> {
+        DirectBootAlarmStore(context).removeBase(alarmId)
         repo.update(alarm.copy(enabled = false))
       }
 
