@@ -27,7 +27,7 @@ object ProductionCalendars {
    * в будни. Пустой календарь означает «нерабочие только Сб/Вс» и для сменного режима эквивалентен
    * null — `ShiftEngine` реагирует лишь на `StateDayKind.HOLIDAY`.
    */
-  fun forAlarm(honorHolidays: Boolean, year: Int): ProductionCalendar? =
+  fun calendarFor(honorHolidays: Boolean, year: Int): ProductionCalendar? =
     if (!honorHolidays) null else merged(DEFAULT_COUNTRY, year) ?: ProductionCalendar()
 
   /**

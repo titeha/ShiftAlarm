@@ -40,4 +40,12 @@ class AlarmEventLogCodecTest {
     assertEquals(3, events.size)
     assertEquals(listOf(3L, 4L, 5L), events.map { it.atMillis }) // остались самые свежие
   }
+
+  @Test
+  fun `новый тип события переживает encode-decode`() {
+    val events = listOf(
+      AlarmEvent(1_700_000_000_000L, AlarmEventType.CALENDAR_DEGRADED, "id=1: нет данных на 2027")
+    )
+    assertEquals(events, AlarmEventLogCodec.decode(AlarmEventLogCodec.encode(events)))
+  }
 }

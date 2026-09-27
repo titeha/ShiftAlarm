@@ -11,6 +11,7 @@ enum class AlarmEventType {
   SNOOZED, // отложен (ручной снуз или авто-перезвон невыключенного)
   MISSED, // звонок не был выключен: лимит снуза исчерпан / авто-перезвон выключен
   ERROR, // исключение при обработке (ресивер) — чтобы «почему не сработало» было видно в журнале
+  CALENDAR_DEGRADED, // нет данных производственного календаря на год звонка — расчёт по Сб/Вс
 }
 
 /**
@@ -22,7 +23,8 @@ val AlarmEventType.isImportant: Boolean
     this == AlarmEventType.SKIPPED ||
     this == AlarmEventType.SIGNAL_DEGRADED ||
     this == AlarmEventType.MISSED ||
-    this == AlarmEventType.ERROR
+    this == AlarmEventType.ERROR ||
+    this == AlarmEventType.CALENDAR_DEGRADED
 
 /** Одна запись журнала: когда ([atMillis]), что ([type]) и детали ([detail], напр. id и время). */
 data class AlarmEvent(

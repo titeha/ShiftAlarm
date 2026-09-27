@@ -146,6 +146,7 @@ private fun typeLabel(type: AlarmEventType): String = when (type) {
   AlarmEventType.SNOOZED -> "Отложен"
   AlarmEventType.MISSED -> "Не был выключен"
   AlarmEventType.ERROR -> "Ошибка обработки"
+  AlarmEventType.CALENDAR_DEGRADED -> "Нет данных календаря"
 }
 
 @Composable

@@ -590,7 +590,7 @@ private fun SchedulePreview(alarm: AlarmEntity, periods: List<AlarmPeriod>, over
 
   if (alarm.mode == AlarmEntity.MODE_SHIFT) {
     val calendar = remember(alarm.honorHolidays, today) {
-      ProductionCalendars.forAlarm(alarm.honorHolidays, today.year)
+      ProductionCalendars.calendarFor(alarm.honorHolidays, today.year)
     }
     val schedule = remember(alarm, periods, dayOverrides) {
       AlarmTimes.shiftScheduleOf(alarm, periods, dayOverrides)

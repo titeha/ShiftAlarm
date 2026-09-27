@@ -12,6 +12,7 @@ import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.schedule.AlarmTimes
+import ru.titeha.shiftalarm.schedule.ProductionCalendars
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 import java.time.LocalDateTime
 import ru.titeha.shiftalarm.schedule.AlarmInstant
@@ -72,6 +73,18 @@ object AlarmScheduler {
       AlarmTimes.next(alarm, periods, overrides, LocalDateTime.now())
     } else {
       null
+    }
+
+    // Деградация календаря: праздники включены, но данных на год звонка нет — расчёт идёт по Сб/Вс
+    // (см. ProductionCalendars.calendarFor), и без записи причина расхождения с календарём невидима.
+    // Проверяется год ЗВОНКА, а не год отсчёта: иначе невидим самый частый случай «конец декабря →
+    // в следующем году данных нет» (находка F4 ревью TE1).
+    if (next != null && alarm.honorHolidays && !ProductionCalendars.hasData(next.year)) {
+      AlarmEventLog(context).record(
+        AlarmEventType.CALENDAR_DEGRADED,
+        "id=${alarm.id}: нет данных календаря на ${next.year} — расчёт по Сб/Вс",
+        System.currentTimeMillis()
+      )
     }
 
     if (next == null) {

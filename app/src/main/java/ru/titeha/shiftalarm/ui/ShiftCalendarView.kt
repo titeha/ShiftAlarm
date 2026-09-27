@@ -184,7 +184,7 @@ fun WeeklyCalendar(
   var month by remember { mutableStateOf(YearMonth.now()) }
   val today = LocalDate.now()
   val calendar = remember(month, alarm.honorHolidays) {
-    ProductionCalendars.forAlarm(alarm.honorHolidays, month.year)
+    ProductionCalendars.calendarFor(alarm.honorHolidays, month.year)
   }
   // Подпись «рабочий день / выходной» — утверждение о государственном календаре. Без данных на год
   // (например, 2027 до публикации) её показывать нельзя: пустой календарь назвал бы реальный
@@ -344,7 +344,7 @@ fun ShiftCalendarView(
   // Календарь праздников для точки-звонка — только если будильник учитывает праздники. Так точка
   // совпадает с тем, что реально запланирует планировщик (не рисуем звонок на празднике).
   val holidayCal = remember(month, honorHolidays) {
-    ProductionCalendars.forAlarm(honorHolidays, month.year)
+    ProductionCalendars.calendarFor(honorHolidays, month.year)
   }
   // Фактическая тема (учитывает выбор пользователя, не только систему) — по яркости поверхности.
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
