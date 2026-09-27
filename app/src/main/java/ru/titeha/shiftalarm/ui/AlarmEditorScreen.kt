@@ -231,7 +231,9 @@ fun AlarmEditorScreen(
         alarmId = draft.id,
         periods = periods,
         periodKinds = periodKindsFor(draft),
-        onAdd = { periods = periods + it },
+        // Через replacePeriod: пересекающиеся части старых периодов вырезаются, поэтому перекрытий
+        // не возникает — иначе «заморозка цикла» считала бы дни пересечения дважды (F-2).
+        onAdd = { periods = CalendarRangeEdits.replacePeriod(periods, it) },
         onRemove = { p -> periods = periods - p }
       )
       if (method == EditMethod.SHIFT) {

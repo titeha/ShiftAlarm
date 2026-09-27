@@ -278,18 +278,33 @@ object ShiftEngine {
         return pattern.slots[index]
     }
 
-    /** Сколько дней периода прошло в полуинтервале [anchor, date). */
+    /**
+     * Сколько дней периодов прошло в полуинтервале [anchor, date).
+     *
+     * Пересекающиеся и соседние периоды объединяются: день пересечения должен считаться один раз,
+     * иначе при «заморозке цикла» фаза смещается на длину пересечения (F-2). Пересечения возможны —
+     * период, заведённый кнопкой «+ Период», раньше добавлялся в список без проверки, а уже
+     * сохранённые записи остаются в базе.
+     */
     private fun frozenDaysBefore(date: LocalDate, anchor: LocalDate, offPeriods: List<OffPeriod>): Long {
         if (!date.isAfter(anchor)) return 0L
 
-        var count = 0L
-        for (period in offPeriods) {
-            val lo = maxOf(period.from, anchor)
-            val hi = minOf(period.to, date.minusDays(1))
-            if (!lo.isAfter(hi)) count += ChronoUnit.DAYS.between(lo, hi) + 1
-        }
+        val lastFrozenDay = date.minusDays(1)
+        val ranges = offPeriods
+            .map { maxOf(it.from, anchor) to minOf(it.to, lastFrozenDay) }
+            .filter { !it.first.isAfter(it.second) }
+            .sortedBy { it.first }
+            .fold(mutableListOf<Pair<LocalDate, LocalDate>>()) { merged, range ->
+                val prev = merged.lastOrNull()
+                if (prev != null && !range.first.isAfter(prev.second.plusDays(1))) {
+                    merged[merged.lastIndex] = prev.first to maxOf(prev.second, range.second)
+                } else {
+                    merged.add(range)
+                }
+                merged
+            }
 
-        return count
+        return ranges.sumOf { ChronoUnit.DAYS.between(it.first, it.second) + 1 }
     }
 
     /**
