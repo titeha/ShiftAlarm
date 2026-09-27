@@ -124,17 +124,19 @@ object AlarmScheduler {
    * [CALENDAR_DEGRADED_REPEAT_WINDOW_MS]: иначе каждый старт процесса добавлял бы запись на каждый
    * будильник и вытеснял срабатывания из кольцевого буфера на 200 записей.
    *
-   * Сбой записи глушится: диагностика не должна снова сломать уже завершённое планирование.
+   * Сбой записи или проверок глушится: диагностика не должна снова сломать уже завершённое планирование.
    */
   private fun recordCalendarDegradation(context: Context, alarm: AlarmEntity, next: LocalDateTime) {
-    if (!AlarmTimes.usesProductionCalendar(alarm)) return
-    if (ProductionCalendars.hasData(next.year)) return
-
+    // Внутри runCatching и проверки: hasData() дёргает внешний источник календаря, и исключение из него
+    // не должно доходить до вызывающего (в suspend-перегрузке за reschedule идёт refreshDirectBootCache).
     runCatching {
+      if (!AlarmTimes.usesProductionCalendar(alarm)) return@runCatching
+      if (ProductionCalendars.hasData(next.year)) return@runCatching
+
       AlarmEventLog(context).recordIfFresh(
         type = AlarmEventType.CALENDAR_DEGRADED,
         detail = "id=${alarm.id}: нет данных календаря на ${next.year} — " +
-          "праздники и переносы выходных не учитываются",
+          "официальные нерабочие дни не учитываются",
         atMillis = System.currentTimeMillis(),
         windowMillis = CALENDAR_DEGRADED_REPEAT_WINDOW_MS
       )
