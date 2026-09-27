@@ -45,6 +45,14 @@ object AlarmScheduler {
   /** Повтор «нет данных календаря» не чаще раза в сутки (мс): состояние устойчивое. */
   private const val CALENDAR_DEGRADED_REPEAT_WINDOW_MS = 24L * 60 * 60 * 1000
 
+  /**
+   * Повтор «запланирован» с тем же временем не пишется в пределах этого окна (мс): старт процесса
+   * и обновление кэша планируют одно и то же дважды, системные события приходят подряд, и без
+   * дедупликации журнал состоял почти только из них (N6). Действия пользователя и сменившееся время
+   * звонка происходят заметно позже и в журнал попадают.
+   */
+  private const val SCHEDULED_REPEAT_WINDOW_MS = 10L * 60 * 1000
+
   /** Грейс для перевыставления просроченного за время ребута звонка при locked boot (мс). */
   private const val LOCKED_BOOT_OVERDUE_GRACE_MS = 30L * 60L * 1000L
 
@@ -93,12 +101,13 @@ object AlarmScheduler {
       )
 
       if (scheduled) {
-        AlarmEventLog(context).record(
-          AlarmEventType.SCHEDULED,
-          "id=${alarm.id} → %02d.%02d %02d:%02d".format(
+        AlarmEventLog(context).recordIfFresh(
+          type = AlarmEventType.SCHEDULED,
+          detail = "id=${alarm.id} → %02d.%02d %02d:%02d".format(
             next.dayOfMonth, next.monthValue, next.hour, next.minute
           ),
-          System.currentTimeMillis()
+          atMillis = System.currentTimeMillis(),
+          windowMillis = SCHEDULED_REPEAT_WINDOW_MS
         )
       } else {
         AlarmEventLog(context).record(
