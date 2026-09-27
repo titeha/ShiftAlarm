@@ -374,7 +374,8 @@ class AlarmListViewModel(
 
     /**
      * Дублировать будильник. Разовый / по дням недели — копия со сдвигом времени +5 мин, суффиксом в
-     * имени и включённая. Сменный — точная копия с периодами/правками, но ВЫКЛЮЧЕННАЯ (чтобы не
+     * имени, включённая и с теми же периодами без будильника (отпуск глушит звонок и у копии).
+     * Сменный — точная копия с периодами/правками, но ВЫКЛЮЧЕННАЯ (чтобы не
      * задвоить звонки молча). Каскадов не строим — серия покрывается снузом.
      */
     fun duplicate(alarm: AlarmEntity) = viewModelScope.launch {
@@ -392,7 +393,11 @@ class AlarmListViewModel(
                     minute = total % 60,
                     label = alarm.label.ifBlank { "Будильник" } + " +$DUPLICATE_SHIFT_MINUTES"
                 )
-                val id = repo.upsert(copy)
+                // Периоды без будильника применимы и режиму «по дням недели» (движок глушит звонок
+                // coveredByPeriod), поэтому копируем их вместе с записью — иначе копия зазвонит
+                // в отпуск оригинала. Правки календаря — только сменным: они про подмены смен.
+                val periods = repo.periodsList(alarm.id)
+                val id = repo.saveWithChildren(copy, periods, emptyList())
                 AlarmScheduler.reschedule(context(), repo, copy.copy(id = id))
             }
         } catch (error: CancellationException) {
