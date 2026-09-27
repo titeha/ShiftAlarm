@@ -1,8 +1,10 @@
 package ru.titeha.shiftalarm.schedule
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import ru.titeha.shiftalarm.data.AlarmEntity
 import java.time.DayOfWeek
@@ -13,6 +15,17 @@ import java.time.LocalDate
  * и в визуализации (K3/E7). Дата: 2026-06-24 — среда, 2026-06-27 — суббота.
  */
 class UnknownModeTest {
+
+  // Внешний источник календаря — глобальное состояние модуля: не протекать между тестами.
+  @Before
+  fun setUp() {
+    ProductionCalendars.source = null
+  }
+
+  @After
+  fun tearDown() {
+    ProductionCalendars.source = null
+  }
 
   private val wed = LocalDate.of(2026, 6, 24)
   private val sat = LocalDate.of(2026, 6, 27)
@@ -61,14 +74,19 @@ class UnknownModeTest {
   @Test
   fun `неизвестный режим учитывает праздники так же, как weekly`() {
     // Путь, где effectiveMode взаимодействует с полярностью REST и резолвером по реальному календарю:
-    // в остальных тестах календарь равен null, поэтому здесь проверка отдельная.
+    // в остальных тестах календарь равен null. 04.11.2026 — среда и нерабочий праздник в RU_2026,
+    // поэтому утверждения опираются на данные календаря, а не только на дни недели.
     val calendar = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2026))
-    val unknown = unknownMode(weekdays, honor = true).copy(polarity = AlarmEntity.POLARITY_REST)
-    val weekly = unknown.copy(mode = AlarmEntity.MODE_WEEKLY)
+    val holiday = LocalDate.of(2026, 11, 4)
+    val unknownRest = unknownMode(weekdays, honor = true).copy(polarity = AlarmEntity.POLARITY_REST)
+    val weeklyRest = unknownRest.copy(mode = AlarmEntity.MODE_WEEKLY)
 
-    assertEquals(AlarmTimes.next(weekly, wed.atTime(8, 0)), AlarmTimes.next(unknown, wed.atTime(8, 0)))
-    assertTrue(AlarmTimes.weeklyFiresOn(unknown, sat, calendar))
-    assertFalse(AlarmTimes.weeklyFiresOn(unknown, wed, calendar))
+    assertEquals(AlarmTimes.next(weeklyRest, wed.atTime(8, 0)), AlarmTimes.next(unknownRest, wed.atTime(8, 0)))
+    assertEquals(holiday.atTime(7, 0), AlarmTimes.next(unknownRest, holiday.minusDays(1).atTime(8, 0)))
+    assertTrue(AlarmTimes.weeklyFiresOn(unknownRest, holiday, calendar))
+    assertFalse(AlarmTimes.weeklyFiresOn(unknownRest.copy(polarity = AlarmEntity.POLARITY_WORK), holiday, calendar))
+    // Без данных календаря картина другая — утверждения выше опираются именно на праздник, а не на день недели.
+    assertFalse(AlarmTimes.weeklyFiresOn(unknownRest, holiday, ProductionCalendar()))
   }
 
   @Test
