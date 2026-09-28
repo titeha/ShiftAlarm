@@ -21,13 +21,19 @@ class AlarmTimesRestPolarityGuardTest {
 
   private fun restWeekly(mask: Int) = AlarmEntity(
     hour = 7, minute = 0,
-    mode = AlarmEntity.MODE_WEEKLY,
+    mode = AlarmEntity.MODE_CALENDAR,
     daysMask = mask,
     honorHolidays = true,
     polarity = AlarmEntity.POLARITY_REST
   )
 
-  private fun workWeekly(mask: Int) = restWeekly(mask).copy(polarity = AlarmEntity.POLARITY_WORK)
+  private fun workWeekly(mask: Int) = AlarmEntity(
+    hour = 7, minute = 0,
+    mode = AlarmEntity.MODE_WEEKLY,
+    daysMask = mask,
+    honorHolidays = true,
+    polarity = AlarmEntity.POLARITY_WORK
+  )
 
   private val allDays = AlarmTimes.maskOf(*DayOfWeek.entries.toTypedArray())
   private val weekdays = AlarmTimes.maskOf(

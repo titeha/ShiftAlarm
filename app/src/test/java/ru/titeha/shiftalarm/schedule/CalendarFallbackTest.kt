@@ -43,7 +43,7 @@ class CalendarFallbackTest {
   private fun alarm(polarity: String, honor: Boolean, mask: Int) = AlarmEntity(
     hour = 7,
     minute = 0,
-    mode = AlarmEntity.MODE_WEEKLY,
+    mode = if (polarity == AlarmEntity.POLARITY_REST) AlarmEntity.MODE_CALENDAR else AlarmEntity.MODE_WEEKLY,
     daysMask = mask,
     honorHolidays = honor,
     polarity = polarity
@@ -62,9 +62,12 @@ class CalendarFallbackTest {
   }
 
   @Test
-  fun `тумблер выключен — по выходным ведёт себя как по рабочим, календарь не подставляется`() {
+  fun `calendar игнорирует выключенный тумблер — звонит по нерабочим (D-1)`() {
+    // После TD03 REST существует только в режиме calendar, а он всегда использует календарь
+    // (инвариант D-1), независимо от honorHolidays. Тумблер больше не «выключает» календарь
+    // для этого режима — старое поведение «REST + honor=false → как WORK» недостижимо.
     val a = alarm(AlarmEntity.POLARITY_REST, honor = false, mask = weekdays)
-    assertEquals(mon.atTime(7, 0), AlarmTimes.next(a, from))
+    assertEquals(sat.atTime(7, 0), AlarmTimes.next(a, from))
   }
 
   @Test
@@ -134,12 +137,14 @@ class CalendarFallbackTest {
   }
 
   @Test
-  fun `календарь участвует в расчёте — кроме выключенного тумблера и разового будильника`() {
+  fun `календарь участвует в расчёте — кроме разового будильника (D-1)`() {
     // Предикат решает, писать ли диагностику о деградации (F2 ревью TE2): разовому WORK-будильнику
-    // календарь не нужен вовсе, а смене он нужен как фильтр праздников.
+    // календарь не нужен вовсе, а смене он нужен как фильтр праздников. Для calendar (REST) календарь
+    // участвует всегда (D-1), даже при honor=false.
     assertTrue(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_REST, honor = true, mask = weekdays)))
-    assertTrue(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_WORK, honor = true, mask = weekdays)))
+    assertTrue(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_REST, honor = false, mask = weekdays)))
     assertTrue(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_REST, honor = true, mask = 0)))
+    assertTrue(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_WORK, honor = true, mask = weekdays)))
     assertTrue(
       AlarmTimes.usesProductionCalendar(
         AlarmEntity(
@@ -153,7 +158,7 @@ class CalendarFallbackTest {
     )
 
     assertFalse(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_WORK, honor = true, mask = 0)))
-    assertFalse(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_REST, honor = false, mask = weekdays)))
+    assertFalse(AlarmTimes.usesProductionCalendar(alarm(AlarmEntity.POLARITY_WORK, honor = false, mask = weekdays)))
   }
 
   @Test

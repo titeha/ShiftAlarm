@@ -36,10 +36,15 @@ class HolidayModePolicyTest {
     }
 
     @Test
-    fun `простой режим поддерживает полярность REST`() {
-        assertTrue(
+    fun `простой режим не поддерживает полярность REST — только calendar`() {
+        assertFalse(
             HolidayModePolicy.supportsRestPolarity(
                 AlarmEntity.MODE_WEEKLY
+            )
+        )
+        assertTrue(
+            HolidayModePolicy.supportsRestPolarity(
+                AlarmEntity.MODE_CALENDAR
             )
         )
     }
@@ -58,9 +63,9 @@ class HolidayModePolicyTest {
     }
 
     @Test
-    fun `простая запись REST сохраняет свою полярность`() {
+    fun `простая запись calendar сохраняет полярность REST`() {
         val alarm = AlarmEntity(
-            mode = AlarmEntity.MODE_WEEKLY,
+            mode = AlarmEntity.MODE_CALENDAR,
             polarity = AlarmEntity.POLARITY_REST
         )
 
@@ -167,11 +172,11 @@ class HolidayModePolicyTest {
     }
 
     @Test
-    fun `простой REST будильник сохраняет прежнее календарное поведение`() {
+    fun `будильник calendar звонит по нерабочим дням — праздник 12 июня`() {
         val alarm = AlarmEntity(
             hour = 9,
             minute = 0,
-            mode = AlarmEntity.MODE_WEEKLY,
+            mode = AlarmEntity.MODE_CALENDAR,
             daysMask = 0,
             honorHolidays = true,
             polarity = AlarmEntity.POLARITY_REST

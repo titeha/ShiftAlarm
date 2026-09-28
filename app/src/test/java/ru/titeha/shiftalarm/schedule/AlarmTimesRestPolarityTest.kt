@@ -35,11 +35,11 @@ class AlarmTimesRestPolarityTest {
   private val sat = LocalDate.of(2026, 6, 27)
   private val sun = LocalDate.of(2026, 6, 28)
 
-  /** Weekly-будильник 07:00 с маской [mask], учётом праздников и полярностью «По выходным». */
+  /** Calendar-будильник 07:00 с маской [mask] (игнорируется движком — D-2). */
   private fun restWeekly(mask: Int) = AlarmEntity(
     hour = 7,
     minute = 0,
-    mode = AlarmEntity.MODE_WEEKLY,
+    mode = AlarmEntity.MODE_CALENDAR,
     daysMask = mask,
     honorHolidays = true,
     polarity = AlarmEntity.POLARITY_REST

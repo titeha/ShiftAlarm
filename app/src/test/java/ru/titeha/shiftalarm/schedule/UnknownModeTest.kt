@@ -66,27 +66,26 @@ class UnknownModeTest {
   }
 
   @Test
-  fun `неизвестный режим поддерживает полярность REST как weekly`() {
+  fun `неизвестный режим не поддерживает полярность REST — как weekly`() {
     val unknown = unknownMode(weekdays, honor = true).copy(polarity = AlarmEntity.POLARITY_REST)
-    assertEquals(AlarmPolarity.REST, HolidayModePolicy.effectivePolarity(unknown))
+    assertEquals(AlarmPolarity.WORK, HolidayModePolicy.effectivePolarity(unknown))
   }
 
   @Test
-  fun `неизвестный режим учитывает праздники так же, как weekly`() {
-    // Путь, где effectiveMode взаимодействует с полярностью REST и резолвером по реальному календарю:
-    // в остальных тестах календарь равен null. 04.11.2026 — среда и нерабочий праздник в RU_2026,
-    // поэтому утверждения опираются на данные календаря, а не только на дни недели.
+  fun `неизвестный режим учитывает праздники так же, как weekly в WORK-семантике`() {
+    // После TD03 неизвестный режим как weekly (WORK): праздник глушит звоночную рабочую среду.
+    // REST-поведение («звонить в нерабочие») теперь только у MODE_CALENDAR — см. CalendarModeTest.
     val calendar = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2026))
-    val holiday = LocalDate.of(2026, 11, 4)
-    val unknownRest = unknownMode(weekdays, honor = true).copy(polarity = AlarmEntity.POLARITY_REST)
-    val weeklyRest = unknownRest.copy(mode = AlarmEntity.MODE_WEEKLY)
+    val holiday = LocalDate.of(2026, 11, 4) // среда, праздник
+    val unknown = unknownMode(weekdays, honor = true) // WORK (REST у weekly теперь не действует)
+    val weekly = unknown.copy(mode = AlarmEntity.MODE_WEEKLY)
 
-    assertEquals(AlarmTimes.next(weeklyRest, wed.atTime(8, 0)), AlarmTimes.next(unknownRest, wed.atTime(8, 0)))
-    assertEquals(holiday.atTime(7, 0), AlarmTimes.next(unknownRest, holiday.minusDays(1).atTime(8, 0)))
-    assertTrue(AlarmTimes.firesOn(unknownRest, holiday, calendar))
-    assertFalse(AlarmTimes.firesOn(unknownRest.copy(polarity = AlarmEntity.POLARITY_WORK), holiday, calendar))
-    // Без данных календаря картина другая — утверждения выше опираются именно на праздник, а не на день недели.
-    assertFalse(AlarmTimes.firesOn(unknownRest, holiday, ProductionCalendar()))
+    assertEquals(AlarmTimes.next(weekly, wed.atTime(8, 0)), AlarmTimes.next(unknown, wed.atTime(8, 0)))
+    // В рабочий праздник weekly (WORK) глушится — ближайший звонок сдвигается.
+    assertFalse(AlarmTimes.firesOn(unknown, holiday, calendar))
+    assertFalse(AlarmTimes.firesOn(weekly, holiday, calendar))
+    // Без календаря (null) тот же день по маске считается рабочим — звонит.
+    assertTrue(AlarmTimes.firesOn(unknown, holiday, null))
   }
 
   @Test

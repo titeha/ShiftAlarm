@@ -344,8 +344,8 @@ class AlarmTimesTest {
   }
 
   @Test
-  fun `firesOn — REST звонит по нерабочим`() {
-    val a = weekly(0, honor = true, polarity = AlarmEntity.POLARITY_REST)
+  fun `firesOn — calendar звонит по нерабочим`() {
+    val a = AlarmEntity(mode = AlarmEntity.MODE_CALENDAR, honorHolidays = true, polarity = AlarmEntity.POLARITY_REST)
     val cal = ProductionCalendar()
     assertEquals(false, AlarmTimes.firesOn(a, wed, cal)) // рабочий — молчит
     assertEquals(true, AlarmTimes.firesOn(a, sat, cal))  // суббота — звонит
