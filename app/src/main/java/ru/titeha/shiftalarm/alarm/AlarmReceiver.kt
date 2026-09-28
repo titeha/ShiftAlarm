@@ -14,6 +14,7 @@ import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
+import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 
 /**
@@ -194,9 +195,11 @@ class AlarmReceiver : BroadcastReceiver() {
     }
   }
 
-  private fun isOneShot(alarm: AlarmEntity): Boolean {
-    return alarm.mode == AlarmEntity.MODE_WEEKLY && alarm.daysMask == 0
-  }
+  /**
+   * Разовый ли будильник — правило живёт в чистом слое ([AlarmTimes.isOneShot]), приёмник только
+   * делегирует ему, чтобы «выключить/удалить после звонка» совпадало с тем, что посчитал движок.
+   */
+  private fun isOneShot(alarm: AlarmEntity): Boolean = AlarmTimes.isOneShot(alarm)
 
   private companion object {
     const val TAG = "AlarmReceiver"
