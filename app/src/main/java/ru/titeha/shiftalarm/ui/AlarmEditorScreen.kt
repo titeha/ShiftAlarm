@@ -136,6 +136,7 @@ fun AlarmEditorScreen(
     when (method) {
       EditMethod.ONCE -> AlarmEditorValidator.validateOnce()
       EditMethod.WEEKLY -> AlarmEditorValidator.validateWeekly(draft)
+      EditMethod.CALENDAR -> AlarmEditorValidator.validateCalendar(draft)
       EditMethod.SHIFT -> AlarmEditorValidator.validateShift(draft)
     }
   }
@@ -211,6 +212,9 @@ fun AlarmEditorScreen(
     when (method) {
       EditMethod.ONCE -> OnceContent(draft) { draft = it }
       EditMethod.WEEKLY -> WeeklyDaysContent(draft, { draft = it }, rememberEditorWeekStart())
+      // Минимальная ветка нового режима (компилятор требует исчерпывающего when).
+      // Полноценный контент режима — чип способа и подсказки — добавляет TD05.
+      EditMethod.CALENDAR -> TimeButton(draft) { draft = it }
       EditMethod.SHIFT -> {
         ShiftCycleEditor(draft = draft, onChange = { draft = it })
         Spacer(Modifier.height(12.dp))

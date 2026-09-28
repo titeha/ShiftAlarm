@@ -46,6 +46,14 @@ object AlarmEditorValidator {
         return AlarmEditorValidation(emptyList())
     }
 
+    /**
+     * Режиму «По выходным и праздникам» достаточно времени, выбранного в базовом
+     * редакторе: дни повтора не требуются (маска в этом режиме на расчёт не влияет).
+     */
+    fun validateCalendar(alarm: AlarmEntity): AlarmEditorValidation {
+        return AlarmEditorValidation(emptyList())
+    }
+
     /** В режиме повтора должен быть выбран хотя бы один день недели. */
     fun validateWeekly(alarm: AlarmEntity): AlarmEditorValidation {
         if (alarm.daysMask != 0) {

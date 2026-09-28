@@ -18,6 +18,19 @@ class AlarmEditorValidatorTest {
     }
 
     @Test
+    fun `календарный будильник проходит проверку без дней недели`() {
+        val result = AlarmEditorValidator.validateCalendar(
+            AlarmEntity(
+                mode = AlarmEntity.MODE_CALENDAR,
+                daysMask = 0,
+                honorHolidays = true
+            )
+        )
+
+        assertTrue(result.canSave)
+    }
+
+    @Test
     fun `повтор без дней недели блокирует сохранение`() {
         val result = AlarmEditorValidator.validateWeekly(
             AlarmEntity(daysMask = 0)

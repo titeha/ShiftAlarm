@@ -7,6 +7,7 @@ import org.junit.Test
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
+import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftCategory
 
 class AlarmEditorSessionTest {
@@ -160,6 +161,77 @@ class AlarmEditorSessionTest {
         assertTrue(
             session.discardDialogState.value
         )
+    }
+
+    @Test
+    fun `календарный будильник определяется как способ CALENDAR даже с пустой маской`() {
+        val calendar = alarm.copy(
+            mode = AlarmEntity.MODE_CALENDAR,
+            daysMask = 0,
+            honorHolidays = true
+        )
+
+        assertEquals(
+            EditMethod.CALENDAR,
+            methodOf(calendar)
+        )
+    }
+
+    @Test
+    fun `календарный способ фиксирует режим и праздники и сохраняет маску`() {
+        val weekly = alarm.copy(
+            mode = AlarmEntity.MODE_WEEKLY,
+            daysMask = AlarmTimes.maskOf(
+                java.time.DayOfWeek.MONDAY,
+                java.time.DayOfWeek.SATURDAY
+            ),
+            honorHolidays = false
+        )
+
+        val effectiveAlarm = effective(
+            draft = weekly,
+            method = EditMethod.CALENDAR
+        )
+
+        assertEquals(AlarmEntity.MODE_CALENDAR, effectiveAlarm.mode)
+        assertTrue(effectiveAlarm.honorHolidays)
+        // Инвариант D-2: маска не обнуляется — при возврате в weekly дни сохранятся.
+        assertEquals(weekly.daysMask, effectiveAlarm.daysMask)
+    }
+
+    @Test
+    fun `восстановленный календарный черновик не отбрасывается валидатором снимка`() {
+        val calendarDraft = alarm.copy(
+            mode = AlarmEntity.MODE_CALENDAR,
+            daysMask = 0,
+            honorHolidays = true
+        )
+
+        val session = AlarmEditorSession(
+            initialAlarm = calendarDraft,
+            initialPeriods = emptyList(),
+            initialOverrides = emptyList()
+        )
+
+        val restored =
+            AlarmEditorSession.fromSnapshot(
+                requireNotNull(
+                    AlarmEditorSessionSnapshotCodec
+                        .decodeOrNull(
+                            requireNotNull(
+                                AlarmEditorSessionSnapshotCodec
+                                    .encodeOrNull(session.toSnapshot())
+                            )
+                        )
+                )
+            )
+
+        assertEquals(EditMethod.CALENDAR, restored.methodState.value)
+        assertEquals(
+            AlarmEntity.MODE_CALENDAR,
+            restored.currentAlarm().mode
+        )
+        assertFalse(restored.hasUnsavedChanges())
     }
 
     private fun session(): AlarmEditorSession {
