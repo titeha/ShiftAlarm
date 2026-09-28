@@ -189,8 +189,10 @@ fun WeeklyCalendar(
   // Подпись «рабочий день / выходной» — утверждение о государственном календаре. Без данных на год
   // (например, 2027 до публикации) её показывать нельзя: пустой календарь назвал бы реальный
   // праздник рабочим днём. Подсветка Сб/Вс при этом остаётся — это ожидаемая деградация.
-  val calendarHasData = remember(month, alarm.honorHolidays) {
-    alarm.honorHolidays && ProductionCalendars.hasData(month.year)
+  // Условия считаем так же, как движок и журнал (AlarmTimes.usesProductionCalendar): иначе
+  // разовому будильнику календарь говорил бы «данных нет», а журнал молчал.
+  val calendarHasData = remember(month, alarm) {
+    AlarmTimes.usesProductionCalendar(alarm) && ProductionCalendars.hasData(month.year)
   }
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
   // Выбранный день — для подписи причины под календарём (только когда календарь не интерактивный).

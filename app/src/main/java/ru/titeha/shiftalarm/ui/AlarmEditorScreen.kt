@@ -191,6 +191,18 @@ fun AlarmEditorScreen(
           draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY)
         }
       }
+      ModeChip("По выходным и праздникам", method == EditMethod.CALENDAR) {
+        if (method != EditMethod.CALENDAR) {
+          method = EditMethod.CALENDAR
+          // Инвариант D-1: в этом режиме календарь не выключается. Инвариант D-5: полярность
+          // не трогаем — legacy-колонка, расчёт читает её только у режима calendar.
+          draft = draft.copy(
+            mode = AlarmEntity.MODE_CALENDAR,
+            honorHolidays = true,
+            deleteAfterFiring = false
+          )
+        }
+      }
       ModeChip("По графику", method == EditMethod.SHIFT) {
         if (method != EditMethod.SHIFT) {
           method = EditMethod.SHIFT
@@ -212,9 +224,7 @@ fun AlarmEditorScreen(
     when (method) {
       EditMethod.ONCE -> OnceContent(draft) { draft = it }
       EditMethod.WEEKLY -> WeeklyDaysContent(draft, { draft = it }, rememberEditorWeekStart())
-      // Минимальная ветка нового режима (компилятор требует исчерпывающего when).
-      // Полноценный контент режима — чип способа и подсказки — добавляет TD05.
-      EditMethod.CALENDAR -> TimeButton(draft) { draft = it }
+      EditMethod.CALENDAR -> CalendarContent(draft) { draft = it }
       EditMethod.SHIFT -> {
         ShiftCycleEditor(draft = draft, onChange = { draft = it })
         Spacer(Modifier.height(12.dp))
@@ -227,10 +237,14 @@ fun AlarmEditorScreen(
     // (переклассификация дней), ни периоды-глушилки, ни заморозка цикла к нему не применимы.
     if (method != EditMethod.ONCE) {
       SectionHeader("Когда не звонить")
-      HolidaySection(draft = draft, allowRestPolarity = method != EditMethod.SHIFT, onChange = { draft = it })
+      // «По выходным и праздникам»: тумблер «Учитывать праздники» не показываем — календарь в этом
+      // режиме не выключается (инвариант D-1).
+      if (method != EditMethod.CALENDAR) {
+        HolidaySection(draft = draft, onChange = { draft = it })
+        Spacer(Modifier.height(16.dp))
+      }
       // Периоды-глушилки (отпуск/больничный/за свой счёт/сессия) — и сменам, и «по дням недели»
-      // (офисные 5/2 тоже уходят в отпуск).
-      Spacer(Modifier.height(16.dp))
+      // (офисные 5/2 тоже уходят в отпуск), и режиму календаря (инвариант D-4).
       VacationSection(
         alarmId = draft.id,
         periods = periods,
@@ -258,7 +272,8 @@ fun AlarmEditorScreen(
         onPeriodsChange = { periods = it },
         onOverridesChange = { overrides = it }
       )
-    } else if (method == EditMethod.WEEKLY) {
+    } else if (method == EditMethod.WEEKLY || method == EditMethod.CALENDAR) {
+      // Календарь обоих способов рисует точки через AlarmTimes.firesOn — режим различает их сам.
       Spacer(Modifier.height(8.dp))
       WeeklyCalendarSection(currentAlarm, periods, onPeriodsChange = { periods = it })
     }
@@ -462,6 +477,22 @@ private fun OnceContent(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   }
 }
 
+/**
+ * Способ «По выходным и праздникам»: только время + пояснение.
+ *
+ * Секции дней повтора здесь нет: маска в этом режиме в расчёте не участвует
+ * (инвариант D-2 фазы D) и не обнуляется, поэтому возврат в «По дням недели» дни сохраняет.
+ */
+@Composable
+private fun CalendarContent(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
+  TimeButton(draft, onChange)
+  Spacer(Modifier.height(8.dp))
+  Text(
+    "Звонит в выходные и праздники, в том числе перенесённые. Дни повтора не задаются.",
+    style = MaterialTheme.typography.bodySmall
+  )
+}
+
 /** Фактический день начала недели из настройки (AUTO → из локали) — только для порядка отображения. */
 @Composable
 private fun rememberEditorWeekStart(): DayOfWeek {
@@ -521,14 +552,7 @@ private fun WeeklyDaysContent(
       }
     }
   }
-  if (draft.honorHolidays && draft.polarity == AlarmEntity.POLARITY_REST) {
-    Spacer(Modifier.height(8.dp))
-    Text(
-      "Режим «По выходным»: звонок следует производственному календарю — суббота, воскресенье, " +
-        "праздники и перенесённые выходные. Отмеченные дни повтора на расчёт не влияют.",
-      style = MaterialTheme.typography.bodySmall
-    )
-  } else if (draft.daysMask == 0) {
+  if (draft.daysMask == 0) {
     Spacer(Modifier.height(8.dp))
     Text(
       "Дни не выбраны — выбери дни повтора или воспользуйся пресетами.",
@@ -616,8 +640,10 @@ private fun SchedulePreview(alarm: AlarmEntity, periods: List<AlarmPeriod>, over
         occ.forEach { OccurrenceRow(it) }
       }
     }
-  } else if (alarm.daysMask != 0) {
-    // «По дням недели» — ближайшие 3 срабатывания (разовый показываем только строкой выше).
+  } else if (alarm.mode == AlarmEntity.MODE_CALENDAR || alarm.daysMask != 0) {
+    // «По дням недели» и «По выходным и праздникам» — ближайшие 3 срабатывания тем же движком.
+    // Для calendar маска не показатель (инвариант D-2), поэтому режим проверяется отдельно:
+    // иначе запись с пустой маской осталась бы только со строкой «Следующий звонок» выше.
     val firings = remember(alarm, periods, dayOverrides, now) {
       buildList {
         var cursor = now
@@ -1268,14 +1294,17 @@ internal fun ModeChip(text: String, selected: Boolean, onClick: () -> Unit) {
  * Производственный календарь.
  *
  * Для сменного графика календарь только глушит звонки в официальные
- * нерабочие дни. REST доступен только простому календарному будильнику.
+ * нерабочие дни. Отдельная полярность «будить по выходным» после TD03 живёт в режиме
+ * [AlarmEntity.MODE_CALENDAR] (чип «По выходным и праздникам»), поэтому переключателя
+ * полярности здесь нет: `polarity` — legacy-колонка (инвариант D-5).
  */
 @Composable
 private fun HolidaySection(
   draft: AlarmEntity,
-  allowRestPolarity: Boolean,
   onChange: (AlarmEntity) -> Unit
 ) {
+  // Способ различаем по режиму черновика: чипы способа всегда синхронизируют draft.mode.
+  val isShift = draft.mode == AlarmEntity.MODE_SHIFT
   Column(
     Modifier.fillMaxWidth()
   ) {
@@ -1291,15 +1320,15 @@ private fun HolidaySection(
           )
 
           onChange(
-            if (allowRestPolarity) {
-              changed
-            } else {
+            if (isShift) {
               HolidayModePolicy.normalize(
                 changed.copy(
                   mode =
                     AlarmEntity.MODE_SHIFT
                 )
               )
+            } else {
+              changed
             }
           )
         }
@@ -1309,17 +1338,17 @@ private fun HolidaySection(
 
       Column {
         Text(
-          if (allowRestPolarity) {
-            "Учитывать праздники"
-          } else {
+          if (isShift) {
             "Не звонить в официальные выходные"
+          } else {
+            "Учитывать праздники"
           },
           style =
             MaterialTheme.typography.bodyMedium
         )
 
         Text(
-          "Производственный календарь РФ: " +
+          "Производственный календарь: " +
                   "праздники и переносы выходных.",
           style =
             MaterialTheme.typography.bodySmall
@@ -1333,67 +1362,11 @@ private fun HolidaySection(
 
     Spacer(Modifier.height(8.dp))
 
-    if (!allowRestPolarity) {
-      Text(
+    Text(
+      if (isShift) {
         "Времена остаются из графика смен. " +
                 "Звонок пропускается, если день смены " +
-                "официально нерабочий.",
-        style =
-          MaterialTheme.typography.bodySmall
-      )
-
-      return
-    }
-
-    Text(
-      "Когда будить:",
-      style =
-        MaterialTheme.typography.bodyMedium
-    )
-
-    Spacer(Modifier.height(4.dp))
-
-    Row(
-      horizontalArrangement =
-        Arrangement.spacedBy(8.dp)
-    ) {
-      ModeChip(
-        "По рабочим",
-        draft.polarity ==
-                AlarmEntity.POLARITY_WORK
-      ) {
-        onChange(
-          draft.copy(
-            polarity =
-              AlarmEntity.POLARITY_WORK
-          )
-        )
-      }
-
-      ModeChip(
-        "По выходным",
-        draft.polarity ==
-                AlarmEntity.POLARITY_REST
-      ) {
-        onChange(
-          draft.copy(
-            polarity =
-              AlarmEntity.POLARITY_REST
-          )
-        )
-      }
-    }
-
-    Spacer(Modifier.height(4.dp))
-
-    Text(
-      if (
-        draft.polarity ==
-        AlarmEntity.POLARITY_REST
-      ) {
-        "Звонит в выходные и праздники " +
-                "(в том числе перенесённые), " +
-                "молчит в рабочие дни."
+                "официально нерабочий."
       } else {
         "Звонит по выбранному расписанию, " +
                 "но глушится в праздники и выходные."
