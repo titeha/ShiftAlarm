@@ -15,6 +15,16 @@ import ru.titeha.shiftalarm.data.AlarmEntity
  */
 object HolidayModePolicy {
     /**
+     * Дискриминатор режима будильника для календарной логики — единое место защитного чтения,
+     * как в [AlarmTimes.effectiveMode].
+     */
+    private fun effectiveMode(alarm: AlarmEntity): String = when (alarm.mode) {
+        AlarmEntity.MODE_SHIFT -> AlarmEntity.MODE_SHIFT
+        AlarmEntity.MODE_CALENDAR -> AlarmEntity.MODE_CALENDAR
+        else -> AlarmEntity.MODE_WEEKLY
+    }
+
+    /**
      * Поддерживает ли режим отдельную полярность «будить по выходным».
      *
      * Сменный график её не поддерживает: для такого сценария пользователь
@@ -30,6 +40,9 @@ object HolidayModePolicy {
      * Старые или повреждённые сменные записи с REST безопасно трактуются как WORK.
      */
     fun effectivePolarity(alarm: AlarmEntity): AlarmPolarity {
+        if (effectiveMode(alarm) == AlarmEntity.MODE_CALENDAR) {
+            return AlarmPolarity.REST
+        }
         if (!supportsRestPolarity(alarm.mode)) {
             return AlarmPolarity.WORK
         }

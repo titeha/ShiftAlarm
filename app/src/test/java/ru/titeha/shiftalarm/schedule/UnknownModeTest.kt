@@ -58,11 +58,11 @@ class UnknownModeTest {
     val unknown = unknownMode(weekdays)
     val weekly = unknown.copy(mode = AlarmEntity.MODE_WEEKLY)
     assertEquals(
-      AlarmTimes.weeklyFiresOn(weekly, wed, null),
-      AlarmTimes.weeklyFiresOn(unknown, wed, null)
+      AlarmTimes.firesOn(weekly, wed, null),
+      AlarmTimes.firesOn(unknown, wed, null)
     )
-    assertTrue(AlarmTimes.weeklyFiresOn(unknown, wed, null))
-    assertFalse(AlarmTimes.weeklyFiresOn(unknown, sat, null))
+    assertTrue(AlarmTimes.firesOn(unknown, wed, null))
+    assertFalse(AlarmTimes.firesOn(unknown, sat, null))
   }
 
   @Test
@@ -83,10 +83,10 @@ class UnknownModeTest {
 
     assertEquals(AlarmTimes.next(weeklyRest, wed.atTime(8, 0)), AlarmTimes.next(unknownRest, wed.atTime(8, 0)))
     assertEquals(holiday.atTime(7, 0), AlarmTimes.next(unknownRest, holiday.minusDays(1).atTime(8, 0)))
-    assertTrue(AlarmTimes.weeklyFiresOn(unknownRest, holiday, calendar))
-    assertFalse(AlarmTimes.weeklyFiresOn(unknownRest.copy(polarity = AlarmEntity.POLARITY_WORK), holiday, calendar))
+    assertTrue(AlarmTimes.firesOn(unknownRest, holiday, calendar))
+    assertFalse(AlarmTimes.firesOn(unknownRest.copy(polarity = AlarmEntity.POLARITY_WORK), holiday, calendar))
     // Без данных календаря картина другая — утверждения выше опираются именно на праздник, а не на день недели.
-    assertFalse(AlarmTimes.weeklyFiresOn(unknownRest, holiday, ProductionCalendar()))
+    assertFalse(AlarmTimes.firesOn(unknownRest, holiday, ProductionCalendar()))
   }
 
   @Test
@@ -96,6 +96,6 @@ class UnknownModeTest {
       presetId = "2x2",
       anchorEpochDay = wed.toEpochDay()
     )
-    assertFalse(AlarmTimes.weeklyFiresOn(shift, wed, null))
+    assertFalse(AlarmTimes.firesOn(shift, wed, null))
   }
 }

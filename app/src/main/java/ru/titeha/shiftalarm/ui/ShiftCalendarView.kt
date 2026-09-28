@@ -272,7 +272,7 @@ fun WeeklyCalendar(
           DayCell(
             date = date,
             kind = cellKind,
-            rings = date != null && AlarmTimes.weeklyFiresOn(alarm, date, calendar, periods),
+            rings = date != null && AlarmTimes.firesOn(alarm, date, calendar, periods),
             isToday = date == today,
             isHighlighted = date != null && date == (highlightDay ?: selected),
             isInDragRange = date != null && dragRange != null && date in dragRange,

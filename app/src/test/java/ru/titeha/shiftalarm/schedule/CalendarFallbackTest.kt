@@ -216,8 +216,8 @@ class CalendarFallbackTest {
   fun `точка календаря согласована с расчётом в год без данных`() {
     val a = alarm(AlarmEntity.POLARITY_REST, honor = true, mask = weekdays)
     val cal = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2027))
-    assertTrue(AlarmTimes.weeklyFiresOn(a, sat, cal))
-    assertFalse(AlarmTimes.weeklyFiresOn(a, mon, cal))
+    assertTrue(AlarmTimes.firesOn(a, sat, cal))
+    assertFalse(AlarmTimes.firesOn(a, mon, cal))
   }
 
   @Test

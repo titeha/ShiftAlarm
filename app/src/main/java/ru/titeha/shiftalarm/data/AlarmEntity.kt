@@ -10,6 +10,11 @@ import androidx.room.PrimaryKey
  *  - [MODE_WEEKLY] — по дням недели через [daysMask]. Пустая маска (0) = разовый: сработает
  *    в ближайшее подходящее время и затем отключится (или удалится при [deleteAfterFiring]).
  *  - [MODE_SHIFT]  — по графику смен ([presetId] + [anchorEpochDay]).
+ *  - [MODE_CALENDAR] — по производственному календарю страны (точка расширения
+ *    [ru.titeha.shiftalarm.schedule.ProductionCalendars.DEFAULT_COUNTRY], сейчас «RU»):
+ *    звонит в официальные нерабочие дни (Сб, Вс, праздники, перенесённые выходные); маска
+ *    [daysMask] в этом режиме в расчёте не участвует (инвариант D-2 фазы D).
+ *    Полярность [polarity] для этого режима не используется.
  */
 @Entity(tableName = "alarms")
 data class AlarmEntity(
@@ -44,7 +49,11 @@ data class AlarmEntity(
   /**
    * Полярность будильника относительно календаря ([ru.titeha.shiftalarm.schedule.AlarmPolarity]):
    * [POLARITY_WORK] — буди по рабочим (нерабочие глушатся); [POLARITY_REST] — буди по выходным.
-   * Действует только при [honorHolidays] = true.
+   * Действует только при [honorHolidays] = true и [mode] = [MODE_WEEKLY].
+   *
+   * **Legacy (TD02):** после миграции 6→7 будильники в режиме MODE_CALENDAR больше не используют
+   * эту колонку (движок берёт решение из режима). Колонка сохраняется — удаление и очистка
+   * в отдельной будущей миграции (инвариант D-5).
    */
   val polarity: String = POLARITY_WORK,
   /**
@@ -58,6 +67,12 @@ data class AlarmEntity(
   companion object {
     const val MODE_WEEKLY = "weekly"
     const val MODE_SHIFT = "shift"
+
+    /**
+     * Режим «по производственному календарю страны»: звонит в официальные нерабочие дни.
+     * Собственное значение режима вместо прежней комбинации `weekly + honorHolidays + REST`.
+     */
+    const val MODE_CALENDAR = "calendar"
     const val POLARITY_WORK = "WORK"
     const val POLARITY_REST = "REST"
   }

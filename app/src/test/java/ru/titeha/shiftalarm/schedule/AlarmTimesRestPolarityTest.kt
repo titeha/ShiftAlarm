@@ -74,9 +74,9 @@ class AlarmTimesRestPolarityTest {
   fun `по выходным — точка календаря на Сб и Вс, не на буднях`() {
     val a = restWeekly(weekends)
     val cal = requireNotNull(ProductionCalendars.merged("RU", 2026))
-    assertTrue(AlarmTimes.weeklyFiresOn(a, sat, cal))
-    assertTrue(AlarmTimes.weeklyFiresOn(a, sun, cal))
-    assertFalse(AlarmTimes.weeklyFiresOn(a, mon, cal))
-    assertFalse(AlarmTimes.weeklyFiresOn(a, wed, cal))
+    assertTrue(AlarmTimes.firesOn(a, sat, cal))
+    assertTrue(AlarmTimes.firesOn(a, sun, cal))
+    assertFalse(AlarmTimes.firesOn(a, mon, cal))
+    assertFalse(AlarmTimes.firesOn(a, wed, cal))
   }
 }
