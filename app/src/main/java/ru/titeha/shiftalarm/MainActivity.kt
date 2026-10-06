@@ -193,6 +193,7 @@ class MainActivity : ComponentActivity() {
                 }
               },
               onRunSelfTest = { vm.runSelfTest() },
+              onRefreshHolidays = { vm.refreshHolidays() },
               onOpenPhoneSetup = if (vendorGuide != null) {
                 { showSettings = false; showVendorSetup = true }
               } else {

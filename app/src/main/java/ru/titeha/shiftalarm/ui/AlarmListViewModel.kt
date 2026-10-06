@@ -28,6 +28,7 @@ import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
+import ru.titeha.shiftalarm.data.HolidayCalendarRepository
 
 /** Состояние экрана списка будильников и сгруппированных дочерних данных. */
 data class AlarmListUiState(
@@ -359,6 +360,38 @@ class AlarmListViewModel(
         } catch (error: Exception) {
             Log.e(TAG, "Не удалось запустить самотест звонка", error)
             _userMessages.send("Не удалось запустить проверку")
+        }
+    }
+
+    /**
+     * TD10: ручное обновление праздничного календаря — в обход суточного throttling, текущий и
+     * следующий год (поиск звонка уходит за границу года). Если данные обновились —
+     * перепланировать будильники. Ответ источника валидирует парсер (TD09): плейсхолдер
+     * неопубликованного года обновлением не считается. Результат — через [_userMessages],
+     * как у самотеста звонка.
+     */
+    fun refreshHolidays() = viewModelScope.launch {
+        try {
+            val holidays = HolidayCalendarRepository(context())
+            val year = java.time.LocalDate.now().year
+            val current = holidays.refresh("RU", year)
+            val next = holidays.refresh("RU", year + 1)
+            if (current || next) {
+                AlarmScheduler.rescheduleAll(context(), repo, repo.enabled())
+            }
+            _userMessages.send(
+                when {
+                    current && next -> "Календарь: обновлены $year и ${year + 1}"
+                    current -> "Календарь: $year обновлён; на ${year + 1} год данных у источника ещё нет"
+                    next -> "Календарь: ${year + 1} обновлён; $year обновить не удалось"
+                    else -> "Календарь: не удалось обновить — источник недоступен или данные ещё не опубликованы"
+                }
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.e(TAG, "Не удалось обновить праздничный календарь", error)
+            _userMessages.send("Не удалось обновить календарь")
         }
     }
 

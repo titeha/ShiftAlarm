@@ -59,6 +59,7 @@ fun SettingsScreen(
   weekPairNaming: WeekPairNaming = WeekPairNaming.PARITY,
   onWeekPairNaming: (WeekPairNaming) -> Unit = {},
   onRunSelfTest: () -> Unit = {},
+  onRefreshHolidays: () -> Unit = {},
   onOpenPhoneSetup: (() -> Unit)? = null,
   dayGreetingCard: Boolean = true,
   onDayGreetingCard: (Boolean) -> Unit = {},
@@ -322,6 +323,10 @@ fun SettingsScreen(
         "Источник: isdayoff.ru (РФ), обновляется в фоне при запуске.",
         style = MaterialTheme.typography.bodySmall
       )
+      Spacer(Modifier.height(4.dp))
+      TextButton(onClick = onRefreshHolidays) {
+        Text("Обновить сейчас")
+      }
       Spacer(Modifier.height(4.dp))
       holidayInfo.forEach { (yr, ts) ->
         Text(
