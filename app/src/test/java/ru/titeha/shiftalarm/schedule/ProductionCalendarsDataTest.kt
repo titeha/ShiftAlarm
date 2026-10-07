@@ -20,15 +20,16 @@ class ProductionCalendarsDataTest {
   }
 
   @Test
-  fun `данные есть на встроенный год и нет на следующий`() {
+  fun `данные есть на встроенные годы и нет на следующий за ними`() {
     assertTrue(ProductionCalendars.hasData(2026))
-    assertFalse(ProductionCalendars.hasData(2027))
+    assertTrue(ProductionCalendars.hasData(2027))
+    assertFalse(ProductionCalendars.hasData(2028))
   }
 
   @Test
   fun `внешний источник добавляет данные на год`() {
-    ProductionCalendars.source = { _, year -> if (year == 2027) ProductionCalendar() else null }
+    ProductionCalendars.source = { _, year -> if (year == 2028) ProductionCalendar() else null }
+    assertTrue(ProductionCalendars.hasData(2028))
     assertTrue(ProductionCalendars.hasData(2027))
-    assertTrue(ProductionCalendars.hasData(2026))
   }
 }

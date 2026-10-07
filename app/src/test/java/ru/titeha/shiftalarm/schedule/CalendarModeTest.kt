@@ -17,7 +17,7 @@ import java.time.LocalDate
  * периоды глушат звонок. Чистый слой, без Android/IO.
  *
  * Даты: 26.06.2026 — Пт, 27.06 — Сб, 28.06 — Вс; 04.11.2026 — Ср (HOLIDAY);
- * 09.03.2026 — Пн (TRANSFER_OFF); 2027 — год без встроенных данных.
+ * 09.03.2026 — Пн (TRANSFER_OFF); 2028 — год без встроенных данных.
  */
 class CalendarModeTest {
 
@@ -125,13 +125,13 @@ class CalendarModeTest {
   @Test
   fun `нет данных на год - звонит в субботу, а не по маске`() {
     val a = calAlarm(mask = weekdays)
-    val sat2027 = LocalDate.of(2027, 1, 16)
-    val mon2027 = LocalDate.of(2027, 1, 18)
-    val empty = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2027))
+    val sat2028 = LocalDate.of(2028, 1, 15)
+    val mon2028 = LocalDate.of(2028, 1, 17)
+    val empty = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2028))
     assertTrue(empty.kinds.isEmpty())
-    assertTrue(AlarmTimes.firesOn(a, sat2027, empty))
-    assertFalse(AlarmTimes.firesOn(a, mon2027, empty))
-    assertEquals(sat2027.atTime(7, 0), AlarmTimes.next(a, LocalDate.of(2027, 1, 15).atTime(8, 0)))
+    assertTrue(AlarmTimes.firesOn(a, sat2028, empty))
+    assertFalse(AlarmTimes.firesOn(a, mon2028, empty))
+    assertEquals(sat2028.atTime(7, 0), AlarmTimes.next(a, LocalDate.of(2028, 1, 14).atTime(8, 0)))
   }
 
   @Test

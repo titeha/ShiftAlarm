@@ -60,7 +60,7 @@
   (см. выше), а колонка `polarity` — legacy (движок читает REST только у режима `calendar`).
   Движок: `ProductionCalendar` (статус дня),
   `AlarmPolarity`/`PersonalDayResolver`. Данные тянутся с официального источника (isDayOff.ru) в локальный
-  кэш с оффлайн-fallback на встроенный РФ-2026; звонок от сети не зависит (`docs/HOLIDAY_CALENDAR_SOURCE.md`).
+  кэш с оффлайн-fallback на встроенные РФ-2026/2027; звонок от сети не зависит (`docs/HOLIDAY_CALENDAR_SOURCE.md`).
   Мультистрана и выбор страны — впереди (точка расширения `ProductionCalendars.DEFAULT_COUNTRY`).
   Ввод периода двумя способами: диапазоном дат или «с даты на N дней».
 

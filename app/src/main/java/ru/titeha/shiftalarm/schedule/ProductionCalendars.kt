@@ -56,9 +56,41 @@ object ProductionCalendars {
     }
   )
 
-  /** Календарь по коду страны и году; null — данных нет. Сейчас только "RU"/2026. */
+  /**
+   * РФ, 2027. Источник: производственный календарь на 2027 год (КонсультантПлюс); переносы —
+   * Постановление Правительства РФ от 17.09.2026 № 1187 «О переносе выходных дней в 2027 году»:
+   * сб 02.01 → пт 05.11; вс 03.01 → пт 31.12; сб 20.02 → пн 22.02. Итоги сверены владельцем
+   * с документом 2026-10-07: 247 рабочих / 118 нерабочих дней; сокращённые (ст. 95 ТК):
+   * 20.02, 30.04, 11.06, 03.11. Обычные Сб/Вс в kinds не дублируются — их покрывает базовая
+   * неделя резолвера; здесь только особые дни.
+   */
+  val RU_2027 = ProductionCalendar(
+    kinds = buildMap {
+      // Новогодние каникулы и Рождество (ст. 112 ТК): 1–8 января.
+      for (day in 1..8) put(d(2027, 1, day), StateDayKind.HOLIDAY)
+      put(d(2027, 2, 20), StateDayKind.TRANSFER_WORK) // рабочая суббота (перенос на пн 22.02), сокращённая
+      put(d(2027, 2, 22), StateDayKind.TRANSFER_OFF)  // нерабочий пн — перенос с сб 20.02 (ПП № 1187)
+      put(d(2027, 2, 23), StateDayKind.HOLIDAY)       // День защитника Отечества (Вт)
+      put(d(2027, 3, 8), StateDayKind.HOLIDAY)        // Международный женский день (Пн)
+      put(d(2027, 4, 30), StateDayKind.PRE_HOLIDAY)   // сокращённый день перед 1 мая (Пт)
+      put(d(2027, 5, 1), StateDayKind.HOLIDAY)        // Праздник Весны и Труда (Сб)
+      put(d(2027, 5, 3), StateDayKind.TRANSFER_OFF)   // перенос с сб 01.05 (ч. 2 ст. 112 ТК)
+      put(d(2027, 5, 9), StateDayKind.HOLIDAY)        // День Победы (Вс)
+      put(d(2027, 5, 10), StateDayKind.TRANSFER_OFF)  // перенос с вс 09.05 (ч. 2 ст. 112 ТК)
+      put(d(2027, 6, 11), StateDayKind.PRE_HOLIDAY)   // сокращённый день перед 12 июня (Пт)
+      put(d(2027, 6, 12), StateDayKind.HOLIDAY)       // День России (Сб)
+      put(d(2027, 6, 14), StateDayKind.TRANSFER_OFF)  // перенос с сб 12.06 (ч. 2 ст. 112 ТК)
+      put(d(2027, 11, 3), StateDayKind.PRE_HOLIDAY)   // сокращённый день перед 4 ноября (Ср)
+      put(d(2027, 11, 4), StateDayKind.HOLIDAY)       // День народного единства (Чт)
+      put(d(2027, 11, 5), StateDayKind.TRANSFER_OFF)  // нерабочая пт — перенос с сб 02.01 (ПП № 1187)
+      put(d(2027, 12, 31), StateDayKind.TRANSFER_OFF) // нерабочая пт — перенос с вс 03.01 (ПП № 1187)
+    }
+  )
+
+  /** Календарь по коду страны и году; null — данных нет. Сейчас "RU"/2026 и "RU"/2027. */
   fun of(country: String, year: Int): ProductionCalendar? = when {
     country.equals("RU", ignoreCase = true) && year == 2026 -> RU_2026
+    country.equals("RU", ignoreCase = true) && year == 2027 -> RU_2027
     else -> null
   }
 

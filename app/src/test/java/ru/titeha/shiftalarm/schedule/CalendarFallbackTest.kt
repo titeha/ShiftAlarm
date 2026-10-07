@@ -16,8 +16,8 @@ import java.time.LocalTime
  * Деградация производственного календаря: при включённом «Учитывать праздники», но отсутствии
  * данных на год, «По выходным» обязана звонить в Сб/Вс, а не превращаться в «По рабочим» (K1/E1).
  *
- * Год без данных во встроенном календаре — 2027 (есть только RU-2026). Даты: 15.01.2027 — пятница,
- * 16.01 — суббота, 18.01 — понедельник.
+ * Год без данных во встроенном календаре — 2028 (есть RU-2026 и RU-2027). Даты: 14.01.2028 —
+ * пятница, 15.01 — суббота, 17.01 — понедельник.
  */
 class CalendarFallbackTest {
 
@@ -31,9 +31,9 @@ class CalendarFallbackTest {
     ProductionCalendars.source = null
   }
 
-  private val from = LocalDate.of(2027, 1, 15).atTime(8, 0) // пятница
-  private val sat = LocalDate.of(2027, 1, 16)
-  private val mon = LocalDate.of(2027, 1, 18)
+  private val from = LocalDate.of(2028, 1, 14).atTime(8, 0) // пятница
+  private val sat = LocalDate.of(2028, 1, 15)
+  private val mon = LocalDate.of(2028, 1, 17)
 
   private val weekdays = AlarmTimes.maskOf(
     DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
@@ -87,9 +87,9 @@ class CalendarFallbackTest {
 
   @Test
   fun `calendarFor — null при выключенном тумблере, пустой календарь при включённом без данных`() {
-    assertNull(ProductionCalendars.calendarFor(honorHolidays = false, year = 2027))
+    assertNull(ProductionCalendars.calendarFor(honorHolidays = false, year = 2028))
 
-    val fallback = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2027))
+    val fallback = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2028))
     assertTrue(fallback.kinds.isEmpty())
     assertTrue(fallback.holidays.isEmpty())
     assertTrue(fallback.workingWeekends.isEmpty())
@@ -103,20 +103,20 @@ class CalendarFallbackTest {
   @Test
   fun `hasData — различает встроенный год, год без данных и год из внешнего источника`() {
     assertTrue(ProductionCalendars.hasData(2026))
-    assertFalse(ProductionCalendars.hasData(2027))
+    assertFalse(ProductionCalendars.hasData(2028))
 
-    ProductionCalendars.source = { _, year -> if (year == 2027) ProductionCalendar() else null }
-    assertTrue(ProductionCalendars.hasData(2027))
+    ProductionCalendars.source = { _, year -> if (year == 2028) ProductionCalendar() else null }
+    assertTrue(ProductionCalendars.hasData(2028))
     assertTrue(ProductionCalendars.hasData(2026))
   }
 
   @Test
   fun `пустой календарь эквивалентен null для сменного режима`() {
-    val anchor = LocalDate.of(2027, 1, 1)
+    val anchor = LocalDate.of(2028, 1, 1)
     val everyDay = ShiftSchedule(
       ShiftPattern(listOf(ShiftType("w", "Работа", LocalTime.of(7, 0))), anchor)
     )
-    val fallback = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2027))
+    val fallback = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2028))
     val from = anchor.atTime(0, 0)
 
     // Горизонт поиска совпадает: пустой календарь смены не глушит.
@@ -127,7 +127,7 @@ class CalendarFallbackTest {
 
     // И по каждому дню года: время звонка то же, что без календаря вовсе.
     var date = anchor
-    while (date.year == 2027) {
+    while (date.year == 2028) {
       assertEquals(
         ShiftEngine.wakeTimeOn(date, everyDay, null),
         ShiftEngine.wakeTimeOn(date, everyDay, fallback)
@@ -175,7 +175,7 @@ class CalendarFallbackTest {
       anchorEpochDay = sat.toEpochDay(),
       honorHolidays = true
     )
-    val shiftFrom = LocalDate.of(2027, 1, 17).atTime(8, 0) // воскресенье
+    val shiftFrom = LocalDate.of(2028, 1, 16).atTime(8, 0) // воскресенье
 
     // Без данных на год — расчёт по личной неделе, по Сб/Вс и по циклу смен.
     assertFalse(AlarmTimes.usesProductionCalendar(oneShot))
@@ -188,11 +188,11 @@ class CalendarFallbackTest {
     assertEquals(sat.atTime(7, 0), AlarmTimes.next(restOneShot, from))
     assertEquals(mon.atTime(7, 0), AlarmTimes.next(shift, shiftFrom))
 
-    // Появляются данные на 2027: нерабочий праздник в понедельник (глушит недельный рабочий день и смену).
+    // Появляются данные на 2028: нерабочий праздник в понедельник (глушит недельный рабочий день и смену).
     ProductionCalendars.source = { _, year ->
-      if (year == 2027) ProductionCalendar(kinds = mapOf(mon to StateDayKind.HOLIDAY)) else null
+      if (year == 2028) ProductionCalendar(kinds = mapOf(mon to StateDayKind.HOLIDAY)) else null
     }
-    assertTrue(ProductionCalendars.hasData(2027))
+    assertTrue(ProductionCalendars.hasData(2028))
 
     // Разовый будильник календарь не читает — результат прежний; у остальных звонок сдвигается.
     assertEquals(sat.atTime(7, 0), AlarmTimes.next(oneShot, from))
@@ -202,7 +202,7 @@ class CalendarFallbackTest {
     // Добавляется рабочая суббота: «по выходным» перестаёт звонить в субботу — проверяем на REST
     // (у WORK-будильника со стандартной неделей рабочая суббота, наоборот, становится рабочим днём).
     ProductionCalendars.source = { _, year ->
-      if (year == 2027) {
+      if (year == 2028) {
         ProductionCalendar(
           kinds = mapOf(
             mon to StateDayKind.HOLIDAY,
@@ -220,20 +220,21 @@ class CalendarFallbackTest {
   @Test
   fun `точка календаря согласована с расчётом в год без данных`() {
     val a = alarm(AlarmEntity.POLARITY_REST, honor = true, mask = weekdays)
-    val cal = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2027))
+    val cal = requireNotNull(ProductionCalendars.calendarFor(honorHolidays = true, year = 2028))
     assertTrue(AlarmTimes.firesOn(a, sat, cal))
     assertFalse(AlarmTimes.firesOn(a, mon, cal))
   }
 
   @Test
   fun `граница года — данных на следующий год нет, событие деградации срабатывает`() {
-    // 31.12.2026 — четверг. Данные есть только на 2026, поэтому горизонт поиска уходит в 2027 год
-    // без данных: 01.01.2027 (пятница, реальный праздник) трактуется как обычный день, а ближайший
-    // звонок — суббота. Это сценарий находки F4 ревью TE1: условие записи события должно смотреть
+    // 31.12.2027 — пятница (нерабочая по переносу с вс 03.01.2027 — данные на 2027 есть), но
+    // звонок 07:00 уже «прошёл» относительно отсчёта 08:00, поэтому горизонт поиска уходит
+    // в 2028 год БЕЗ данных: 01.01.2028 (суббота) трактуется как обычный выходной — ближайший
+    // звонок. Это сценарий находки F4 ревью TE1: условие записи события должно смотреть
     // на год ЗВОНКА, а не на год отсчёта.
     val a = alarm(AlarmEntity.POLARITY_REST, honor = true, mask = weekdays)
-    val next = requireNotNull(AlarmTimes.next(a, LocalDate.of(2026, 12, 31).atTime(8, 0)))
-    assertEquals(LocalDate.of(2027, 1, 2).atTime(7, 0), next)
+    val next = requireNotNull(AlarmTimes.next(a, LocalDate.of(2027, 12, 31).atTime(8, 0)))
+    assertEquals(LocalDate.of(2028, 1, 1).atTime(7, 0), next)
     assertFalse(ProductionCalendars.hasData(next.year))
   }
 }
