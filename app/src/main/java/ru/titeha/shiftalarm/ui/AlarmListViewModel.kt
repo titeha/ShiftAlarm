@@ -29,6 +29,8 @@ import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.data.HolidayCalendarRepository
+import ru.titeha.shiftalarm.data.SettingsStore
+import ru.titeha.shiftalarm.schedule.WorkWeekPreset
 
 /** Состояние экрана списка будильников и сгруппированных дочерних данных. */
 data class AlarmListUiState(
@@ -393,6 +395,18 @@ class AlarmListViewModel(
             Log.e(TAG, "Не удалось обновить праздничный календарь", error)
             _userMessages.send("Не удалось обновить календарь")
         }
+    }
+
+    /**
+     * Сохранить глобальную рабочую неделю (фаза C, Q1=1а) и перепланировать будильники:
+     * настройка влияет на следующий звонок, поэтому записи мало — нужно обновить AlarmManager.
+     * Путь массовый (как [AlarmScheduler.rescheduleAll] при старте), периоды и правки
+     * перечитываются из БД.
+     */
+    fun applyWorkWeek(preset: WorkWeekPreset, customMask: Int) = viewModelScope.launch {
+        SettingsStore(context()).setWorkWeek(preset, customMask)
+        AlarmScheduler.rescheduleAll(context(), repo, repo.enabled())
+        _userMessages.send("Рабочая неделя: ${preset.title}")
     }
 
     /**

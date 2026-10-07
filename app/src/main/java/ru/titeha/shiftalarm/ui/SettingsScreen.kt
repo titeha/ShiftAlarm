@@ -31,8 +31,10 @@ import ru.titeha.shiftalarm.alarm.FeatureFlags
 import ru.titeha.shiftalarm.alarm.RingConfig
 import ru.titeha.shiftalarm.schedule.WeekPairNaming
 import ru.titeha.shiftalarm.schedule.WeekStart
+import ru.titeha.shiftalarm.schedule.WorkWeekPreset
 import ru.titeha.shiftalarm.data.HolidayCalendarRepository
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -58,6 +60,9 @@ fun SettingsScreen(
   onWeekStart: (WeekStart) -> Unit = {},
   weekPairNaming: WeekPairNaming = WeekPairNaming.PARITY,
   onWeekPairNaming: (WeekPairNaming) -> Unit = {},
+  workWeekPreset: WorkWeekPreset = WorkWeekPreset.DEFAULT,
+  workWeekCustomMask: Int = 0,
+  onWorkWeek: (WorkWeekPreset, Int) -> Unit = { _, _ -> },
   onRunSelfTest: () -> Unit = {},
   onRefreshHolidays: () -> Unit = {},
   onOpenPhoneSetup: (() -> Unit)? = null,
@@ -311,6 +316,54 @@ fun SettingsScreen(
       }
 
       Spacer(Modifier.height(24.dp))
+      Text("Рабочая неделя", style = MaterialTheme.typography.titleMedium)
+      Text(
+        "Когда вы работаете. Влияет на расчёт «По выходным и праздникам» и на переносы " +
+          "выходных у будильников с праздниками; дни звонка обычных будильников не меняет.",
+        style = MaterialTheme.typography.bodySmall
+      )
+      Spacer(Modifier.height(8.dp))
+      androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        WorkWeekPreset.entries.forEach { preset ->
+          FilterChip(
+            selected = workWeekPreset == preset,
+            onClick = { if (workWeekPreset != preset) onWorkWeek(preset, workWeekCustomMask) },
+            label = { Text(preset.title) }
+          )
+        }
+      }
+      if (workWeekPreset == WorkWeekPreset.CUSTOM) {
+        Spacer(Modifier.height(8.dp))
+        Text("Дни, когда вы работаете:", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.foundation.layout.FlowRow(
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          DayOfWeek.entries.forEachIndexed { index, day ->
+            val bit = 1 shl (day.value - 1)
+            val on = workWeekCustomMask and bit != 0
+            FilterChip(
+              selected = on,
+              onClick = {
+                val mask = if (on) workWeekCustomMask and bit.inv() else workWeekCustomMask or bit
+                onWorkWeek(WorkWeekPreset.CUSTOM, mask)
+              },
+              label = { Text(WORK_WEEK_DOW[index]) }
+            )
+          }
+        }
+        if (workWeekCustomMask == 0) {
+          Spacer(Modifier.height(4.dp))
+          Text(
+            "Не выбран ни один день — расчёт вернётся к неделе по умолчанию.",
+            style = MaterialTheme.typography.labelSmall
+          )
+        }
+      }
+
+      Spacer(Modifier.height(24.dp))
       Text("Праздничный календарь", style = MaterialTheme.typography.titleMedium)
       Spacer(Modifier.height(8.dp))
       val context = LocalContext.current
@@ -367,6 +420,9 @@ fun SettingsScreen(
 /** Есть ли на устройстве датчик [type] — иначе опцию жёсткого режима не показываем. */
 private fun sensorPresent(context: android.content.Context, type: Int): Boolean =
   context.getSystemService(SensorManager::class.java)?.getDefaultSensor(type) != null
+
+/** Короткие имена дней для чипов «Рабочая неделя» (порядок — Пн…Вс, как в [DayOfWeek.entries]). */
+private val WORK_WEEK_DOW = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 
 private val STAMP_FMT: DateTimeFormatter =
   DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")

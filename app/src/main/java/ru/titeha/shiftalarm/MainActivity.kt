@@ -66,6 +66,7 @@ import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
+import ru.titeha.shiftalarm.schedule.WorkWeekPreset
 import ru.titeha.shiftalarm.ui.AlarmEditorScreen
 import ru.titeha.shiftalarm.ui.AlarmListViewModel
 import ru.titeha.shiftalarm.alarm.CachedAlarm
@@ -103,6 +104,8 @@ class MainActivity : ComponentActivity() {
       var dayGreetingNotif by remember { mutableStateOf(settings.dayGreetingNotificationEnabled()) }
       var weekStart by remember { mutableStateOf(settings.weekStart()) }
       var weekPairNaming by remember { mutableStateOf(settings.weekPairNaming()) }
+      var workWeekPreset by remember { mutableStateOf(settings.workWeekPreset()) }
+      var workWeekCustomMask by remember { mutableStateOf(settings.workWeekCustomMask()) }
       val darkTheme = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
@@ -178,6 +181,15 @@ class MainActivity : ComponentActivity() {
               onWeekStart = { weekStart = it; settings.setWeekStart(it) },
               weekPairNaming = weekPairNaming,
               onWeekPairNaming = { weekPairNaming = it; settings.setWeekPairNaming(it) },
+              workWeekPreset = workWeekPreset,
+              workWeekCustomMask = workWeekCustomMask,
+              onWorkWeek = { preset, mask ->
+                workWeekPreset = preset
+                workWeekCustomMask = mask
+                // Настройка влияет на следующий звонок — VM пишет её в DE-хранилище
+                // и перепланирует будильники.
+                vm.applyWorkWeek(preset, mask)
+              },
               dismissMode = dismissMode,
               onDismissMode = { mode ->
                 dismissMode = mode

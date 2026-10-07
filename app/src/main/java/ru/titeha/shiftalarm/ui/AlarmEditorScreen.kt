@@ -491,6 +491,16 @@ private fun CalendarContent(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit)
     "Звонит в выходные и праздники, в том числе перенесённые. Дни повтора не задаются.",
     style = MaterialTheme.typography.bodySmall
   )
+  // Чьи «выходные» — глобальная рабочая неделя пользователя из настроек (TC04, Q5).
+  val context = LocalContext.current
+  val globalWeek = remember { SettingsStore(context).globalWorkWeek() }
+  val workDays = DayOfWeek.entries
+    .filter { it in globalWeek.workingDays }
+    .joinToString(", ") { DOW_SHORT[it.value - 1] }
+  Text(
+    "Ваша рабочая неделя: $workDays. Выходные — остальные дни.",
+    style = MaterialTheme.typography.bodySmall
+  )
 }
 
 /** Фактический день начала недели из настройки (AUTO → из локали) — только для порядка отображения. */

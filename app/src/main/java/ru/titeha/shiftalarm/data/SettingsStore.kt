@@ -105,13 +105,28 @@ class SettingsStore(context: Context) {
    * Глобальная рабочая неделя пользователя (фаза C: Q1=1а — глобальная настройка, Q2=2а —
    * DE-хранилище: значение нужно в пути звонка до разблокировки устройства). Неизвестное или
    * повреждённое имя откатывается на [WorkWeekPreset.DEFAULT] ([WorkWeekPreset.byName]), пустая
-   * CUSTOM-маска — на неделю по умолчанию ([workWeekOf]). До появления UI (TC04) настройка не
-   * записывается, и неделя равна стандартной неделе страны — поведение движка не меняется.
+   * CUSTOM-маска — на неделю по умолчанию ([workWeekOf]). Записывается разделом настроек
+   * «Рабочая неделя» (TC04); до первой записи неделя равна стандартной неделе страны —
+   * поведение движка не меняется.
    */
-  fun globalWorkWeek(): WorkWeek = workWeekOf(
-    WorkWeekPreset.byName(alarmPrefs.getString(KEY_WORK_WEEK_PRESET, null)),
-    alarmPrefs.getInt(KEY_WORK_WEEK_CUSTOM_MASK, 0)
-  )
+  fun globalWorkWeek(): WorkWeek = workWeekOf(workWeekPreset(), workWeekCustomMask())
+
+  /** Сохранённое имя пресета рабочей недели; неизвестное/пустое → [WorkWeekPreset.DEFAULT]. */
+  fun workWeekPreset(): WorkWeekPreset =
+    WorkWeekPreset.byName(alarmPrefs.getString(KEY_WORK_WEEK_PRESET, null))
+
+  /** Маска дней для [WorkWeekPreset.CUSTOM] (Пн = бит 0 … Вс = бит 6); 0 — не задана. */
+  fun workWeekCustomMask(): Int = alarmPrefs.getInt(KEY_WORK_WEEK_CUSTOM_MASK, 0)
+
+  /**
+   * Записать глобальную рабочую неделю (TC04). Настройка влияет на следующий звонок —
+   * вызывающий код обязан перепланировать будильники после записи (см.
+   * `AlarmListViewModel.applyWorkWeek`).
+   */
+  fun setWorkWeek(preset: WorkWeekPreset, customMask: Int) = alarmPrefs.edit()
+    .putString(KEY_WORK_WEEK_PRESET, preset.name)
+    .putInt(KEY_WORK_WEEK_CUSTOM_MASK, customMask)
+    .apply()
 
   /** Нейминг пары учебных недель (вуз, чёт/нечёт). По умолчанию «Нечётная/Чётная». */
   fun weekPairNaming(): WeekPairNaming = runCatching {
