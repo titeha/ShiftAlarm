@@ -43,17 +43,24 @@ data class CountryProfile(
  * Резолвер «звонит ли будильник в конкретный день», разводящий личную неделю и госкалендарь по явной
  * матрице композиции (см. `docs/WORKWEEK_AND_HOLIDAYS.md` §2). Чистая логика (без Android/I-O).
  *
- * Правило переносов: они имеют смысл только для СТАНДАРТНОЙ недели страны
- * (`transfersApplicable = workWeek == profile.standardWeek`). Для «своей» недели действуют лишь чистые
+ * Правило переносов: они имеют смысл только если ГЛОБАЛЬНАЯ рабочая неделя пользователя
+ * [globalWeek] равна стандартной неделе страны (`transfersApply = globalWeek ==
+ * profile.standardWeek`, Q4=4a фазы C). Для «своей» (нестандартной) недели действуют лишь чистые
  * праздники ([StateDayKind.HOLIDAY]).
  *
  * [calendar] `null` — праздники не учитываются (тумблер выключен): матрица схлопывается в «по личной
  * неделе». Полярность REST требует календаря, поэтому без него ведёт себя как WORK (см. вызывающий код).
+ *
+ * [globalWeek] — глобальная рабочая неделя пользователя (настройка; по умолчанию — стандартная
+ * неделя страны). В WORK-ветке это НЕ неделя из маски: маска будильника остаётся единственным
+ * источником «дня звонка» (инвариант C-1), глобальная неделя входит только через правило
+ * переносов и как инвертируемая неделя для REST.
  */
 class PersonalDayResolver(
     private val profile: CountryProfile,
     private val calendar: ProductionCalendar?,
     private val polarity: AlarmPolarity,
+    private val globalWeek: WorkWeek = profile.standardWeek,
 ) {
 
     /** Звонит ли будильник с личной неделей [workWeek] в день [date]. */
@@ -68,7 +75,7 @@ class PersonalDayResolver(
     private fun isWorkDay(date: java.time.LocalDate, workWeek: WorkWeek): Boolean {
         val personal = date.dayOfWeek in workWeek.workingDays
         val cal = calendar ?: return personal // праздники выключены — чистая личная неделя
-        val transfersApply = workWeek == profile.standardWeek
+        val transfersApply = globalWeek == profile.standardWeek
 
         return when (cal.kindOf(date)) {
             StateDayKind.HOLIDAY -> false                                  // праздник — тишина всегда
