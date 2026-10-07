@@ -14,6 +14,7 @@ import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
+import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 
@@ -105,7 +106,8 @@ class AlarmReceiver : BroadcastReceiver() {
       alarm = alarm,
       periods = periods,
       overrides = overrides,
-      scheduledTriggerAtMillis = scheduledTriggerAtMillis
+      scheduledTriggerAtMillis = scheduledTriggerAtMillis,
+      globalWeek = SettingsStore(context).globalWorkWeek()
     )
 
     if (!shouldRing) {

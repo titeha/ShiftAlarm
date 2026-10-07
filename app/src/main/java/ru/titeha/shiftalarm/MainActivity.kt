@@ -523,6 +523,9 @@ private fun AlarmRow(
   var confirmOff by remember { mutableStateOf(false) }
   var confirmDelete by remember { mutableStateOf(false) }
   var menuOpen by remember { mutableStateOf(false) }
+  val context = LocalContext.current
+  // Глобальная рабочая неделя — вход движка (TC03); настройка в DE-хранилище.
+  val globalWeek = remember { SettingsStore(context).globalWorkWeek() }
 
   Card(
     modifier = Modifier
@@ -551,13 +554,15 @@ private fun AlarmRow(
             alarm,
             periods,
             dayOverrides,
-            now
+            now,
+            globalWeek
           ) {
             AlarmTimes.next(
               alarm,
               periods,
               dayOverrides,
-              now
+              now,
+              globalWeek
             )
           }
           if (next != null) {

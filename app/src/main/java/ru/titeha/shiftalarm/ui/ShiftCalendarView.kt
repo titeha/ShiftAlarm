@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmPeriod
+import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.schedule.PeriodKind
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftCalendar
@@ -183,6 +185,9 @@ fun WeeklyCalendar(
 ) {
   var month by remember { mutableStateOf(YearMonth.now()) }
   val today = LocalDate.now()
+  val context = LocalContext.current
+  // Глобальная рабочая неделя — вход движка (TC03); настройка в DE-хранилище.
+  val globalWeek = remember { SettingsStore(context).globalWorkWeek() }
   val calendar = remember(month, alarm.honorHolidays) {
     ProductionCalendars.calendarFor(alarm.honorHolidays, month.year)
   }
@@ -274,7 +279,7 @@ fun WeeklyCalendar(
           DayCell(
             date = date,
             kind = cellKind,
-            rings = date != null && AlarmTimes.firesOn(alarm, date, calendar, periods),
+            rings = date != null && AlarmTimes.firesOn(alarm, date, calendar, periods, globalWeek),
             isToday = date == today,
             isHighlighted = date != null && date == (highlightDay ?: selected),
             isInDragRange = date != null && dragRange != null && date in dragRange,

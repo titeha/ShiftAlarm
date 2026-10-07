@@ -589,9 +589,12 @@ private fun FreezeCycleToggle(draft: AlarmEntity, onChange: (AlarmEntity) -> Uni
 /** Строка «Следующий звонок: дата · время» — из боевого расчёта [AlarmTimes.next] (тот же движок). */
 @Composable
 private fun NextRingLine(alarm: AlarmEntity, periods: List<AlarmPeriod>, overrides: List<AlarmOverride>, now: LocalDateTime) {
+  val context = LocalContext.current
+  // Глобальная рабочая неделя — вход движка (TC03); настройка в DE-хранилище.
+  val globalWeek = remember { SettingsStore(context).globalWorkWeek() }
   val dayOverrides = remember(overrides) { overrides.mapNotNull { it.toDayOverrideOrNull() } }
-  val next = remember(alarm, periods, dayOverrides, now) {
-    AlarmTimes.next(alarm, periods, dayOverrides, now)
+  val next = remember(alarm, periods, dayOverrides, now, globalWeek) {
+    AlarmTimes.next(alarm, periods, dayOverrides, now, globalWeek)
   }
   Text(
     next?.let { "Следующий звонок: ${it.toLocalDate().localized()} · %02d:%02d".format(it.hour, it.minute) }
@@ -609,6 +612,9 @@ private fun NextRingLine(alarm: AlarmEntity, periods: List<AlarmPeriod>, overrid
 private fun SchedulePreview(alarm: AlarmEntity, periods: List<AlarmPeriod>, overrides: List<AlarmOverride>, now: LocalDateTime) {
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
   val today = now.toLocalDate()
+  val previewContext = LocalContext.current
+  // Глобальная рабочая неделя — вход движка (TC03); настройка в DE-хранилище.
+  val globalWeek = remember { SettingsStore(previewContext).globalWorkWeek() }
   val dayOverrides = remember(overrides) { overrides.mapNotNull { it.toDayOverrideOrNull() } }
 
   NextRingLine(
@@ -644,11 +650,11 @@ private fun SchedulePreview(alarm: AlarmEntity, periods: List<AlarmPeriod>, over
     // «По дням недели» и «По выходным и праздникам» — ближайшие 3 срабатывания тем же движком.
     // Для calendar маска не показатель (инвариант D-2), поэтому режим проверяется отдельно:
     // иначе запись с пустой маской осталась бы только со строкой «Следующий звонок» выше.
-    val firings = remember(alarm, periods, dayOverrides, now) {
+    val firings = remember(alarm, periods, dayOverrides, now, globalWeek) {
       buildList {
         var cursor = now
         repeat(3) {
-          val f = AlarmTimes.next(alarm, periods, dayOverrides, cursor) ?: return@buildList
+          val f = AlarmTimes.next(alarm, periods, dayOverrides, cursor, globalWeek) ?: return@buildList
           add(f)
           cursor = f
         }

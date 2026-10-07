@@ -11,6 +11,7 @@ import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
+import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ProductionCalendars
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
@@ -81,7 +82,13 @@ object AlarmScheduler {
     overrides: List<ScheduleOverrides.DayOverride> = emptyList()
   ) {
     val next = if (alarm.enabled) {
-      AlarmTimes.next(alarm, periods, overrides, LocalDateTime.now())
+      AlarmTimes.next(
+        alarm,
+        periods,
+        overrides,
+        LocalDateTime.now(),
+        SettingsStore(context).globalWorkWeek()
+      )
     } else {
       null
     }
@@ -322,13 +329,17 @@ object AlarmScheduler {
 
     val now = LocalDateTime.now()
     val horizonMillis = AlarmInstant.epochMilli(now.plusDays(DIRECT_BOOT_HORIZON_DAYS))
+    // Глобальная рабочая неделя — одна на весь кэш (настройка глобальная, Q1=1а); DE-хранилище
+    // читается и до разблокировки (Q2=2а).
+    val globalWeek = SettingsStore(context).globalWorkWeek()
 
     val entries = repo.enabled().mapNotNull { alarm ->
       val next = AlarmTimes.next(
         alarm,
         offPeriodsFor(repo, alarm),
         overridesFor(repo, alarm),
-        now
+        now,
+        globalWeek
       ) ?: return@mapNotNull null
 
       val millis = AlarmInstant.epochMilli(next)
