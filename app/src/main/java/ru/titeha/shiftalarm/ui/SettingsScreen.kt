@@ -388,29 +388,32 @@ fun SettingsScreen(
         )
       }
 
-      Spacer(Modifier.height(24.dp))
-      Text("Настроение дня", style = MaterialTheme.typography.titleMedium)
-      Text(
-        "После «Стоп» — праздник дня и фраза дня. Показывается, только если будильник звонил; " +
-          "на надёжность звонка не влияет.",
-        style = MaterialTheme.typography.bodySmall
-      )
-      Spacer(Modifier.height(8.dp))
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Switch(checked = dayGreetingCard, onCheckedChange = onDayGreetingCard)
-        Spacer(Modifier.width(8.dp))
-        Text("Карточка после «Стоп»", style = MaterialTheme.typography.bodyMedium)
-      }
-      Spacer(Modifier.height(8.dp))
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Switch(checked = dayGreetingNotification, onCheckedChange = onDayGreetingNotification)
-        Spacer(Modifier.width(8.dp))
-        Column {
-          Text("Уведомление", style = MaterialTheme.typography.bodyMedium)
-          Text(
-            "Отдельный канал «Настроение дня» — можно отключить, на звонок не влияет.",
-            style = MaterialTheme.typography.bodySmall
-          )
+      // «Настроение дня» целиком под флагом (релиз «только исправления»): раздел не показываем.
+      if (FeatureFlags.DAY_GREETING) {
+        Spacer(Modifier.height(24.dp))
+        Text("Настроение дня", style = MaterialTheme.typography.titleMedium)
+        Text(
+          "После «Стоп» — праздник дня и фраза дня. Показывается, только если будильник звонил; " +
+            "на надёжность звонка не влияет.",
+          style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Switch(checked = dayGreetingCard, onCheckedChange = onDayGreetingCard)
+          Spacer(Modifier.width(8.dp))
+          Text("Карточка после «Стоп»", style = MaterialTheme.typography.bodyMedium)
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Switch(checked = dayGreetingNotification, onCheckedChange = onDayGreetingNotification)
+          Spacer(Modifier.width(8.dp))
+          Column {
+            Text("Уведомление", style = MaterialTheme.typography.bodyMedium)
+            Text(
+              "Отдельный канал «Настроение дня» — можно отключить, на звонок не влияет.",
+              style = MaterialTheme.typography.bodySmall
+            )
+          }
         }
       }
     }
