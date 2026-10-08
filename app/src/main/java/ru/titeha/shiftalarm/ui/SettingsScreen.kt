@@ -23,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import android.hardware.Sensor
 import android.hardware.SensorManager
@@ -388,44 +387,6 @@ private fun sensorPresent(context: android.content.Context, type: Int): Boolean 
 
 /** Короткие имена дней для чипов «Рабочая неделя» (порядок — Пн…Вс, как в [DayOfWeek.entries]). */
 private val WORK_WEEK_DOW = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
-
-/**
- * Ряды чипов ОДИНАКОВОЙ ширины: кнопки логического раздела одного размера и не «подгоняются»
- * под содержание (требование владельца, 2026-10-08). [columns] — чипов в ряду; неполный
- * последний ряд дополняется невидимыми ячейками, чтобы ширины не плясали.
- */
-@Composable
-private fun <T> EqualChips(
-  items: List<T>,
-  columns: Int,
-  label: (T) -> String,
-  selected: (T) -> Boolean,
-  onSelect: (T) -> Unit,
-) {
-  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    items.chunked(columns).forEach { rowItems ->
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        rowItems.forEach { item ->
-          FilterChip(
-            selected = selected(item),
-            onClick = { onSelect(item) },
-            label = {
-              Text(
-                label(item),
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-              )
-            },
-            modifier = Modifier.weight(1f)
-          )
-        }
-        repeat(columns - rowItems.size) {
-          Spacer(Modifier.weight(1f))
-        }
-      }
-    }
-  }
-}
 
 private val STAMP_FMT: DateTimeFormatter =
   DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")

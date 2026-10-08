@@ -117,7 +117,7 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
       }
     }
     // Переход в режим своего цикла: за основу берём слоты текущего пресета.
-    ModeChip("Свой цикл", custom) {
+    ModeChip("Свой цикл", custom, modifier = Modifier.width(92.dp)) {
       onChange(
         draft.copy(
           cycleSpec = ShiftCycleCodec.encode(templateSlotsOf(draft.presetId)),
@@ -128,7 +128,7 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
       )
     }
     // Учебный шаблон: мастер собирает 7/14-дневный цикл поверх сменного режима.
-    ModeChip("Учёба", false) { showStudyWizard = true }
+    ModeChip("Учёба", false, modifier = Modifier.width(92.dp)) { showStudyWizard = true }
   }
 
   if (showStudyWizard) {

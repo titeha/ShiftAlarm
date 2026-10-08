@@ -176,50 +176,58 @@ fun AlarmEditorScreen(
 
     // ── Когда звонить ──
     SectionHeader("Когда звонить")
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      ModeChip("Разово", method == EditMethod.ONCE) {
-        if (method != EditMethod.ONCE) {
-          method = EditMethod.ONCE
-          // Разовый по умолчанию удаляется после срабатывания (для нового способа — вкл).
-          // honorHolidays сбрасываем: праздничная переклассификация к разовому неприменима.
-          draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY, deleteAfterFiring = true, honorHolidays = false)
+    EqualChips(
+      items = listOf(EditMethod.ONCE, EditMethod.WEEKLY, EditMethod.CALENDAR, EditMethod.SHIFT),
+      columns = 1,
+      label = {
+        when (it) {
+          EditMethod.ONCE -> "Разово"
+          EditMethod.WEEKLY -> "По дням недели"
+          EditMethod.CALENDAR -> "По выходным и праздникам"
+          EditMethod.SHIFT -> "По графику"
         }
-      }
-      ModeChip("По дням недели", method == EditMethod.WEEKLY) {
-        if (method != EditMethod.WEEKLY) {
-          method = EditMethod.WEEKLY
-          draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY)
-        }
-      }
-      ModeChip("По выходным и праздникам", method == EditMethod.CALENDAR) {
-        if (method != EditMethod.CALENDAR) {
-          method = EditMethod.CALENDAR
-          // Инвариант D-1: в этом режиме календарь не выключается. Инвариант D-5: полярность
-          // не трогаем — legacy-колонка, расчёт читает её только у режима calendar.
-          draft = draft.copy(
-            mode = AlarmEntity.MODE_CALENDAR,
-            honorHolidays = true,
-            deleteAfterFiring = false
-          )
-        }
-      }
-      ModeChip("По графику", method == EditMethod.SHIFT) {
-        if (method != EditMethod.SHIFT) {
-          method = EditMethod.SHIFT
-          draft = HolidayModePolicy.normalize(
-            draft.copy(
-              mode = AlarmEntity.MODE_SHIFT,
-              anchorEpochDay =
-                if (draft.anchorEpochDay == 0L) {
-                  LocalDate.now().toEpochDay()
-                } else {
-                  draft.anchorEpochDay
-                }
+      },
+      selected = { method == it },
+      onSelect = { m ->
+        if (method == m) return@EqualChips
+        when (m) {
+          EditMethod.ONCE -> {
+            method = EditMethod.ONCE
+            // Разовый по умолчанию удаляется после срабатывания (для нового способа — вкл).
+            // honorHolidays сбрасываем: праздничная переклассификация к разовому неприменима.
+            draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY, deleteAfterFiring = true, honorHolidays = false)
+          }
+          EditMethod.WEEKLY -> {
+            method = EditMethod.WEEKLY
+            draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY)
+          }
+          EditMethod.CALENDAR -> {
+            method = EditMethod.CALENDAR
+            // Инвариант D-1: в этом режиме календарь не выключается. Инвариант D-5: полярность
+            // не трогаем — legacy-колонка, расчёт читает её только у режима calendar.
+            draft = draft.copy(
+              mode = AlarmEntity.MODE_CALENDAR,
+              honorHolidays = true,
+              deleteAfterFiring = false
             )
-          )
+          }
+          EditMethod.SHIFT -> {
+            method = EditMethod.SHIFT
+            draft = HolidayModePolicy.normalize(
+              draft.copy(
+                mode = AlarmEntity.MODE_SHIFT,
+                anchorEpochDay =
+                  if (draft.anchorEpochDay == 0L) {
+                    LocalDate.now().toEpochDay()
+                  } else {
+                    draft.anchorEpochDay
+                  }
+              )
+            )
+          }
         }
-      }
-    }
+      },
+    )
     Spacer(Modifier.height(12.dp))
     when (method) {
       EditMethod.ONCE -> OnceContent(draft) { draft = it }
@@ -536,11 +544,27 @@ private fun WeeklyDaysContent(
     DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
   )
   val weekends = AlarmTimes.maskOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
-  FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    OutlinedButton(onClick = { onChange(draft.copy(daysMask = allDays)) }) { Text("Все") }
-    OutlinedButton(onClick = { onChange(draft.copy(daysMask = weekdays)) }) { Text("Будни") }
-    OutlinedButton(onClick = { onChange(draft.copy(daysMask = weekends)) }) { Text("Выходные") }
-    OutlinedButton(onClick = { onChange(draft.copy(daysMask = 0)) }) { Text("Очистить") }
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      OutlinedButton(
+        onClick = { onChange(draft.copy(daysMask = allDays)) },
+        modifier = Modifier.weight(1f)
+      ) { Text("Все") }
+      OutlinedButton(
+        onClick = { onChange(draft.copy(daysMask = weekdays)) },
+        modifier = Modifier.weight(1f)
+      ) { Text("Будни") }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      OutlinedButton(
+        onClick = { onChange(draft.copy(daysMask = weekends)) },
+        modifier = Modifier.weight(1f)
+      ) { Text("Выходные") }
+      OutlinedButton(
+        onClick = { onChange(draft.copy(daysMask = 0)) },
+        modifier = Modifier.weight(1f)
+      ) { Text("Очистить") }
+    }
   }
   Spacer(Modifier.height(8.dp))
   FlowRow(
@@ -803,14 +827,16 @@ private fun CycleAnchorQuestion(draft: AlarmEntity, onChange: (AlarmEntity) -> U
   Text("Сегодня, ${today.questionFormat()} — какая смена?", style = MaterialTheme.typography.bodyMedium)
   Spacer(Modifier.height(6.dp))
   val cats = remember(days) { days.map { it.slot.category }.distinct() }
-  FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    cats.forEach { cat ->
-      ModeChip(labelOfCategory(cat), chosenCat == cat) {
-        val candidates = days.filter { it.slot.category == cat }
-        if (candidates.size == 1) applyIndex(candidates.first().index) else chosenCat = cat
-      }
-    }
-  }
+  EqualChips(
+    items = cats,
+    columns = 2,
+    label = { labelOfCategory(it) },
+    selected = { chosenCat == it },
+    onSelect = { cat ->
+      val candidates = days.filter { it.slot.category == cat }
+      if (candidates.size == 1) applyIndex(candidates.first().index) else chosenCat = cat
+    },
+  )
 
   // Дизамбигуация: тип встречается несколько раз → показать дни, выбрать конкретный.
   chosenCat?.let { cat ->
@@ -916,10 +942,13 @@ private fun WeeklyCalendarSection(
     Text(if (show) "Скрыть календарь" else "Календарь")
   }
   if (show) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      ModeChip("Один день", !rangeMode) { rangeMode = false; rangeStart = null }
-      ModeChip("Диапазон", rangeMode) { rangeMode = true; rangeStart = null }
-    }
+    EqualChips(
+      items = listOf(false, true),
+      columns = 2,
+      label = { if (it) "Диапазон" else "Один день" },
+      selected = { rangeMode == it },
+      onSelect = { v -> rangeMode = v; rangeStart = null },
+    )
     Spacer(Modifier.height(4.dp))
     Text(
       when {
@@ -1084,10 +1113,13 @@ private fun ShiftCalendarAndOverrides(
   }
   if (showCalendar) {
     if (schedule != null) {
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ModeChip("Один день", !rangeMode) { rangeMode = false; rangeStart = null }
-        ModeChip("Диапазон", rangeMode) { rangeMode = true; rangeStart = null }
-      }
+      EqualChips(
+        items = listOf(false, true),
+        columns = 2,
+        label = { if (it) "Диапазон" else "Один день" },
+        selected = { rangeMode == it },
+        onSelect = { v -> rangeMode = v; rangeStart = null },
+      )
       Spacer(Modifier.height(4.dp))
       Text(
         when {
@@ -1298,11 +1330,17 @@ private fun DayOverrideDialog(
 }
 
 @Composable
-internal fun ModeChip(text: String, selected: Boolean, onClick: () -> Unit) {
+internal fun ModeChip(
+  text: String,
+  selected: Boolean,
+  modifier: Modifier = Modifier,
+  onClick: () -> Unit,
+) {
   FilterChip(
     selected = selected,
     onClick = onClick,
-    label = { Text(text, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
+    label = { Text(text, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
+    modifier = modifier
   )
 }
 
