@@ -101,6 +101,7 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
       FilterChip(
         selected = importantOnly,
         onClick = { importantOnly = !importantOnly },
+        shape = PillShape,
         label = { Text("Только важные") }
       )
       Spacer(Modifier.height(4.dp))

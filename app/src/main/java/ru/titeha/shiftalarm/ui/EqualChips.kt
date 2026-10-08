@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -12,6 +13,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+
+/*
+ * «Пилюля» — единая форма чипов во всём приложении (владелец, 2026-10-09: кнопки и чипы
+ * разного вида). Кнопки M3 по умолчанию пилюлеобразные, поэтому чипы приводим к той же
+ * форме здесь, а не правим десятки кнопочных вызовов.
+ */
+internal val PillShape = RoundedCornerShape(percent = 50)
 
 /**
  * Ряды чипов ОДИНАКОВОЙ ширины: кнопки логического раздела одного размера и не «подгоняются»
@@ -33,6 +41,7 @@ internal fun <T> EqualChips(
           FilterChip(
             selected = selected(item),
             onClick = { onSelect(item) },
+            shape = PillShape,
             label = {
               Text(
                 label(item),

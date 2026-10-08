@@ -1329,6 +1329,7 @@ internal fun ModeChip(
   FilterChip(
     selected = selected,
     onClick = onClick,
+    shape = PillShape,
     label = { Text(text, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
     modifier = modifier
   )

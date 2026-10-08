@@ -143,11 +143,13 @@ fun StudyWizard(
               FilterChip(
                 selected = parity == Parity.ODD,
                 onClick = { parity = Parity.ODD },
+                shape = PillShape,
                 label = { Text(naming.odd) }
               )
               FilterChip(
                 selected = parity == Parity.EVEN,
                 onClick = { parity = Parity.EVEN },
+                shape = PillShape,
                 label = { Text(naming.even) }
               )
             }
