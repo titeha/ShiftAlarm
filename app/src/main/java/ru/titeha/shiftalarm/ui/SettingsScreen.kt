@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import android.hardware.Sensor
 import android.hardware.SensorManager
@@ -92,23 +93,13 @@ fun SettingsScreen(
 
       Text("Тема", style = MaterialTheme.typography.titleMedium)
       Spacer(Modifier.height(8.dp))
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(
-          selected = themeMode == ThemeMode.SYSTEM,
-          onClick = { onThemeMode(ThemeMode.SYSTEM) },
-          label = { Text("Система") }
-        )
-        FilterChip(
-          selected = themeMode == ThemeMode.LIGHT,
-          onClick = { onThemeMode(ThemeMode.LIGHT) },
-          label = { Text("Светлая") }
-        )
-        FilterChip(
-          selected = themeMode == ThemeMode.DARK,
-          onClick = { onThemeMode(ThemeMode.DARK) },
-          label = { Text("Тёмная") }
-        )
-      }
+      EqualChips(
+        items = listOf(ThemeMode.SYSTEM, ThemeMode.LIGHT, ThemeMode.DARK),
+        columns = 3,
+        label = { when (it) { ThemeMode.SYSTEM -> "Система"; ThemeMode.LIGHT -> "Светлая"; ThemeMode.DARK -> "Тёмная" } },
+        selected = { themeMode == it },
+        onSelect = onThemeMode,
+      )
 
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         Spacer(Modifier.height(16.dp))
@@ -132,17 +123,15 @@ fun SettingsScreen(
         style = MaterialTheme.typography.bodySmall
       )
       Spacer(Modifier.height(8.dp))
-      androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(
+      EqualChips(
+        items = listOf(
           1.0f to "Обычный", 1.15f to "Крупнее", 1.3f to "Крупный", 1.5f to "Очень крупный"
-        ).forEach { (value, title) ->
-          FilterChip(
-            selected = kotlin.math.abs(fontScale - value) < 0.01f,
-            onClick = { onFontScale(value) },
-            label = { Text(title) }
-          )
-        }
-      }
+        ),
+        columns = 2,
+        label = { it.second },
+        selected = { kotlin.math.abs(fontScale - it.first) < 0.01f },
+        onSelect = { onFontScale(it.first) },
+      )
 
       Spacer(Modifier.height(24.dp))
       Text("Надёжность", style = MaterialTheme.typography.titleMedium)
@@ -166,33 +155,29 @@ fun SettingsScreen(
       Spacer(Modifier.height(8.dp))
       Text("Интервал снуза, мин", style = MaterialTheme.typography.bodyMedium)
       Spacer(Modifier.height(4.dp))
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(5, 10, 15).forEach { minutes ->
-          FilterChip(
-            selected = ringConfig.snoozeIntervalMinutes == minutes,
-            onClick = {
-              if (ringConfig.snoozeIntervalMinutes != minutes) {
-                onRingConfig(ringConfig.copy(snoozeIntervalMinutes = minutes))
-              }
-            },
-            label = { Text(minutes.toString()) }
-          )
-        }
-      }
+      EqualChips(
+        items = listOf(5, 10, 15),
+        columns = 3,
+        label = { it.toString() },
+        selected = { ringConfig.snoozeIntervalMinutes == it },
+        onSelect = {
+          if (ringConfig.snoozeIntervalMinutes != it) {
+            onRingConfig(ringConfig.copy(snoozeIntervalMinutes = it))
+          }
+        },
+      )
       Spacer(Modifier.height(8.dp))
       Text("Сколько раз откладывать", style = MaterialTheme.typography.bodyMedium)
       Spacer(Modifier.height(4.dp))
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(0, 1, 2, 3, 5).forEach { limit ->
-          FilterChip(
-            selected = ringConfig.maxSnoozes == limit,
-            onClick = {
-              if (ringConfig.maxSnoozes != limit) onRingConfig(ringConfig.copy(maxSnoozes = limit))
-            },
-            label = { Text(limit.toString()) }
-          )
-        }
-      }
+      EqualChips(
+        items = listOf(0, 1, 2, 3, 5),
+        columns = 5,
+        label = { it.toString() },
+        selected = { ringConfig.maxSnoozes == it },
+        onSelect = {
+          if (ringConfig.maxSnoozes != it) onRingConfig(ringConfig.copy(maxSnoozes = it))
+        },
+      )
       Spacer(Modifier.height(4.dp))
       Text(
         if (ringConfig.maxSnoozes == 0) "0 — снуз выключен, кнопки «Отложить» не будет."
@@ -219,19 +204,17 @@ fun SettingsScreen(
         Spacer(Modifier.height(8.dp))
         Text("Через сколько минут авто-перезвон", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(4.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          listOf(5, 10, 15).forEach { minutes ->
-            FilterChip(
-              selected = ringConfig.ringDurationMinutes == minutes,
-              onClick = {
-                if (ringConfig.ringDurationMinutes != minutes) {
-                  onRingConfig(ringConfig.copy(ringDurationMinutes = minutes))
-                }
-              },
-              label = { Text(minutes.toString()) }
-            )
-          }
-        }
+        EqualChips(
+          items = listOf(5, 10, 15),
+          columns = 3,
+          label = { it.toString() },
+          selected = { ringConfig.ringDurationMinutes == it },
+          onSelect = {
+            if (ringConfig.ringDurationMinutes != it) {
+              onRingConfig(ringConfig.copy(ringDurationMinutes = it))
+            }
+          },
+        )
       }
 
       if (FeatureFlags.HARD_MODE) {
@@ -246,32 +229,25 @@ fun SettingsScreen(
           style = MaterialTheme.typography.bodySmall
         )
         Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          FilterChip(
-            selected = dismissMode == DismissMode.NORMAL,
-            onClick = { onDismissMode(DismissMode.NORMAL) },
-            label = { Text("Обычное") }
-          )
-          FilterChip(
-            selected = dismissMode == DismissMode.MATH,
-            onClick = { onDismissMode(DismissMode.MATH) },
-            label = { Text("Пример") }
-          )
-          if (hasStepDetector) {
-            FilterChip(
-              selected = dismissMode == DismissMode.STEPS,
-              onClick = { onDismissMode(DismissMode.STEPS) },
-              label = { Text("Шаги") }
-            )
-          }
-          if (hasAccelerometer) {
-            FilterChip(
-              selected = dismissMode == DismissMode.SHAKE,
-              onClick = { onDismissMode(DismissMode.SHAKE) },
-              label = { Text("Тряска") }
-            )
-          }
-        }
+        EqualChips(
+          items = buildList {
+            add(DismissMode.NORMAL)
+            add(DismissMode.MATH)
+            if (hasStepDetector) add(DismissMode.STEPS)
+            if (hasAccelerometer) add(DismissMode.SHAKE)
+          },
+          columns = 2,
+          label = {
+            when (it) {
+              DismissMode.NORMAL -> "Обычное"
+              DismissMode.MATH -> "Пример"
+              DismissMode.STEPS -> "Шаги"
+              DismissMode.SHAKE -> "Тряска"
+            }
+          },
+          selected = { dismissMode == it },
+          onSelect = onDismissMode,
+        )
       }
 
       Spacer(Modifier.height(24.dp))
@@ -281,20 +257,18 @@ fun SettingsScreen(
         style = MaterialTheme.typography.bodySmall
       )
       Spacer(Modifier.height(8.dp))
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(
+      EqualChips(
+        items = listOf(
           WeekStart.AUTO to "Авто",
           WeekStart.MONDAY to "Пн",
           WeekStart.SUNDAY to "Вс",
           WeekStart.SATURDAY to "Сб",
-        ).forEach { (value, title) ->
-          FilterChip(
-            selected = weekStart == value,
-            onClick = { if (weekStart != value) onWeekStart(value) },
-            label = { Text(title) }
-          )
-        }
-      }
+        ),
+        columns = 4,
+        label = { it.second },
+        selected = { weekStart == it.first },
+        onSelect = { onWeekStart(it.first) },
+      )
 
       Spacer(Modifier.height(24.dp))
       Text("Учебные недели (чёт/нечёт)", style = MaterialTheme.typography.titleMedium)
@@ -303,17 +277,13 @@ fun SettingsScreen(
         style = MaterialTheme.typography.bodySmall
       )
       Spacer(Modifier.height(8.dp))
-      androidx.compose.foundation.layout.FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-      ) {
-        WeekPairNaming.entries.forEach { naming ->
-          FilterChip(
-            selected = weekPairNaming == naming,
-            onClick = { if (weekPairNaming != naming) onWeekPairNaming(naming) },
-            label = { Text("${naming.odd}/${naming.even}") }
-          )
-        }
-      }
+      EqualChips(
+        items = WeekPairNaming.entries.toList(),
+        columns = 1,
+        label = { "${it.odd}/${it.even}" },
+        selected = { weekPairNaming == it },
+        onSelect = onWeekPairNaming,
+      )
 
       Spacer(Modifier.height(24.dp))
       Text("Рабочая неделя", style = MaterialTheme.typography.titleMedium)
@@ -323,37 +293,29 @@ fun SettingsScreen(
         style = MaterialTheme.typography.bodySmall
       )
       Spacer(Modifier.height(8.dp))
-      androidx.compose.foundation.layout.FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-      ) {
-        WorkWeekPreset.entries.forEach { preset ->
-          FilterChip(
-            selected = workWeekPreset == preset,
-            onClick = { if (workWeekPreset != preset) onWorkWeek(preset, workWeekCustomMask) },
-            label = { Text(preset.title) }
-          )
-        }
-      }
+      EqualChips(
+        items = WorkWeekPreset.entries.toList(),
+        columns = 2,
+        label = { it.title },
+        selected = { workWeekPreset == it },
+        onSelect = { onWorkWeek(it, workWeekCustomMask) },
+      )
       if (workWeekPreset == WorkWeekPreset.CUSTOM) {
         Spacer(Modifier.height(8.dp))
         Text("Дни, когда вы работаете:", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(4.dp))
-        androidx.compose.foundation.layout.FlowRow(
-          horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          DayOfWeek.entries.forEachIndexed { index, day ->
+        EqualChips(
+          items = DayOfWeek.entries.toList(),
+          columns = 4,
+          label = { WORK_WEEK_DOW[it.value - 1] },
+          selected = { workWeekCustomMask and (1 shl (it.value - 1)) != 0 },
+          onSelect = { day ->
             val bit = 1 shl (day.value - 1)
             val on = workWeekCustomMask and bit != 0
-            FilterChip(
-              selected = on,
-              onClick = {
-                val mask = if (on) workWeekCustomMask and bit.inv() else workWeekCustomMask or bit
-                onWorkWeek(WorkWeekPreset.CUSTOM, mask)
-              },
-              label = { Text(WORK_WEEK_DOW[index]) }
-            )
-          }
-        }
+            val mask = if (on) workWeekCustomMask and bit.inv() else workWeekCustomMask or bit
+            onWorkWeek(WorkWeekPreset.CUSTOM, mask)
+          },
+        )
         if (workWeekCustomMask == 0) {
           Spacer(Modifier.height(4.dp))
           Text(
@@ -426,6 +388,44 @@ private fun sensorPresent(context: android.content.Context, type: Int): Boolean 
 
 /** Короткие имена дней для чипов «Рабочая неделя» (порядок — Пн…Вс, как в [DayOfWeek.entries]). */
 private val WORK_WEEK_DOW = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+
+/**
+ * Ряды чипов ОДИНАКОВОЙ ширины: кнопки логического раздела одного размера и не «подгоняются»
+ * под содержание (требование владельца, 2026-10-08). [columns] — чипов в ряду; неполный
+ * последний ряд дополняется невидимыми ячейками, чтобы ширины не плясали.
+ */
+@Composable
+private fun <T> EqualChips(
+  items: List<T>,
+  columns: Int,
+  label: (T) -> String,
+  selected: (T) -> Boolean,
+  onSelect: (T) -> Unit,
+) {
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    items.chunked(columns).forEach { rowItems ->
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        rowItems.forEach { item ->
+          FilterChip(
+            selected = selected(item),
+            onClick = { onSelect(item) },
+            label = {
+              Text(
+                label(item),
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+              )
+            },
+            modifier = Modifier.weight(1f)
+          )
+        }
+        repeat(columns - rowItems.size) {
+          Spacer(Modifier.weight(1f))
+        }
+      }
+    }
+  }
+}
 
 private val STAMP_FMT: DateTimeFormatter =
   DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
