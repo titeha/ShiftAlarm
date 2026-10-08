@@ -157,135 +157,138 @@ fun AlarmEditorScreen(
     )
 
     // ── Основное ──
-    SectionHeader("Основное")
-    OutlinedTextField(
-      value = draft.label,
-      onValueChange = { draft = draft.copy(label = it) },
-      label = { Text("Название (необязательно)") },
-      singleLine = true,
-      keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
-      keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() } ),
-      modifier = Modifier.fillMaxWidth()
-    )
-    Spacer(Modifier.height(8.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-      Switch(checked = draft.enabled, onCheckedChange = { draft = draft.copy(enabled = it) })
-      Spacer(Modifier.width(8.dp))
-      Text("Включён", style = MaterialTheme.typography.bodyMedium)
-    }
-
-    // ── Когда звонить ──
-    SectionHeader("Когда звонить")
-    EqualChips(
-      items = listOf(EditMethod.ONCE, EditMethod.WEEKLY, EditMethod.CALENDAR, EditMethod.SHIFT),
-      columns = 1,
-      label = {
-        when (it) {
-          EditMethod.ONCE -> "Разово"
-          EditMethod.WEEKLY -> "По дням недели"
-          EditMethod.CALENDAR -> "По выходным и праздникам"
-          EditMethod.SHIFT -> "По графику"
-        }
-      },
-      selected = { method == it },
-      onSelect = { m ->
-        if (method == m) return@EqualChips
-        when (m) {
-          EditMethod.ONCE -> {
-            method = EditMethod.ONCE
-            // Разовый по умолчанию удаляется после срабатывания (для нового способа — вкл).
-            // honorHolidays сбрасываем: праздничная переклассификация к разовому неприменима.
-            draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY, deleteAfterFiring = true, honorHolidays = false)
-          }
-          EditMethod.WEEKLY -> {
-            method = EditMethod.WEEKLY
-            draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY)
-          }
-          EditMethod.CALENDAR -> {
-            method = EditMethod.CALENDAR
-            // Инвариант D-1: в этом режиме календарь не выключается. Инвариант D-5: полярность
-            // не трогаем — legacy-колонка, расчёт читает её только у режима calendar.
-            draft = draft.copy(
-              mode = AlarmEntity.MODE_CALENDAR,
-              honorHolidays = true,
-              deleteAfterFiring = false
-            )
-          }
-          EditMethod.SHIFT -> {
-            method = EditMethod.SHIFT
-            draft = HolidayModePolicy.normalize(
-              draft.copy(
-                mode = AlarmEntity.MODE_SHIFT,
-                anchorEpochDay =
-                  if (draft.anchorEpochDay == 0L) {
-                    LocalDate.now().toEpochDay()
-                  } else {
-                    draft.anchorEpochDay
-                  }
-              )
-            )
-          }
-        }
-      },
-    )
-    Spacer(Modifier.height(12.dp))
-    when (method) {
-      EditMethod.ONCE -> OnceContent(draft) { draft = it }
-      EditMethod.WEEKLY -> WeeklyDaysContent(draft, { draft = it }, rememberEditorWeekStart())
-      EditMethod.CALENDAR -> CalendarContent(draft) { draft = it }
-      EditMethod.SHIFT -> {
-        ShiftCycleEditor(draft = draft, onChange = { draft = it })
-        Spacer(Modifier.height(12.dp))
-        CycleAnchorQuestion(draft) { draft = it }
+    SectionCard("Основное") {
+      OutlinedTextField(
+        value = draft.label,
+        onValueChange = { draft = draft.copy(label = it) },
+        label = { Text("Название (необязательно)") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() } ),
+        modifier = Modifier.fillMaxWidth()
+      )
+      Spacer(Modifier.height(8.dp))
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = draft.enabled, onCheckedChange = { draft = draft.copy(enabled = it) })
+        Spacer(Modifier.width(8.dp))
+        Text("Включён", style = MaterialTheme.typography.bodyMedium)
       }
     }
-
+    // ── Когда звонить ──
+    Spacer(Modifier.height(16.dp))
+    SectionCard("Когда звонить") {
+      EqualChips(
+        items = listOf(EditMethod.ONCE, EditMethod.WEEKLY, EditMethod.CALENDAR, EditMethod.SHIFT),
+        columns = 1,
+        label = {
+          when (it) {
+            EditMethod.ONCE -> "Разово"
+            EditMethod.WEEKLY -> "По дням недели"
+            EditMethod.CALENDAR -> "По выходным и праздникам"
+            EditMethod.SHIFT -> "По графику"
+          }
+        },
+        selected = { method == it },
+        onSelect = { m ->
+          if (method == m) return@EqualChips
+          when (m) {
+            EditMethod.ONCE -> {
+              method = EditMethod.ONCE
+              // Разовый по умолчанию удаляется после срабатывания (для нового способа — вкл).
+              // honorHolidays сбрасываем: праздничная переклассификация к разовому неприменима.
+              draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY, deleteAfterFiring = true, honorHolidays = false)
+            }
+            EditMethod.WEEKLY -> {
+              method = EditMethod.WEEKLY
+              draft = draft.copy(mode = AlarmEntity.MODE_WEEKLY)
+            }
+            EditMethod.CALENDAR -> {
+              method = EditMethod.CALENDAR
+              // Инвариант D-1: в этом режиме календарь не выключается. Инвариант D-5: полярность
+              // не трогаем — legacy-колонка, расчёт читает её только у режима calendar.
+              draft = draft.copy(
+                mode = AlarmEntity.MODE_CALENDAR,
+                honorHolidays = true,
+                deleteAfterFiring = false
+              )
+            }
+            EditMethod.SHIFT -> {
+              method = EditMethod.SHIFT
+              draft = HolidayModePolicy.normalize(
+                draft.copy(
+                  mode = AlarmEntity.MODE_SHIFT,
+                  anchorEpochDay =
+                    if (draft.anchorEpochDay == 0L) {
+                      LocalDate.now().toEpochDay()
+                    } else {
+                      draft.anchorEpochDay
+                    }
+                )
+              )
+            }
+          }
+        },
+      )
+      Spacer(Modifier.height(12.dp))
+      when (method) {
+        EditMethod.ONCE -> OnceContent(draft) { draft = it }
+        EditMethod.WEEKLY -> WeeklyDaysContent(draft, { draft = it }, rememberEditorWeekStart())
+        EditMethod.CALENDAR -> CalendarContent(draft) { draft = it }
+        EditMethod.SHIFT -> {
+          ShiftCycleEditor(draft = draft, onChange = { draft = it })
+          Spacer(Modifier.height(12.dp))
+          CycleAnchorQuestion(draft) { draft = it }
+        }
+      }
+    }
     // ── Когда не звонить ──
     // Разовому вся секция не нужна: он срабатывает один раз в конкретное время — ни праздники
     // (переклассификация дней), ни периоды-глушилки, ни заморозка цикла к нему не применимы.
     if (method != EditMethod.ONCE) {
-      SectionHeader("Когда не звонить")
-      // «По выходным и праздникам»: тумблер «Учитывать праздники» не показываем — календарь в этом
-      // режиме не выключается (инвариант D-1).
-      if (method != EditMethod.CALENDAR) {
-        HolidaySection(draft = draft, onChange = { draft = it })
-        Spacer(Modifier.height(16.dp))
+      Spacer(Modifier.height(16.dp))
+      SectionCard("Когда не звонить") {
+        // «По выходным и праздникам»: тумблер «Учитывать праздники» не показываем — календарь в этом
+        // режиме не выключается (инвариант D-1).
+        if (method != EditMethod.CALENDAR) {
+          HolidaySection(draft = draft, onChange = { draft = it })
+          Spacer(Modifier.height(16.dp))
+        }
+        // Периоды-глушилки (отпуск/больничный/за свой счёт/сессия) — и сменам, и «по дням недели»
+        // (офисные 5/2 тоже уходят в отпуск), и режиму календаря (инвариант D-4).
+        VacationSection(
+          alarmId = draft.id,
+          periods = periods,
+          periodKinds = periodKindsFor(draft),
+          // Через replacePeriod: пересекающиеся части старых периодов вырезаются, поэтому перекрытий
+          // не возникает — иначе «заморозка цикла» считала бы дни пересечения дважды (F-2).
+          onAdd = { periods = CalendarRangeEdits.replacePeriod(periods, it) },
+          onRemove = { p -> periods = periods - p }
+        )
+        if (method == EditMethod.SHIFT) {
+          Spacer(Modifier.height(16.dp))
+          FreezeCycleToggle(draft) { draft = it }
+        }
       }
-      // Периоды-глушилки (отпуск/больничный/за свой счёт/сессия) — и сменам, и «по дням недели»
-      // (офисные 5/2 тоже уходят в отпуск), и режиму календаря (инвариант D-4).
-      VacationSection(
-        alarmId = draft.id,
-        periods = periods,
-        periodKinds = periodKindsFor(draft),
-        // Через replacePeriod: пересекающиеся части старых периодов вырезаются, поэтому перекрытий
-        // не возникает — иначе «заморозка цикла» считала бы дни пересечения дважды (F-2).
-        onAdd = { periods = CalendarRangeEdits.replacePeriod(periods, it) },
-        onRemove = { p -> periods = periods - p }
-      )
-      if (method == EditMethod.SHIFT) {
-        Spacer(Modifier.height(16.dp))
-        FreezeCycleToggle(draft) { draft = it }
       }
-    }
-
     // ── Проверка ──
-    SectionHeader("Проверка")
-    SchedulePreview(alarm = currentAlarm, periods = periods, overrides = overrides, now = currentMinute)
-    if (method == EditMethod.SHIFT) {
-      Spacer(Modifier.height(8.dp))
-      ShiftCalendarAndOverrides(
-        draft = currentAlarm,
-        periods = periods,
-        overrides = overrides,
-        onPeriodsChange = { periods = it },
-        onOverridesChange = { overrides = it }
-      )
-    } else if (method == EditMethod.WEEKLY || method == EditMethod.CALENDAR) {
-      // Календарь обоих способов рисует точки через AlarmTimes.firesOn — режим различает их сам.
-      Spacer(Modifier.height(8.dp))
-      WeeklyCalendarSection(currentAlarm, periods, onPeriodsChange = { periods = it })
+    Spacer(Modifier.height(16.dp))
+    SectionCard("Проверка") {
+      SchedulePreview(alarm = currentAlarm, periods = periods, overrides = overrides, now = currentMinute)
+      if (method == EditMethod.SHIFT) {
+        Spacer(Modifier.height(8.dp))
+        ShiftCalendarAndOverrides(
+          draft = currentAlarm,
+          periods = periods,
+          overrides = overrides,
+          onPeriodsChange = { periods = it },
+          onOverridesChange = { overrides = it }
+        )
+      } else if (method == EditMethod.WEEKLY || method == EditMethod.CALENDAR) {
+        // Календарь обоих способов рисует точки через AlarmTimes.firesOn — режим различает их сам.
+        Spacer(Modifier.height(8.dp))
+        WeeklyCalendarSection(currentAlarm, periods, onPeriodsChange = { periods = it })
+      }
     }
-
     if (!validation.canSave) {
       Spacer(Modifier.height(16.dp))
       EditorValidationCard(validation)
@@ -430,19 +433,6 @@ private fun EditorSaveErrorCard(
       }
     }
   }
-}
-
-/** Заголовок секции формы (тонкая линия-разделитель + акцентный подзаголовок). */
-@Composable
-private fun SectionHeader(text: String) {
-  Spacer(Modifier.height(20.dp))
-  Text(
-    text,
-    style = MaterialTheme.typography.titleSmall,
-    color = MaterialTheme.colorScheme.primary,
-    fontWeight = FontWeight.Bold
-  )
-  HorizontalDivider(Modifier.padding(top = 4.dp, bottom = 8.dp))
 }
 
 /** Крупная кнопка-время: открывает компактный пикер по тапу (общая для «Разово» и «По дням недели»). */
