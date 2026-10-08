@@ -66,6 +66,8 @@ import ru.titeha.shiftalarm.schedule.PeriodKind
 import ru.titeha.shiftalarm.schedule.ProductionCalendars
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 import ru.titeha.shiftalarm.schedule.ShiftCategory
+import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
+import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.schedule.ShiftCycle
 import ru.titeha.shiftalarm.schedule.ShiftEngine
 import ru.titeha.shiftalarm.schedule.ShiftSchedule
@@ -112,6 +114,8 @@ fun AlarmEditorScreen(
   var overrides by session.overridesState
   var method by session.methodState
   var showDiscardDialog by session.discardDialogState
+  // Отдельный экран редактора графика смен (UI05): цикл-редактор не смешивается с общим.
+  var showShiftEditor by remember { mutableStateOf(false) }
 
   val isNew = session.isNew
   val currentAlarm = session.currentAlarm()
@@ -139,6 +143,19 @@ fun AlarmEditorScreen(
       EditMethod.CALENDAR -> AlarmEditorValidator.validateCalendar(draft)
       EditMethod.SHIFT -> AlarmEditorValidator.validateShift(draft)
     }
+  }
+
+  if (showShiftEditor) {
+    ShiftEditorScreen(
+      draft = draft,
+      onChange = { draft = it },
+      periods = periods,
+      onPeriodsChange = { periods = it },
+      overrides = overrides,
+      onOverridesChange = { overrides = it },
+      onBack = { showShiftEditor = false },
+    )
+    return
   }
 
   Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -235,9 +252,20 @@ fun AlarmEditorScreen(
         EditMethod.WEEKLY -> WeeklyDaysContent(draft, { draft = it }, rememberEditorWeekStart())
         EditMethod.CALENDAR -> CalendarContent(draft) { draft = it }
         EditMethod.SHIFT -> {
-          ShiftCycleEditor(draft = draft, onChange = { draft = it })
-          Spacer(Modifier.height(12.dp))
-          CycleAnchorQuestion(draft) { draft = it }
+          // Точка входа в отдельный экран редактора графика (UI05): в общем редакторе
+          // остаётся только сводка «какой график выбран».
+          val spec = draft.cycleSpec?.let { ShiftCycleCodec.decodeOrNull(it) }
+          val graphTitle = if (spec != null) {
+            "свой цикл (${spec.size} дн.)"
+          } else {
+            ShiftPresets.byId(draft.presetId)?.title ?: draft.presetId
+          }
+          Text("График: $graphTitle", style = MaterialTheme.typography.bodyMedium)
+          Spacer(Modifier.height(8.dp))
+          Button(
+            onClick = { showShiftEditor = true },
+            modifier = Modifier.fillMaxWidth()
+          ) { Text("Настроить график") }
         }
       }
     }
@@ -274,16 +302,7 @@ fun AlarmEditorScreen(
     Spacer(Modifier.height(16.dp))
     SectionCard("Проверка") {
       SchedulePreview(alarm = currentAlarm, periods = periods, overrides = overrides, now = currentMinute)
-      if (method == EditMethod.SHIFT) {
-        Spacer(Modifier.height(8.dp))
-        ShiftCalendarAndOverrides(
-          draft = currentAlarm,
-          periods = periods,
-          overrides = overrides,
-          onPeriodsChange = { periods = it },
-          onOverridesChange = { overrides = it }
-        )
-      } else if (method == EditMethod.WEEKLY || method == EditMethod.CALENDAR) {
+      if (method == EditMethod.WEEKLY || method == EditMethod.CALENDAR) {
         // Календарь обоих способов рисует точки через AlarmTimes.firesOn — режим различает их сам.
         Spacer(Modifier.height(8.dp))
         WeeklyCalendarSection(currentAlarm, periods, onPeriodsChange = { periods = it })
@@ -1319,20 +1338,58 @@ private fun DayOverrideDialog(
   )
 }
 
+/**
+ * Отдельный экран редактора графика смен (UI05, требование владельца 2026-10-09): цикл-редактор,
+ * привязка цикла и календарь смен живут здесь, а не в общем редакторе будильника. Кнопка
+ * «Назад» зафиксирована вверху и не уходит при прокрутке; аппаратный Back тоже закрывает
+ * этот экран первым.
+ */
 @Composable
-internal fun ModeChip(
-  text: String,
-  selected: Boolean,
-  modifier: Modifier = Modifier,
-  onClick: () -> Unit,
+private fun ShiftEditorScreen(
+  draft: AlarmEntity,
+  onChange: (AlarmEntity) -> Unit,
+  periods: List<AlarmPeriod>,
+  onPeriodsChange: (List<AlarmPeriod>) -> Unit,
+  overrides: List<AlarmOverride>,
+  onOverridesChange: (List<AlarmOverride>) -> Unit,
+  onBack: () -> Unit,
 ) {
-  FilterChip(
-    selected = selected,
-    onClick = onClick,
-    shape = PillShape,
-    label = { Text(text, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
-    modifier = modifier
-  )
+  BackHandler { onBack() }
+  Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Column(Modifier.fillMaxSize()) {
+      Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+      ) {
+        Text("График смен", style = MaterialTheme.typography.headlineSmall)
+        TextButton(onClick = onBack) { Text("Назад") }
+      }
+      Column(
+        modifier = Modifier
+          .fillMaxSize()
+          .verticalScroll(rememberScrollState())
+          .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+      ) {
+        SectionCard("График") {
+          ShiftCycleEditor(draft = draft, onChange = onChange)
+        }
+        SectionCard("Привязка цикла к дате") {
+          CycleAnchorQuestion(draft) { onChange(it) }
+        }
+        SectionCard("Календарь смен и правки") {
+          ShiftCalendarAndOverrides(
+            draft = draft,
+            periods = periods,
+            overrides = overrides,
+            onPeriodsChange = onPeriodsChange,
+            onOverridesChange = onOverridesChange
+          )
+        }
+      }
+    }
+  }
 }
 
 /**

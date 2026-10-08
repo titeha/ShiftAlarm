@@ -31,6 +31,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -88,21 +89,15 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
   val pairNaming = remember { SettingsStore(context).weekPairNaming() }
   var showStudyWizard by remember { mutableStateOf(false) }
 
-  Text("График:", style = MaterialTheme.typography.titleMedium)
-  Spacer(Modifier.height(8.dp))
-
-  // Пресеты как точка входа: «возьми шаблон и поправь». Под чипом — мини-полоска цветов цикла.
-  FlowRow(
-    modifier = Modifier.fillMaxWidth(),
-    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
-  ) {
+  // Пресеты как точка входа: «возьми шаблон и поправь». Единообразные строки одинаковой
+  // ширины: название слева, мини-полоска цветов цикла справа (владелец, 2026-10-09:
+  // «как будто кто-то чихнул в экран кнопками» — прежний FlowRow из столбиков 92.dp).
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
     ShiftPresets.all.forEach { preset ->
       val presetSlots = remember(preset.id) { templateSlotsOf(preset.id) }
-      Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(92.dp)
-      ) {
-        ModeChip(preset.title, !custom && draft.presetId == preset.id) {
+      val chosen = !custom && draft.presetId == preset.id
+      Surface(
+        modifier = Modifier.fillMaxWidth().clickable {
           onChange(
             draft.copy(
               presetId = preset.id,
@@ -111,24 +106,46 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
               isStudy = false
             )
           )
+        },
+        shape = RoundedCornerShape(12.dp),
+        color = if (chosen) MaterialTheme.colorScheme.secondaryContainer
+        else MaterialTheme.colorScheme.surfaceVariant
+      ) {
+        Row(
+          modifier = Modifier.padding(12.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            preset.title,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f)
+          )
+          MiniCycleStrip(presetSlots, Modifier.width(110.dp))
         }
-        Spacer(Modifier.height(3.dp))
-        MiniCycleStrip(presetSlots, dark, Modifier.fillMaxWidth().padding(horizontal = 4.dp))
       }
     }
     // Переход в режим своего цикла: за основу берём слоты текущего пресета.
-    ModeChip("Свой цикл", custom, modifier = Modifier.width(92.dp)) {
-      onChange(
-        draft.copy(
-          cycleSpec = ShiftCycleCodec.encode(templateSlotsOf(draft.presetId)),
-          anchorEpochDay = if (draft.anchorEpochDay == 0L)
-            LocalDate.now().toEpochDay() else draft.anchorEpochDay,
-          isStudy = false
-        )
-      )
-    }
     // Учебный шаблон: мастер собирает 7/14-дневный цикл поверх сменного режима.
-    ModeChip("Учёба", false, modifier = Modifier.width(92.dp)) { showStudyWizard = true }
+    EqualChips(
+      items = listOf(false, true),
+      columns = 2,
+      label = { if (it) "Учёба" else "Свой цикл" },
+      selected = { !it && custom },
+      onSelect = { v ->
+        if (v) {
+          showStudyWizard = true
+        } else {
+          onChange(
+            draft.copy(
+              cycleSpec = ShiftCycleCodec.encode(templateSlotsOf(draft.presetId)),
+              anchorEpochDay = if (draft.anchorEpochDay == 0L)
+                LocalDate.now().toEpochDay() else draft.anchorEpochDay,
+              isStudy = false
+            )
+          )
+        }
+      },
+    )
   }
 
   if (showStudyWizard) {
@@ -394,16 +411,18 @@ private fun shortLabel(category: ShiftCategory): String = when (category) {
 
 /** Тонкая цветная полоска цикла (превью пресета): ширина сегмента ∝ числу дней, без подписей. */
 @Composable
-private fun MiniCycleStrip(slots: List<ShiftType>, dark: Boolean, modifier: Modifier = Modifier) {
+private fun MiniCycleStrip(slots: List<ShiftType>, modifier: Modifier = Modifier) {
   val runs = ShiftCycle.group(slots)
   if (runs.isEmpty()) return
-  Row(modifier.height(6.dp), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+  // Мини-полоска всегда рисуется яркой палитрой (вне зависимости от темы): приглушённые
+  // «тёмные» тона на тонкой полоске смотрятся блёкло и грязно (замечание владельца 2026-10-09).
+  Row(modifier.height(8.dp), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
     runs.forEach { run ->
       Box(
         Modifier
           .weight(run.count.toFloat())
           .fillMaxHeight()
-          .background(colorOf(categoryToDayKind(run.slot.category), dark), RoundedCornerShape(2.dp))
+          .background(colorOf(categoryToDayKind(run.slot.category), dark = false), RoundedCornerShape(2.dp))
       )
     }
   }
