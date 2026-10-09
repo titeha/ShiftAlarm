@@ -21,13 +21,14 @@ object ShiftPresets {
         ShiftPattern.workRest(2, 2, ShiftType("d", "Работа", LocalTime.of(7, 0)), anchor)
       )
     },
-    Preset("sutki", "Сутки/трое") { anchor ->
+    // Владелец, 2026-10-10: цикл уменьшен до «сутки/двое» (3 дня). ВНИМАНИЕ: сохранённые
+    // будильники с presetId=sutki после обновления получат новый цикл — осознанное решение.
+    Preset("sutki", "Сутки/двое") { anchor ->
       ShiftSchedule(
         ShiftPattern(
           listOf(
             ShiftType("s", "Сутки", LocalTime.of(6, 0)),
             ShiftType.off("Отсыпной"),
-            ShiftType.off(),
             ShiftType.off()
           ),
           anchor

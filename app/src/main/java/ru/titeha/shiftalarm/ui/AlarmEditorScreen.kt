@@ -234,6 +234,10 @@ fun AlarmEditorScreen(
               draft = HolidayModePolicy.normalize(
                 draft.copy(
                   mode = AlarmEntity.MODE_SHIFT,
+                  // Никакой график по умолчанию не выбран (владелец, 2026-10-10):
+                  // пользователь осознанно берёт шаблон или собирает свой с чистого листа.
+                  presetId = "",
+                  cycleSpec = null,
                   anchorEpochDay =
                     if (draft.anchorEpochDay == 0L) {
                       LocalDate.now().toEpochDay()
@@ -261,7 +265,8 @@ fun AlarmEditorScreen(
           val graphTitle = if (spec != null) {
             "свой цикл (${spec.size} дн.)"
           } else {
-            ShiftPresets.byId(draft.presetId)?.title ?: draft.presetId
+            ShiftPresets.byId(draft.presetId)?.title
+              ?: if (draft.presetId.isBlank()) "не выбран" else draft.presetId
           }
           Text("График: $graphTitle", style = MaterialTheme.typography.bodyMedium)
           Spacer(Modifier.height(8.dp))

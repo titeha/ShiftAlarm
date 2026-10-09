@@ -654,7 +654,8 @@ private fun describe(alarm: AlarmEntity): String {
         return "Смены: свой цикл (${slots.size} дн.)"
       }
     }
-    val title = ShiftPresets.byId(alarm.presetId)?.title ?: alarm.presetId
+    val title = ShiftPresets.byId(alarm.presetId)?.title
+      ?: if (alarm.presetId.isBlank()) "график не выбран" else alarm.presetId
     return "Смены: $title"
   }
   // Режим «По выходным и праздникам» — собственное значение mode (фаза D): подпись определяется

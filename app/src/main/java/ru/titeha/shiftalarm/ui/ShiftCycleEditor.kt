@@ -137,7 +137,12 @@ fun ShiftCycleEditor(draft: AlarmEntity, onChange: (AlarmEntity) -> Unit) {
         } else {
           onChange(
             draft.copy(
-              cycleSpec = ShiftCycleCodec.encode(templateSlotsOf(draft.presetId)),
+              // Чистый лист: если шаблон не выбран, цикл собирается из пустого
+              // (владелец, 2026-10-10); иначе — слоты выбранного пресета как основа.
+              cycleSpec = ShiftCycleCodec.encode(
+                if (ShiftPresets.byId(draft.presetId) == null) emptyList()
+                else templateSlotsOf(draft.presetId)
+              ),
               anchorEpochDay = if (draft.anchorEpochDay == 0L)
                 LocalDate.now().toEpochDay() else draft.anchorEpochDay,
               isStudy = false

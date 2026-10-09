@@ -225,6 +225,25 @@ class AlarmEditorValidatorTest {
         )
     }
 
+    @Test
+    fun `сменный будильник без пресета и без своего цикла блокирует сохранение`() {
+        val result = AlarmEditorValidator.validateShift(
+            AlarmEntity(mode = AlarmEntity.MODE_SHIFT, presetId = "")
+        )
+
+        assertFalse(result.canSave)
+        assertTrue(result.has(AlarmEditorIssueCode.SHIFT_GRAPH_NOT_SELECTED))
+    }
+
+    @Test
+    fun `сменный будильник с выбранным пресетом проходит проверку`() {
+        val result = AlarmEditorValidator.validateShift(
+            AlarmEntity(mode = AlarmEntity.MODE_SHIFT, presetId = "2x2")
+        )
+
+        assertTrue(result.canSave)
+    }
+
     private fun day(name: String, hour: Int, minute: Int): ShiftType {
         return ShiftType(
             id = "day-$name",
