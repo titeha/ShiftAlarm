@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DropdownMenu
@@ -451,7 +452,12 @@ private fun AlarmListScreen(
           style = MaterialTheme.typography.headlineSmall,
           modifier = Modifier.weight(1f)
         )
-        TextButton(onClick = onOpenDiagnostics) { Text("Диагностика") }
+        // Диагностика — пиктограммой рядом с настройками: слово в шапке читалось как часть
+        // названия экрана («Будильники Диагностика»), а это не диагностическая программа
+        // (замечание владельца, 2026-10-10).
+        IconButton(onClick = onOpenDiagnostics) {
+          Icon(Icons.Filled.Info, contentDescription = "Диагностика")
+        }
         IconButton(onClick = onOpenSettings) {
           Icon(Icons.Filled.Settings, contentDescription = "Настройки")
         }
