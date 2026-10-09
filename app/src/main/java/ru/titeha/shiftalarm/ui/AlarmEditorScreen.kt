@@ -242,6 +242,9 @@ fun AlarmEditorScreen(
                     }
                 )
               )
+              // Первый выбор режима — сразу проваливаемся в настройки графика
+              // (владелец, 2026-10-10): иначе пользователь не поймёт, что график надо настроить.
+              showShiftEditor = true
             }
           }
         },
@@ -823,11 +826,18 @@ private fun CycleAnchorQuestion(draft: AlarmEntity, onChange: (AlarmEntity) -> U
   if (!picking) {
     val cur = days.getOrNull(currentIndex) ?: days.first()
     Row(verticalAlignment = Alignment.CenterVertically) {
-      Text(
-        "Сегодня: ${labelOfCategory(cur.slot.category)} (${cur.ordinalInBlock}-й из ${cur.blockSize})",
-        style = MaterialTheme.typography.bodyMedium
-      )
-      Spacer(Modifier.weight(1f))
+      // Значение в скобках — всегда отдельной строкой: иначе длинный текст сдвигает кнопку
+      // «Изменить» и она расползается на две строки (замечание владельца, 2026-10-10).
+      Column(Modifier.weight(1f)) {
+        Text(
+          "Сегодня: ${labelOfCategory(cur.slot.category)}",
+          style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
+          "(${cur.ordinalInBlock}-й из ${cur.blockSize})",
+          style = MaterialTheme.typography.bodySmall
+        )
+      }
       TextButton(onClick = { picking = true; chosenCat = null }) { Text("Изменить") }
     }
     return
