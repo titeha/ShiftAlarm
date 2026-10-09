@@ -72,6 +72,26 @@ class HolidayCalendarRepository(context: Context) {
     return refresh(country, year)
   }
 
+  /**
+   * TD10 (AO-8): физически удалить запись кэша [country]/[year], если она не проходит валидацию
+   * парсером (плейсхолдер неопубликованного года, мусор). После удаления `lastUpdated` возвращает
+   * null (настройки показывают «встроенные данные»), а `refreshIfStale` повторяет попытку при
+   * каждом старте — throttle не срабатывает без штампа. Вернуть true, если запись удалена.
+   */
+  fun purgeInvalid(country: String, year: Int): Boolean {
+    val raw = prefs.getString(key(country, year), null) ?: return false
+    return try {
+      ProductionCalendars.fromIsDayOff(year, raw)
+      false // запись валидна — не трогаем
+    } catch (_: Exception) {
+      prefs.edit()
+        .remove(key(country, year))
+        .remove(stampKey(country, year))
+        .apply()
+      true
+    }
+  }
+
   private fun stampKey(country: String, year: Int) = "at_${key(country, year)}"
 
   private companion object {

@@ -21,13 +21,19 @@ class AlarmTimesRestPolarityGuardTest {
 
   private fun restWeekly(mask: Int) = AlarmEntity(
     hour = 7, minute = 0,
-    mode = AlarmEntity.MODE_WEEKLY,
+    mode = AlarmEntity.MODE_CALENDAR,
     daysMask = mask,
     honorHolidays = true,
     polarity = AlarmEntity.POLARITY_REST
   )
 
-  private fun workWeekly(mask: Int) = restWeekly(mask).copy(polarity = AlarmEntity.POLARITY_WORK)
+  private fun workWeekly(mask: Int) = AlarmEntity(
+    hour = 7, minute = 0,
+    mode = AlarmEntity.MODE_WEEKLY,
+    daysMask = mask,
+    honorHolidays = true,
+    polarity = AlarmEntity.POLARITY_WORK
+  )
 
   private val allDays = AlarmTimes.maskOf(*DayOfWeek.entries.toTypedArray())
   private val weekdays = AlarmTimes.maskOf(
@@ -47,7 +53,7 @@ class AlarmTimesRestPolarityGuardTest {
   fun `(b) REST и рабочая суббота - не звонит`() {
     val sat = LocalDate.of(2026, 6, 27)
     val cal = ProductionCalendar(kinds = mapOf(sat to StateDayKind.TRANSFER_WORK))
-    assertFalse(AlarmTimes.weeklyFiresOn(restWeekly(AlarmTimes.maskOf(DayOfWeek.SUNDAY)), sat, cal))
+    assertFalse(AlarmTimes.firesOn(restWeekly(AlarmTimes.maskOf(DayOfWeek.SUNDAY)), sat, cal))
   }
 
   /** (c) REST + перенесённый выходной (TRANSFER_OFF) на масочном дне: звонит. */
@@ -55,7 +61,7 @@ class AlarmTimesRestPolarityGuardTest {
   fun `(c) REST и перенесённый выходной на масочном дне - звонит`() {
     val mon = LocalDate.of(2026, 3, 9)   // Пн, перенос выходного с 8 марта
     val cal = requireNotNull(ProductionCalendars.merged("RU", 2026))
-    assertTrue(AlarmTimes.weeklyFiresOn(restWeekly(AlarmTimes.maskOf(DayOfWeek.MONDAY)), mon, cal))
+    assertTrue(AlarmTimes.firesOn(restWeekly(AlarmTimes.maskOf(DayOfWeek.MONDAY)), mon, cal))
   }
 
   /** (d) WORK-guard: WORK по-прежнему строит неделю строго из маски (Сб/Вс в маске - звонит в Сб/Вс). */
@@ -63,8 +69,8 @@ class AlarmTimesRestPolarityGuardTest {
   fun `(d) WORK с маской Сб-Вс - звонит по маске, а не по стандартной неделе`() {
     val sat = LocalDate.of(2026, 6, 27)
     val cal = requireNotNull(ProductionCalendars.merged("RU", 2026))
-    assertTrue(AlarmTimes.weeklyFiresOn(workWeekly(AlarmTimes.maskOf(DayOfWeek.SATURDAY)), sat, cal))
+    assertTrue(AlarmTimes.firesOn(workWeekly(AlarmTimes.maskOf(DayOfWeek.SATURDAY)), sat, cal))
     // WORK с маской будней в субботу не звонит
-    assertFalse(AlarmTimes.weeklyFiresOn(workWeekly(weekdays), sat, cal))
+    assertFalse(AlarmTimes.firesOn(workWeekly(weekdays), sat, cal))
   }
 }

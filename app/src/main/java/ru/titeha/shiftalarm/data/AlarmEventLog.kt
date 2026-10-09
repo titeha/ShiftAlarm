@@ -15,20 +15,46 @@ class AlarmEventLog(context: Context) {
 
   /** Записать событие [type] с деталями [detail] и меткой времени [atMillis]. */
   fun record(type: AlarmEventType, detail: String, atMillis: Long) {
-    val current = AlarmEventLogCodec.decode(prefs.getString(KEY, "").orEmpty())
-    val updated = AlarmEventLogCodec.appendCapped(current, AlarmEvent(atMillis, type, detail), MAX)
-    prefs.edit().putString(KEY, AlarmEventLogCodec.encode(updated)).apply()
+    synchronized(LOCK) { write(read(), AlarmEvent(atMillis, type, detail)) }
+  }
+
+  /**
+   * Записать событие, если такого же ([type] и те же [detail]) нет среди свежих за [windowMillis]:
+   * повтор устойчивого состояния не должен вытеснять из журнала срабатывания.
+   */
+  fun recordIfFresh(type: AlarmEventType, detail: String, atMillis: Long, windowMillis: Long) {
+    synchronized(LOCK) {
+      val current = read()
+      if (AlarmEventLogCodec.hasRecentDuplicate(current, type, detail, atMillis, windowMillis)) return
+      write(current, AlarmEvent(atMillis, type, detail))
+    }
   }
 
   /** События, самые свежие сверху. */
-  fun recent(): List<AlarmEvent> =
-    AlarmEventLogCodec.decode(prefs.getString(KEY, "").orEmpty()).asReversed()
+  fun recent(): List<AlarmEvent> = read().asReversed()
 
-  fun clear() = prefs.edit().remove(KEY).apply()
+  fun clear() {
+    synchronized(LOCK) { prefs.edit().remove(KEY).apply() }
+  }
+
+  private fun read(): List<AlarmEvent> =
+    AlarmEventLogCodec.decode(prefs.getString(KEY, "").orEmpty())
+
+  private fun write(events: List<AlarmEvent>, event: AlarmEvent) {
+    val updated = AlarmEventLogCodec.appendCapped(events, event, MAX)
+    prefs.edit().putString(KEY, AlarmEventLogCodec.encode(updated)).apply()
+  }
 
   private companion object {
     const val PREFS = "alarm_event_log"
     const val KEY = "events"
     const val MAX = 200
+
+    /**
+     * Журнал один на процесс, а пишут его из разных потоков (IO-скоуп приложения, ресиверы,
+     * Main-скоуп ViewModel). Read-modify-write сериализуем одним локом на процесс: у каждого
+     * отдельного `AlarmEventLog(context)` свой экземпляр, поэтому лок в companion, а не в классе.
+     */
+    val LOCK = Any()
   }
 }

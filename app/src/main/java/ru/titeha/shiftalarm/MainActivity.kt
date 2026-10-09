@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DropdownMenu
@@ -66,6 +67,7 @@ import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
+import ru.titeha.shiftalarm.schedule.WorkWeekPreset
 import ru.titeha.shiftalarm.ui.AlarmEditorScreen
 import ru.titeha.shiftalarm.ui.AlarmListViewModel
 import ru.titeha.shiftalarm.alarm.CachedAlarm
@@ -103,6 +105,8 @@ class MainActivity : ComponentActivity() {
       var dayGreetingNotif by remember { mutableStateOf(settings.dayGreetingNotificationEnabled()) }
       var weekStart by remember { mutableStateOf(settings.weekStart()) }
       var weekPairNaming by remember { mutableStateOf(settings.weekPairNaming()) }
+      var workWeekPreset by remember { mutableStateOf(settings.workWeekPreset()) }
+      var workWeekCustomMask by remember { mutableStateOf(settings.workWeekCustomMask()) }
       val darkTheme = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
@@ -178,6 +182,15 @@ class MainActivity : ComponentActivity() {
               onWeekStart = { weekStart = it; settings.setWeekStart(it) },
               weekPairNaming = weekPairNaming,
               onWeekPairNaming = { weekPairNaming = it; settings.setWeekPairNaming(it) },
+              workWeekPreset = workWeekPreset,
+              workWeekCustomMask = workWeekCustomMask,
+              onWorkWeek = { preset, mask ->
+                workWeekPreset = preset
+                workWeekCustomMask = mask
+                // Настройка влияет на следующий звонок — VM пишет её в DE-хранилище
+                // и перепланирует будильники.
+                vm.applyWorkWeek(preset, mask)
+              },
               dismissMode = dismissMode,
               onDismissMode = { mode ->
                 dismissMode = mode
@@ -193,6 +206,7 @@ class MainActivity : ComponentActivity() {
                 }
               },
               onRunSelfTest = { vm.runSelfTest() },
+              onRefreshHolidays = { vm.refreshHolidays() },
               onOpenPhoneSetup = if (vendorGuide != null) {
                 { showSettings = false; showVendorSetup = true }
               } else {
@@ -438,7 +452,12 @@ private fun AlarmListScreen(
           style = MaterialTheme.typography.headlineSmall,
           modifier = Modifier.weight(1f)
         )
-        TextButton(onClick = onOpenDiagnostics) { Text("Диагностика") }
+        // Диагностика — пиктограммой рядом с настройками: слово в шапке читалось как часть
+        // названия экрана («Будильники Диагностика»), а это не диагностическая программа
+        // (замечание владельца, 2026-10-10).
+        IconButton(onClick = onOpenDiagnostics) {
+          Icon(Icons.Filled.Info, contentDescription = "Диагностика")
+        }
         IconButton(onClick = onOpenSettings) {
           Icon(Icons.Filled.Settings, contentDescription = "Настройки")
         }
@@ -522,6 +541,9 @@ private fun AlarmRow(
   var confirmOff by remember { mutableStateOf(false) }
   var confirmDelete by remember { mutableStateOf(false) }
   var menuOpen by remember { mutableStateOf(false) }
+  val context = LocalContext.current
+  // Глобальная рабочая неделя — вход движка (TC03); настройка в DE-хранилище.
+  val globalWeek = remember { SettingsStore(context).globalWorkWeek() }
 
   Card(
     modifier = Modifier
@@ -550,13 +572,15 @@ private fun AlarmRow(
             alarm,
             periods,
             dayOverrides,
-            now
+            now,
+            globalWeek
           ) {
             AlarmTimes.next(
               alarm,
               periods,
               dayOverrides,
-              now
+              now,
+              globalWeek
             )
           }
           if (next != null) {
@@ -630,12 +654,13 @@ private fun describe(alarm: AlarmEntity): String {
         return "Смены: свой цикл (${slots.size} дн.)"
       }
     }
-    val title = ShiftPresets.byId(alarm.presetId)?.title ?: alarm.presetId
+    val title = ShiftPresets.byId(alarm.presetId)?.title
+      ?: if (alarm.presetId.isBlank()) "график не выбран" else alarm.presetId
     return "Смены: $title"
   }
-  // «По выходным» считается по производственному календарю: маска дней в этом режиме не участвует,
-  // поэтому перечислять её в подписи было бы неверно.
-  if (alarm.honorHolidays && alarm.polarity == AlarmEntity.POLARITY_REST) {
+  // Режим «По выходным и праздникам» — собственное значение mode (фаза D): подпись определяется
+  // по режиму, а маска дней в этом режиме на расчёт не влияет, поэтому перечислять её неверно.
+  if (alarm.mode == AlarmEntity.MODE_CALENDAR) {
     return "По выходным и праздникам"
   }
   val mask = alarm.daysMask

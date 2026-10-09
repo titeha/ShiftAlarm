@@ -174,4 +174,59 @@ class AppDatabaseMigrationTest {
     }
     db.close()
   }
+
+  @Test
+  fun migrate6To7_movesWeeklyRestHonorToCalendar() {
+    // v6: три будильника — weekly+REST+honor, weekly+REST без honor, shift+REST+honor.
+    helper.createDatabase(dbName, 6).apply {
+      execSQL(
+        "INSERT INTO alarms " +
+          "(label, enabled, hour, minute, mode, daysMask, presetId, anchorEpochDay, " +
+          "deleteAfterFiring, freezeCycleDuringOff, cycleSpec, honorHolidays, polarity, isStudy) " +
+          "VALUES ('Календарь', 1, 7, 30, 'weekly', 42, '2x2', 20000, 0, 0, NULL, 1, 'REST', 0)"
+      )
+      execSQL(
+        "INSERT INTO alarms " +
+          "(label, enabled, hour, minute, mode, daysMask, presetId, anchorEpochDay, " +
+          "deleteAfterFiring, freezeCycleDuringOff, cycleSpec, honorHolidays, polarity, isStudy) " +
+          "VALUES ('Weekly без honor', 1, 8, 0, 'weekly', 31, '2x2', 20000, 0, 0, NULL, 0, 'REST', 0)"
+      )
+      execSQL(
+        "INSERT INTO alarms " +
+          "(label, enabled, hour, minute, mode, daysMask, presetId, anchorEpochDay, " +
+          "deleteAfterFiring, freezeCycleDuringOff, cycleSpec, honorHolidays, polarity, isStudy) " +
+          "VALUES ('Смена REST', 1, 6, 15, 'shift', 0, '2x2', 20000, 0, 0, NULL, 1, 'REST', 0)"
+      )
+      close()
+    }
+
+    val db = helper.runMigrationsAndValidate(dbName, 7, true, AppDatabase.MIGRATION_6_7)
+
+    // weekly+honor+REST → calendar, остальные поля не пострадали.
+    db.query(
+      "SELECT mode, honorHolidays, polarity, daysMask, hour, minute, enabled " +
+        "FROM alarms WHERE label = 'Календарь'"
+    ).use { c ->
+      assertTrue(c.moveToFirst())
+      assertEquals("calendar", c.getString(0))
+      assertEquals(1, c.getInt(1))
+      assertEquals("REST", c.getString(2))
+      assertEquals(42, c.getInt(3))
+      assertEquals(7, c.getInt(4))
+      assertEquals(30, c.getInt(5))
+      assertEquals(1, c.getInt(6))
+    }
+    // weekly+REST без honor — остаётся weekly (иначе сломали бы поведение weekly-WORK).
+    db.query("SELECT mode, honorHolidays FROM alarms WHERE label = 'Weekly без honor'").use { c ->
+      assertTrue(c.moveToFirst())
+      assertEquals("weekly", c.getString(0))
+      assertEquals(0, c.getInt(1))
+    }
+    // shift+REST — не трогаем.
+    db.query("SELECT mode FROM alarms WHERE label = 'Смена REST'").use { c ->
+      assertTrue(c.moveToFirst())
+      assertEquals("shift", c.getString(0))
+    }
+    db.close()
+  }
 }

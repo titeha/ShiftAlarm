@@ -5,6 +5,9 @@ import ru.titeha.shiftalarm.alarm.DismissMode
 import ru.titeha.shiftalarm.alarm.RingConfig
 import ru.titeha.shiftalarm.schedule.WeekPairNaming
 import ru.titeha.shiftalarm.schedule.WeekStart
+import ru.titeha.shiftalarm.schedule.WorkWeek
+import ru.titeha.shiftalarm.schedule.WorkWeekPreset
+import ru.titeha.shiftalarm.schedule.workWeekOf
 import ru.titeha.shiftalarm.ui.theme.ThemeMode
 
 /**
@@ -98,6 +101,33 @@ class SettingsStore(context: Context) {
 
   fun setWeekStart(start: WeekStart) = prefs.edit().putString(KEY_WEEK_START, start.name).apply()
 
+  /**
+   * Глобальная рабочая неделя пользователя (фаза C: Q1=1а — глобальная настройка, Q2=2а —
+   * DE-хранилище: значение нужно в пути звонка до разблокировки устройства). Неизвестное или
+   * повреждённое имя откатывается на [WorkWeekPreset.DEFAULT] ([WorkWeekPreset.byName]), пустая
+   * CUSTOM-маска — на неделю по умолчанию ([workWeekOf]). Записывается разделом настроек
+   * «Рабочая неделя» (TC04); до первой записи неделя равна стандартной неделе страны —
+   * поведение движка не меняется.
+   */
+  fun globalWorkWeek(): WorkWeek = workWeekOf(workWeekPreset(), workWeekCustomMask())
+
+  /** Сохранённое имя пресета рабочей недели; неизвестное/пустое → [WorkWeekPreset.DEFAULT]. */
+  fun workWeekPreset(): WorkWeekPreset =
+    WorkWeekPreset.byName(alarmPrefs.getString(KEY_WORK_WEEK_PRESET, null))
+
+  /** Маска дней для [WorkWeekPreset.CUSTOM] (Пн = бит 0 … Вс = бит 6); 0 — не задана. */
+  fun workWeekCustomMask(): Int = alarmPrefs.getInt(KEY_WORK_WEEK_CUSTOM_MASK, 0)
+
+  /**
+   * Записать глобальную рабочую неделю (TC04). Настройка влияет на следующий звонок —
+   * вызывающий код обязан перепланировать будильники после записи (см.
+   * `AlarmListViewModel.applyWorkWeek`).
+   */
+  fun setWorkWeek(preset: WorkWeekPreset, customMask: Int) = alarmPrefs.edit()
+    .putString(KEY_WORK_WEEK_PRESET, preset.name)
+    .putInt(KEY_WORK_WEEK_CUSTOM_MASK, customMask)
+    .apply()
+
   /** Нейминг пары учебных недель (вуз, чёт/нечёт). По умолчанию «Нечётная/Чётная». */
   fun weekPairNaming(): WeekPairNaming = runCatching {
     WeekPairNaming.valueOf(prefs.getString(KEY_WEEK_PAIR_NAMING, WeekPairNaming.PARITY.name)!!)
@@ -157,6 +187,8 @@ class SettingsStore(context: Context) {
     const val KEY_DISMISS_MODE = "dismiss_mode"
     const val KEY_WEEK_START = "week_start"
     const val KEY_WEEK_PAIR_NAMING = "week_pair_naming"
+    const val KEY_WORK_WEEK_PRESET = "work_week_preset"
+    const val KEY_WORK_WEEK_CUSTOM_MASK = "work_week_custom_mask"
     const val KEY_GREETING_CARD = "day_greeting_card_enabled"
     const val KEY_GREETING_NOTIF = "day_greeting_notif_enabled"
     const val KEY_LAST_DISMISSED_DAY = "day_greeting_last_dismissed_day"

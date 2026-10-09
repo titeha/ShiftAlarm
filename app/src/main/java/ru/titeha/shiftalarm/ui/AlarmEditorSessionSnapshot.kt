@@ -202,7 +202,8 @@ internal object AlarmEditorSessionSnapshotCodec {
 
         require(
             alarm.mode == AlarmEntity.MODE_WEEKLY ||
-                alarm.mode == AlarmEntity.MODE_SHIFT
+                alarm.mode == AlarmEntity.MODE_SHIFT ||
+                alarm.mode == AlarmEntity.MODE_CALENDAR
         ) {
             "Некорректный режим будильника."
         }

@@ -28,6 +28,9 @@ import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmOverride
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
+import ru.titeha.shiftalarm.data.HolidayCalendarRepository
+import ru.titeha.shiftalarm.data.SettingsStore
+import ru.titeha.shiftalarm.schedule.WorkWeekPreset
 
 /** Состояние экрана списка будильников и сгруппированных дочерних данных. */
 data class AlarmListUiState(
@@ -363,6 +366,50 @@ class AlarmListViewModel(
     }
 
     /**
+     * TD10: ручное обновление праздничного календаря — в обход суточного throttling, текущий и
+     * следующий год (поиск звонка уходит за границу года). Если данные обновились —
+     * перепланировать будильники. Ответ источника валидирует парсер (TD09): плейсхолдер
+     * неопубликованного года обновлением не считается. Результат — через [_userMessages],
+     * как у самотеста звонка.
+     */
+    fun refreshHolidays() = viewModelScope.launch {
+        try {
+            val holidays = HolidayCalendarRepository(context())
+            val year = java.time.LocalDate.now().year
+            val current = holidays.refresh("RU", year)
+            val next = holidays.refresh("RU", year + 1)
+            if (current || next) {
+                AlarmScheduler.rescheduleAll(context(), repo, repo.enabled())
+            }
+            _userMessages.send(
+                when {
+                    current && next -> "Календарь: обновлены $year и ${year + 1}"
+                    current -> "Календарь: $year обновлён; на ${year + 1} год данных у источника ещё нет"
+                    next -> "Календарь: ${year + 1} обновлён; $year обновить не удалось"
+                    else -> "Календарь: не удалось обновить — источник недоступен или данные ещё не опубликованы"
+                }
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.e(TAG, "Не удалось обновить праздничный календарь", error)
+            _userMessages.send("Не удалось обновить календарь")
+        }
+    }
+
+    /**
+     * Сохранить глобальную рабочую неделю (фаза C, Q1=1а) и перепланировать будильники:
+     * настройка влияет на следующий звонок, поэтому записи мало — нужно обновить AlarmManager.
+     * Путь массовый (как [AlarmScheduler.rescheduleAll] при старте), периоды и правки
+     * перечитываются из БД.
+     */
+    fun applyWorkWeek(preset: WorkWeekPreset, customMask: Int) = viewModelScope.launch {
+        SettingsStore(context()).setWorkWeek(preset, customMask)
+        AlarmScheduler.rescheduleAll(context(), repo, repo.enabled())
+        _userMessages.send("Рабочая неделя: ${preset.title}")
+    }
+
+    /**
      * Сбросить завершённый результат перед новой сессией редактора
      * или после обработки сообщения.
      */
@@ -374,7 +421,8 @@ class AlarmListViewModel(
 
     /**
      * Дублировать будильник. Разовый / по дням недели — копия со сдвигом времени +5 мин, суффиксом в
-     * имени и включённая. Сменный — точная копия с периодами/правками, но ВЫКЛЮЧЕННАЯ (чтобы не
+     * имени, включённая и с теми же периодами без будильника (отпуск глушит звонок и у копии).
+     * Сменный — точная копия с периодами/правками, но ВЫКЛЮЧЕННАЯ (чтобы не
      * задвоить звонки молча). Каскадов не строим — серия покрывается снузом.
      */
     fun duplicate(alarm: AlarmEntity) = viewModelScope.launch {
@@ -392,7 +440,11 @@ class AlarmListViewModel(
                     minute = total % 60,
                     label = alarm.label.ifBlank { "Будильник" } + " +$DUPLICATE_SHIFT_MINUTES"
                 )
-                val id = repo.upsert(copy)
+                // Периоды без будильника применимы и режиму «по дням недели» (движок глушит звонок
+                // coveredByPeriod), поэтому копируем их вместе с записью — иначе копия зазвонит
+                // в отпуск оригинала. Правки календаря — только сменным: они про подмены смен.
+                val periods = repo.periodsList(alarm.id)
+                val id = repo.saveWithChildren(copy, periods, emptyList())
                 AlarmScheduler.reschedule(context(), repo, copy.copy(id = id))
             }
         } catch (error: CancellationException) {

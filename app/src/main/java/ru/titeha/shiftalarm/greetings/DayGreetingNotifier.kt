@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import ru.titeha.shiftalarm.MainActivity
+import ru.titeha.shiftalarm.alarm.FeatureFlags
 import ru.titeha.shiftalarm.data.SettingsStore
 import java.time.Instant
 import java.time.LocalDate
@@ -32,6 +33,7 @@ object DayGreetingNotifier {
   ): Boolean = enabled && postedEpochDay != today.toEpochDay() && !greeting.isEmpty
 
   fun maybePost(context: Context, nowMillis: Long) {
+    if (!FeatureFlags.DAY_GREETING) return // фича отключена флагом: канал не создаём, не уведомляем
     try {
       val settings = SettingsStore(context)
       val enabled = settings.dayGreetingNotificationEnabled()

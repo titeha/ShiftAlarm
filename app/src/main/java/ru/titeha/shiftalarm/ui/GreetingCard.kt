@@ -38,6 +38,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import ru.titeha.shiftalarm.alarm.FeatureFlags
 import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.greetings.DayGreetingGate
 import ru.titeha.shiftalarm.greetings.DayGreetingResolver
@@ -58,6 +59,10 @@ class DayGreetingUiState(val greeting: Greeting?, val onClose: () -> Unit)
  */
 @Composable
 fun rememberDayGreeting(): DayGreetingUiState {
+  // Фича отключена флагом (релиз «только исправления»): датасет не грузим, карточку не показываем.
+  if (!FeatureFlags.DAY_GREETING) {
+    return DayGreetingUiState(greeting = null, onClose = {})
+  }
   val context = LocalContext.current
   val settings = remember { SettingsStore(context) }
 

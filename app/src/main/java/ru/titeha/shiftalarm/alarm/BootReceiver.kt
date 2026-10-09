@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmRepository
+import ru.titeha.shiftalarm.data.HolidayCalendarRepository
 
 /**
  * Перепланирует включённые будильники после системных событий.
@@ -60,6 +61,12 @@ class BootReceiver : BroadcastReceiver() {
 
     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
       try {
+        // Календарь подключаем ПЕРВОЙ строкой: процесс мог быть поднят до разблокировки (этот приёмник —
+        // directBootAware), и тогда ShiftAlarmApp.onCreate вышел рано, не установив источник. Пока его нет,
+        // расчёт и валидация звонка (AlarmReceiver) идут по встроенным данным, а диагностика пишет ложное
+        // «нет данных календаря». Здесь CE уже доступно: залоченные события уходят в ветку выше.
+        HolidayCalendarRepository(appContext).install()
+
         val repo = AlarmRepository(appContext)
         val alarms = repo.enabled()
         val eventLog = AlarmEventLog(appContext)

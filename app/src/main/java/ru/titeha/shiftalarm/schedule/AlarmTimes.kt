@@ -47,23 +47,32 @@ object AlarmTimes {
 
   /**
    * Ближайшее срабатывание [alarm] строго после [from] с учётом периодов отпуска [periods] и
-   * пер-дневных правок календаря [overrides] (подмены/исключения). Всё это только для режима смен;
-   * «по дням недели» ни периоды, ни правки не использует. null — ставить нечего.
+   * пер-дневных правок календаря [overrides] (подмены/исключения). Периоды глушат звонок во всех
+   * режимах; правки — только в сменном. null — ставить нечего.
+   *
+   * [globalWeek] — глобальная рабочая неделя пользователя (Q1=1а: глобальная настройка;
+   * подключение настройки — TC03). По умолчанию — стандартная неделя страны, поэтому поведение
+   * существующих вызовов и сохранённых будильников не меняется до появления настройки.
    */
   fun next(
     alarm: AlarmEntity,
     periods: List<AlarmPeriod>,
     overrides: List<ScheduleOverrides.DayOverride>,
-    from: LocalDateTime
+    from: LocalDateTime,
+    globalWeek: WorkWeek = CountryProfile.RU.standardWeek,
   ): LocalDateTime? {
-    // Производственный календарь — только если будильник просит его учитывать. Страна пока РФ.
-    // merged() покрывает текущий и следующий год (поиск может уйти за границу года); берёт из кэша
-    // (обновляемого с офиц. источника), иначе встроенные данные. Год без данных → лишь Сб/Вс.
-    val calendar = if (alarm.honorHolidays) ProductionCalendars.merged("RU", from.toLocalDate().year) else null
+    // Производственный календарь — в режиме calendar всегда (D-1), иначе по флагу honorHolidays.
+    // calendarFor() покрывает год отсчёта и следующий (поиск может уйти за границу года); берёт из
+    // кэша (обновляемого с офиц. источника), иначе встроенные данные. Год без данных → лишь Сб/Вс.
+    val usesCalendarAlways = effectiveMode(alarm) == AlarmEntity.MODE_CALENDAR
+    val calendar = ProductionCalendars.calendarFor(
+      if (usesCalendarAlways) true else alarm.honorHolidays,
+      from.toLocalDate().year
+    )
 
     val effectivePolarity = HolidayModePolicy.effectivePolarity(alarm)
 
-    return when (alarm.mode) {
+    return when (effectiveMode(alarm)) {
       AlarmEntity.MODE_SHIFT -> shiftBase(alarm)?.let { base ->
         val schedule = ScheduleOverrides.apply(
           ShiftSchedule(base).copy(
@@ -76,38 +85,59 @@ object AlarmTimes {
         )
         ShiftEngine.nextAlarm(from, schedule, calendar = calendar)
       }
-      else -> nextWeeklyResolved(alarm, periods, from, calendar, effectivePolarity)
+      AlarmEntity.MODE_CALENDAR -> nextCalendarResolved(alarm, periods, from, calendar, globalWeek)
+      else -> nextWeeklyResolved(alarm, periods, from, calendar, effectivePolarity, globalWeek)
     }
   }
 
   /**
-   * Ближайшее срабатывание weekly-будильника через матрицу «личная неделя × госкалендарь»
-   * ([PersonalDayResolver]). Разовый (маска 0, WORK) — ближайшее время без календаря. REST требует
-   * календаря; без него ведёт себя как WORK. Личная неделя = отмеченные дни (маска) для WORK;
-   * для REST — стандартная неделя страны (маска не используется), чтобы «по выходным» означало
-   * Сб/Вс/праздники/переносы.
+   * Режим «по производственному календарю страны» (MODE_CALENDAR): звонит в официальные
+   * нерабочие дни (Сб, Вс, праздники, перенесённые выходные). Календарь запрашивается всегда
+   * (D-1), полярность фиксирована REST, маска [AlarmEntity.daysMask] не участвует (D-2),
+   * периоды без будильника глушат звонок (D-4). При отсутствии данных на год деградирует
+   * до Сб/Вс (как weekly-REST).
    */
-  private fun nextWeeklyResolved(
+  private fun nextCalendarResolved(
     alarm: AlarmEntity,
     periods: List<AlarmPeriod>,
     from: LocalDateTime,
     calendar: ProductionCalendar?,
-    polarity: AlarmPolarity,
+    globalWeek: WorkWeek,
   ): LocalDateTime? {
-    val effPolarity = if (calendar == null) AlarmPolarity.WORK else polarity
+    // Полярность в этом режиме фиксирована REST; календарь уже запрошен с honorHolidays=true.
+    // Инвертируемая неделя — глобальная рабочая неделя пользователя (Q5; по умолчанию —
+    // стандартная неделя страны). Пустой календарь (нет данных на год) → только Сб/Вс своей недели.
+    return searchRing(
+      alarm = alarm,
+      periods = periods,
+      from = from,
+      workWeek = globalWeek,
+      calendar = calendar,
+      polarity = AlarmPolarity.REST,
+      globalWeek = globalWeek,
+    )
+  }
 
-    if (alarm.daysMask == 0 && effPolarity == AlarmPolarity.WORK) {
-      val today = from.toLocalDate().atTime(alarm.hour, alarm.minute)
-      return if (today.isAfter(from)) today else today.plusDays(1)
-    }
-
-    val workWeek = personalWeek(alarm.daysMask, effPolarity)
-    val resolver = PersonalDayResolver(CountryProfile.RU, calendar, effPolarity)
-
+  /**
+   * Общий поиск ближайшего звонка по матрице «личная неделя × госкалендарь» для несменных
+   * режимов: перебор дней вперёд, первый день, в который [PersonalDayResolver] разрешает
+   * звонок и который не покрыт периодом без будильника, и время которого ещё впереди.
+   * Горизонт — 370 дней (год с запасом); null — за горизонтом подходящего дня нет.
+   * [workWeek] — неделя «дня звонка» (маска в weekly, [globalWeek] в calendar);
+   * [globalWeek] передаётся резолверу для правила переносов (Q4=4a).
+   */
+  private fun searchRing(
+    alarm: AlarmEntity,
+    periods: List<AlarmPeriod>,
+    from: LocalDateTime,
+    workWeek: WorkWeek,
+    calendar: ProductionCalendar?,
+    polarity: AlarmPolarity,
+    globalWeek: WorkWeek,
+  ): LocalDateTime? {
+    val resolver = PersonalDayResolver(CountryProfile.RU, calendar, polarity, globalWeek)
     var date = from.toLocalDate()
     repeat(370) {
-      // Периоды без будильника (отпуск/больничный/за свой счёт/сессия/…) глушат звонок и в режиме
-      // «по дням недели» — как у смен.
       if (resolver.ringOn(date, workWeek) && !coveredByPeriod(periods, date)) {
         val candidate = date.atTime(alarm.hour, alarm.minute)
         if (candidate.isAfter(from)) return candidate
@@ -117,6 +147,39 @@ object AlarmTimes {
     return null
   }
 
+  /**
+   * Ближайшее срабатывание weekly-будильника через матрицу «личная неделя × госкалендарь»
+   * ([PersonalDayResolver]). Разовый (маска 0) — ближайшее время без календаря.
+   * После TD03 полярность REST у weekly не действует (только у calendar); weekly всегда
+   * считается как WORK (личная неделя = отмеченные дни из маски).
+   */
+  private fun nextWeeklyResolved(
+    alarm: AlarmEntity,
+    periods: List<AlarmPeriod>,
+    from: LocalDateTime,
+    calendar: ProductionCalendar?,
+    polarity: AlarmPolarity,
+    globalWeek: WorkWeek,
+  ): LocalDateTime? {
+    val effPolarity = if (calendar == null) AlarmPolarity.WORK else polarity
+
+    if (alarm.daysMask == 0 && effPolarity == AlarmPolarity.WORK) {
+      val today = from.toLocalDate().atTime(alarm.hour, alarm.minute)
+      return if (today.isAfter(from)) today else today.plusDays(1)
+    }
+
+    val workWeek = personalWeek(alarm.daysMask, effPolarity, globalWeek)
+    return searchRing(
+      alarm = alarm,
+      periods = periods,
+      from = from,
+      workWeek = workWeek,
+      calendar = calendar,
+      polarity = effPolarity,
+      globalWeek = globalWeek,
+    )
+  }
+
   /** Покрыт ли день [date] периодом без будильника. */
   private fun coveredByPeriod(periods: List<AlarmPeriod>, date: LocalDate): Boolean {
     val day = date.toEpochDay()
@@ -124,43 +187,110 @@ object AlarmTimes {
   }
 
   /**
-   * Неделя для [PersonalDayResolver]. WORK — личная неделя из отмеченных дней будильника.
-   * REST — всегда стандартная неделя страны: «по выходным» означает официальные нерабочие дни
-   * (Сб, Вс, праздники, перенесённые выходные), а не инверсию отмеченных пользователем дней.
-   * При включённом «Учитывать праздники» маска в REST на расчёт не влияет: дни повтора нейтральны
-   * и не описывают рабочую неделю (см. `docs/SHIFT_HOLIDAY_POLICY.md` и `docs/WORK_WEEK_AND_STUDY.md` §1).
+   * Режим будильника с защитным чтением: неизвестное или повреждённое значение трактуется как
+   * «по дням недели» — так же, как [PeriodKind.fromReason] для типов периода. Лучше позвонить
+   * по маске, чем не позвонить вовсе; явная нормализация нужна и для того, чтобы новое значение
+   * режима не попало в молчаливую ветку `else`, и чтобы все потребители трактовали неизвестный
+   * режим одинаково: расчёт [next], точки календаря [firesOn], участие производственного
+   * календаря [usesProductionCalendar] и правило «разовый» [isOneShot].
+   *
+   * Различаются ровно три режима: [AlarmEntity.MODE_SHIFT], [AlarmEntity.MODE_CALENDAR] и
+   * «остальное — weekly». Историческая форма `weekly + honorHolidays + REST` больше не
+   * различается: полярность действует только в режиме calendar (TD03, инвариант D-5), а прежние
+   * такие записи перенесены в calendar миграцией Room 6→7 (TD02).
    */
-  private fun personalWeek(daysMask: Int, polarity: AlarmPolarity): WorkWeek {
-    if (polarity == AlarmPolarity.REST) return CountryProfile.RU.standardWeek
+  private fun effectiveMode(alarm: AlarmEntity): String = when (alarm.mode) {
+    AlarmEntity.MODE_SHIFT -> AlarmEntity.MODE_SHIFT
+    AlarmEntity.MODE_CALENDAR -> AlarmEntity.MODE_CALENDAR
+    else -> AlarmEntity.MODE_WEEKLY
+  }
+
+  /**
+   * Разовый ли это будильник: сработает один раз и будет выключен (или удалён) приёмником.
+   *
+   * Правило одно на движок и приёмник: пустая маска дней имеет смысл только в режиме «по дням
+   * недели». Сменный режим и режим «по производственному календарю страны» повторяющиеся, а
+   * неизвестный режим трактуется как weekly ([effectiveMode]) — так же, как в расчёте [next].
+   */
+  fun isOneShot(alarm: AlarmEntity): Boolean =
+    effectiveMode(alarm) == AlarmEntity.MODE_WEEKLY && alarm.daysMask == 0
+
+  /**
+   * Участвует ли производственный календарь в расчёте [alarm]. Если нет — отсутствие данных на год
+   * расчёт не ухудшает, поэтому диагностика о деградации таким будильникам не пишется.
+   *
+   * Праздники не запрошены — календарь не читается вовсе. Смены учитывают его как фильтр: официальные
+   * нерабочие дни глушат звонки графика. «По дням недели» календарь читается всегда, кроме разового
+   * (пустая маска при полярности WORK): у него ближайшее время возвращается до резолвера.
+   * Режим calendar — всегда с календарём (инвариант D-1 фазы D), независимо от флага honorHolidays.
+   */
+  fun usesProductionCalendar(alarm: AlarmEntity): Boolean {
+    if (effectiveMode(alarm) == AlarmEntity.MODE_CALENDAR) return true // D-1: всегда
+    if (!alarm.honorHolidays) return false
+    return when (effectiveMode(alarm)) {
+      AlarmEntity.MODE_SHIFT -> true
+      else -> alarm.daysMask != 0 || HolidayModePolicy.effectivePolarity(alarm) == AlarmPolarity.REST
+    }
+  }
+
+  /**
+   * Неделя для [PersonalDayResolver]. После TD03 личная неделя (из маски будильника) используется
+   * только для недельного режима (полярность всегда WORK); для режима calendar — глобальная
+   * рабочая неделя пользователя [globalWeek] (Q5 фазы C; по умолчанию — стандартная неделя
+   * страны), а «по выходным» означает её инверсию плюс официальные нерабочие дни (праздники,
+   * перенесённые выходные — когда переносы применимы). Маска в calendar на расчёт не влияет
+   * (D-2); см. `docs/SHIFT_HOLIDAY_POLICY.md` и `docs/WORK_WEEK_AND_STUDY.md` §1.
+   */
+  private fun personalWeek(daysMask: Int, polarity: AlarmPolarity, globalWeek: WorkWeek): WorkWeek {
+    if (polarity == AlarmPolarity.REST) return globalWeek
     return WorkWeek.fromMask(daysMask)
   }
 
   /** Перегрузка без правок календаря — периоды учитывает, правки нет. */
-  fun next(alarm: AlarmEntity, periods: List<AlarmPeriod>, from: LocalDateTime): LocalDateTime? =
-    next(alarm, periods, emptyList(), from)
+  fun next(
+    alarm: AlarmEntity,
+    periods: List<AlarmPeriod>,
+    from: LocalDateTime,
+    globalWeek: WorkWeek = CountryProfile.RU.standardWeek,
+  ): LocalDateTime? = next(alarm, periods, emptyList(), from, globalWeek)
 
   /**
-   * Звонит ли weekly-будильник в конкретный календарный день [date] — для наглядной визуализации в
-   * календаре (совпадает с логикой [next]): полярность REST звонит по нерабочим (выходные/праздники),
-   * иначе — по масочным дням, а при [AlarmEntity.honorHolidays] нерабочие глушатся. Разовый (маска 0)
-   * как повтор не показываем.
+   * Звонит ли будильник в конкретный календарный день [date] — для наглядной визуализации в
+   * календаре (совпадает с логикой [next]). Сменный режим сюда не попадает (у него свой расчёт
+   * через [ShiftEngine]).
+   *
+   * Режим calendar звонит по официальным нерабочим дням; календарь в нём обязателен (D-1), маска
+   * не участвует (D-2), инвертируемая неделя — [globalWeek] (Q5). Для weekly: полярность REST
+   * после TD03 не действует (только calendar); weekly всегда считается по масочным дням, а при
+   * [AlarmEntity.honorHolidays] нерабочие глушатся (правило переносов — от глобальной недели
+   * [globalWeek], Q4=4a).
+   * Разовый (маска 0) как повтор не показываем.
    */
-  fun weeklyFiresOn(
+  fun firesOn(
     alarm: AlarmEntity,
     date: LocalDate,
     calendar: ProductionCalendar?,
     periods: List<AlarmPeriod> = emptyList(),
+    globalWeek: WorkWeek = CountryProfile.RU.standardWeek,
   ): Boolean {
-    if (alarm.mode != AlarmEntity.MODE_WEEKLY) return false
-    if (coveredByPeriod(periods, date)) return false // отпуск/больничный/… глушат и weekly
+    val mode = effectiveMode(alarm)
+    if (mode == AlarmEntity.MODE_SHIFT) return false
+    if (coveredByPeriod(periods, date)) return false // отпуск/больничный/… глушат звонок
+
+    if (mode == AlarmEntity.MODE_CALENDAR) {
+      // Полярность фиксирована REST, инвертируемая неделя — глобальная неделя пользователя
+      // (Q5; по умолчанию — стандартная неделя страны), маска игнорируется (D-2).
+      return PersonalDayResolver(CountryProfile.RU, calendar, AlarmPolarity.REST, globalWeek)
+        .ringOn(date, globalWeek)
+    }
 
     // REST требует календаря; без него (тумблер выключен) — как WORK. Разовый как повтор не показываем.
     val polarity = if (calendar == null) AlarmPolarity.WORK
       else HolidayModePolicy.effectivePolarity(alarm)
     if (alarm.daysMask == 0 && polarity == AlarmPolarity.WORK) return false
 
-    val workWeek = personalWeek(alarm.daysMask, polarity)
-    return PersonalDayResolver(CountryProfile.RU, calendar, polarity).ringOn(date, workWeek)
+    val workWeek = personalWeek(alarm.daysMask, polarity, globalWeek)
+    return PersonalDayResolver(CountryProfile.RU, calendar, polarity, globalWeek).ringOn(date, workWeek)
   }
 
   /**

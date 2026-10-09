@@ -158,8 +158,19 @@ class ProductionCalendarTest {
 
   @Test
   fun fromIsDayOff_typesPreHoliday() {
-    // Строка на 2026: всё рабочее (0), кроме одного сокращённого предпраздничного дня (код 2).
+    // Строка на 2026: выходные — 1 (реальный источник всегда отмечает Сб/Вс), будни — 0,
+    // плюс один сокращённый предпраздничный день (код 2). Прежний фикстур из одних нулей
+    // нереалистичен: с TD09 такие данные верно считаются плейсхолдером и отклоняются.
     val chars = CharArray(365) { '0' }
+    var day = LocalDate.of(2026, 1, 1)
+    for (i in 0 until 365) {
+      if (day.dayOfWeek == java.time.DayOfWeek.SATURDAY ||
+        day.dayOfWeek == java.time.DayOfWeek.SUNDAY
+      ) {
+        chars[i] = '1'
+      }
+      day = day.plusDays(1)
+    }
     val preHoliday = LocalDate.of(2026, 4, 30) // Чт
     chars[preHoliday.dayOfYear - 1] = '2'
     val cal = ProductionCalendars.fromIsDayOff(2026, String(chars))
@@ -176,6 +187,22 @@ class ProductionCalendarTest {
   fun fromIsDayOff_rejectsInvalidChars() {
     // Правильная длина (365), но недопустимые символы (код ошибки/мусор) — отвергаем.
     ProductionCalendars.fromIsDayOff(2026, "9".repeat(365))
+  }
+
+  @Test(expected = IllegalArgumentException::class)
+  fun fromIsDayOff_rejectsYearWithoutNonWorkingDays() {
+    // Плейсхолдер источника для ещё не опубликованного года: 365 нулей, ни одного нерабочего
+    // дня (TD09, AO-8). Год без выходных невозможен — это не календарь.
+    ProductionCalendars.fromIsDayOff(2027, "0".repeat(365))
+  }
+
+  @Test
+  fun fromIsDayOff_acceptsYearWithSingleNonWorkingDay() {
+    // Граница правила: достаточно хотя бы одного нерабочего дня — данные принимаются.
+    val chars = CharArray(365) { '0' }
+    chars[0] = '1' // 1 января 2026 (Чт) — нерабочий будень
+    val cal = ProductionCalendars.fromIsDayOff(2026, String(chars))
+    assertEquals(StateDayKind.HOLIDAY, cal.kindOf(LocalDate.of(2026, 1, 1)))
   }
 
   @Test

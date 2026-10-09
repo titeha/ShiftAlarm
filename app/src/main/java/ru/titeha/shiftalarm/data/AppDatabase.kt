@@ -25,10 +25,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *    (см. [MIGRATION_4_5]).
  *  - v6 — учебный профиль: колонка `alarms.isStudy` (явный флаг «учебный будильник»,
  *    см. [MIGRATION_5_6]).
+ *  - v7 — «по календарю страны»: режим [AlarmEntity.MODE_CALENDAR] вынесен в собственное
+ *    значение `mode` (см. [MIGRATION_6_7]); `honorHolidays` остаётся включённым.
  */
 @Database(
   entities = [AlarmEntity::class, AlarmPeriod::class, AlarmOverride::class],
-  version = 6,
+  version = 7,
   exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -136,6 +138,24 @@ abstract class AppDatabase : RoomDatabase() {
       }
     }
 
+    /**
+     * Миграция 6→7 (TD02, инвариант D-5): режим «по календарю страны» стал собственным
+     * значением `mode` (см. [AlarmEntity.MODE_CALENDAR]). Переносим записи, которые выражали
+     * его прежней комбинацией полей: `weekly` + включённый календарь + полярность REST.
+     * Условие `honorHolidays = 1` обязательно: при выключенном тумблере REST не действовал,
+     * запись фактически была weekly-WORK, и перенос изменил бы поведение.
+     * `daysMask` не трогаем — в новом режиме она не участвует в расчёте, но остаётся данными
+     * пользователя на случай возврата в weekly. Проверяется в `AppDatabaseMigrationTest`.
+     */
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          "UPDATE alarms SET mode = 'calendar', honorHolidays = 1 " +
+            "WHERE mode = 'weekly' AND polarity = 'REST' AND honorHolidays = 1"
+        )
+      }
+    }
+
     fun get(context: Context): AppDatabase =
       instance ?: synchronized(this) {
         instance ?: Room.databaseBuilder(
@@ -143,7 +163,14 @@ abstract class AppDatabase : RoomDatabase() {
           AppDatabase::class.java,
           "shiftalarm.db"
         )
-          .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+          .addMigrations(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7
+          )
           .build().also { instance = it }
       }
   }

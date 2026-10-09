@@ -3,7 +3,9 @@ package ru.titeha.shiftalarm.alarm
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.schedule.AlarmTimes
+import ru.titeha.shiftalarm.schedule.CountryProfile
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
+import ru.titeha.shiftalarm.schedule.WorkWeek
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
@@ -30,6 +32,9 @@ object AlarmFireValidator {
    * [scheduledTriggerAtMillis] — время срабатывания, которое было записано в PendingIntent
    * в момент планирования. Если его нет, считаем intent старым форматом и разрешаем звонок
    * только для включённого будильника.
+   *
+   * [globalWeek] — глобальная рабочая неделя пользователя (TC03): та же, с которой будильник
+   * планировался. По умолчанию — стандартная неделя страны (сохраняет прежнее поведение).
    */
   fun shouldStartRinging(
     alarm: AlarmEntity,
@@ -37,7 +42,8 @@ object AlarmFireValidator {
     overrides: List<ScheduleOverrides.DayOverride>,
     scheduledTriggerAtMillis: Long,
     zoneId: ZoneId = ZoneId.systemDefault(),
-    tolerance: Duration = DefaultTolerance
+    tolerance: Duration = DefaultTolerance,
+    globalWeek: WorkWeek = CountryProfile.RU.standardWeek
   ): Boolean {
     if (!alarm.enabled) {
       return false
@@ -64,7 +70,8 @@ object AlarmFireValidator {
       alarm = alarm,
       periods = periods,
       overrides = overrides,
-      from = scheduledAt.minus(tolerance)
+      from = scheduledAt.minus(tolerance),
+      globalWeek = globalWeek
     ) ?: return false
 
     val differenceMillis = abs(Duration.between(expected, scheduledAt).toMillis())

@@ -1,6 +1,8 @@
 package ru.titeha.shiftalarm.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AlarmEventLogCodecTest {
@@ -39,5 +41,34 @@ class AlarmEventLogCodecTest {
     }
     assertEquals(3, events.size)
     assertEquals(listOf(3L, 4L, 5L), events.map { it.atMillis }) // остались самые свежие
+  }
+
+  @Test
+  fun `новый тип события переживает encode-decode`() {
+    val events = listOf(
+      AlarmEvent(1_700_000_000_000L, AlarmEventType.CALENDAR_DEGRADED, "id=1: нет данных на 2027")
+    )
+    assertEquals(events, AlarmEventLogCodec.decode(AlarmEventLogCodec.encode(events)))
+  }
+
+  @Test
+  fun `повтор устойчивого события не пишется в пределах окна`() {
+    val window = 24L * 60 * 60 * 1000
+    val detail = "id=1: нет данных календаря на 2027"
+    val events = listOf(AlarmEvent(1000, AlarmEventType.CALENDAR_DEGRADED, detail))
+
+    assertTrue(
+      AlarmEventLogCodec.hasRecentDuplicate(events, AlarmEventType.CALENDAR_DEGRADED, detail, 1000 + window - 1, window)
+    )
+    assertFalse(
+      AlarmEventLogCodec.hasRecentDuplicate(events, AlarmEventType.CALENDAR_DEGRADED, detail, 1000 + window, window)
+    )
+    // Другой будильник и другой тип — не повторы (ключ «будильник + год» живёт в тексте деталей).
+    assertFalse(
+      AlarmEventLogCodec.hasRecentDuplicate(events, AlarmEventType.CALENDAR_DEGRADED, "id=2: нет данных календаря на 2027", 2000, window)
+    )
+    assertFalse(
+      AlarmEventLogCodec.hasRecentDuplicate(emptyList(), AlarmEventType.CALENDAR_DEGRADED, detail, 2000, window)
+    )
   }
 }

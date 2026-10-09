@@ -311,21 +311,21 @@ class AlarmTimesTest {
     assertEquals(at(fri, 8, 0), next)
   }
 
-  // --- weeklyFiresOn (визуализация в календаре) ---
+  // --- firesOn (визуализация в календаре) ---
 
   private val sat = LocalDate.of(2026, 6, 27) // суббота
   private fun weekly(mask: Int, honor: Boolean = false, polarity: String = AlarmEntity.POLARITY_WORK) =
     AlarmEntity(mode = AlarmEntity.MODE_WEEKLY, daysMask = mask, honorHolidays = honor, polarity = polarity)
 
   @Test
-  fun `weeklyFiresOn — без праздников по масочным дням`() {
+  fun `firesOn — без праздников по масочным дням`() {
     val a = weekly(AlarmTimes.maskOf(*DayOfWeek.entries.toTypedArray()))
-    assertEquals(true, AlarmTimes.weeklyFiresOn(a, wed, null))
-    assertEquals(true, AlarmTimes.weeklyFiresOn(a, sat, null))
+    assertEquals(true, AlarmTimes.firesOn(a, wed, null))
+    assertEquals(true, AlarmTimes.firesOn(a, sat, null))
   }
 
   @Test
-  fun `weeklyFiresOn — WORK — отмеченная суббота звонит (личная неделя), праздник глушит`() {
+  fun `firesOn — WORK — отмеченная суббота звонит (личная неделя), праздник глушит`() {
     // Шестидневка Пн–Сб: суббота — рабочий день ПОЛЬЗОВАТЕЛЯ (личная неделя), а не календарный выходной.
     val sixDay = weekly(
       AlarmTimes.maskOf(
@@ -335,25 +335,25 @@ class AlarmTimesTest {
       honor = true
     )
     val plain = ProductionCalendar()
-    assertEquals(true, AlarmTimes.weeklyFiresOn(sixDay, wed, plain))  // рабочий будень — звонит
-    assertEquals(true, AlarmTimes.weeklyFiresOn(sixDay, sat, plain))  // отмеченная суббота — рабочая, звонит
+    assertEquals(true, AlarmTimes.firesOn(sixDay, wed, plain))  // рабочий будень — звонит
+    assertEquals(true, AlarmTimes.firesOn(sixDay, sat, plain))  // отмеченная суббота — рабочая, звонит
 
     // Тот же день, но объявленный праздником — глушится даже в личный рабочий день.
     val holiday = ProductionCalendar(kinds = mapOf(sat to StateDayKind.HOLIDAY))
-    assertEquals(false, AlarmTimes.weeklyFiresOn(sixDay, sat, holiday))
+    assertEquals(false, AlarmTimes.firesOn(sixDay, sat, holiday))
   }
 
   @Test
-  fun `weeklyFiresOn — REST звонит по нерабочим`() {
-    val a = weekly(0, honor = true, polarity = AlarmEntity.POLARITY_REST)
+  fun `firesOn — calendar звонит по нерабочим`() {
+    val a = AlarmEntity(mode = AlarmEntity.MODE_CALENDAR, honorHolidays = true, polarity = AlarmEntity.POLARITY_REST)
     val cal = ProductionCalendar()
-    assertEquals(false, AlarmTimes.weeklyFiresOn(a, wed, cal)) // рабочий — молчит
-    assertEquals(true, AlarmTimes.weeklyFiresOn(a, sat, cal))  // суббота — звонит
+    assertEquals(false, AlarmTimes.firesOn(a, wed, cal)) // рабочий — молчит
+    assertEquals(true, AlarmTimes.firesOn(a, sat, cal))  // суббота — звонит
   }
 
   @Test
-  fun `weeklyFiresOn — разовый как повтор не показывается`() {
-    assertEquals(false, AlarmTimes.weeklyFiresOn(weekly(0), wed, null))
+  fun `firesOn — разовый как повтор не показывается`() {
+    assertEquals(false, AlarmTimes.firesOn(weekly(0), wed, null))
   }
 
   @Test
@@ -372,8 +372,8 @@ class AlarmTimesTest {
     assertEquals(LocalDate.of(2026, 7, 1).atTime(7, 0), next)
 
     // Точка в календаре в день отпуска не показывается.
-    assertEquals(false, AlarmTimes.weeklyFiresOn(a, wed, null, vacation))
+    assertEquals(false, AlarmTimes.firesOn(a, wed, null, vacation))
     // А до отпуска (вторник 23-го) — звонит.
-    assertEquals(true, AlarmTimes.weeklyFiresOn(a, LocalDate.of(2026, 6, 23), null, vacation))
+    assertEquals(true, AlarmTimes.firesOn(a, LocalDate.of(2026, 6, 23), null, vacation))
   }
 }

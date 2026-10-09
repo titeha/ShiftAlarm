@@ -2,6 +2,7 @@ package ru.titeha.shiftalarm.ui
 
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.schedule.ShiftCategory
+import ru.titeha.shiftalarm.schedule.ShiftPresets
 import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftType
 import java.time.LocalTime
@@ -12,7 +13,8 @@ enum class AlarmEditorIssueCode {
     CUSTOM_CYCLE_INVALID,
     CUSTOM_CYCLE_EMPTY,
     CUSTOM_CYCLE_TOO_LONG,
-    CUSTOM_CYCLE_RING_CONFLICT
+    CUSTOM_CYCLE_RING_CONFLICT,
+    SHIFT_GRAPH_NOT_SELECTED
 }
 
 /** Одна понятная пользователю проблема настроек будильника. */
@@ -46,6 +48,14 @@ object AlarmEditorValidator {
         return AlarmEditorValidation(emptyList())
     }
 
+    /**
+     * Режиму «По выходным и праздникам» достаточно времени, выбранного в базовом
+     * редакторе: дни повтора не требуются (маска в этом режиме на расчёт не влияет).
+     */
+    fun validateCalendar(alarm: AlarmEntity): AlarmEditorValidation {
+        return AlarmEditorValidation(emptyList())
+    }
+
     /** В режиме повтора должен быть выбран хотя бы один день недели. */
     fun validateWeekly(alarm: AlarmEntity): AlarmEditorValidation {
         if (alarm.daysMask != 0) {
@@ -65,11 +75,23 @@ object AlarmEditorValidator {
     /**
      * Проверить сменный график.
      *
-     * Встроенный пресет (`cycleSpec == null`) считается корректным. Для своего цикла
-     * проверяются формат, непустой список, общий лимит и конфликт разных звонков,
-     * которые одному циклу пришлось бы поставить в один календарный день.
+     * Встроенный пресет (`cycleSpec == null`) считается корректным, если он существует и
+     * выбран: пустой/неизвестный `presetId` без своего цикла — проблема (с такой записью
+     * будильник просто не звонил бы). Для своего цикла проверяются формат, непустой список,
+     * общий лимит и конфликт разных звонков, которые одному циклу пришлось бы поставить
+     * в один календарный день.
      */
     fun validateShift(alarm: AlarmEntity): AlarmEditorValidation {
+        if (alarm.cycleSpec == null && ShiftPresets.byId(alarm.presetId) == null) {
+            return AlarmEditorValidation(
+                listOf(
+                    AlarmEditorIssue(
+                        code = AlarmEditorIssueCode.SHIFT_GRAPH_NOT_SELECTED,
+                        message = "Выберите шаблон графика или соберите свой цикл."
+                    )
+                )
+            )
+        }
         val spec = alarm.cycleSpec ?: return AlarmEditorValidation(emptyList())
         val slots = ShiftCycleCodec.decodeOrNull(spec)
             ?: return AlarmEditorValidation(

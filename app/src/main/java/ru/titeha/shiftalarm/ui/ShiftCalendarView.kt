@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmPeriod
+import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.schedule.PeriodKind
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftCalendar
@@ -183,8 +185,19 @@ fun WeeklyCalendar(
 ) {
   var month by remember { mutableStateOf(YearMonth.now()) }
   val today = LocalDate.now()
+  val context = LocalContext.current
+  // Глобальная рабочая неделя — вход движка (TC03); настройка в DE-хранилище.
+  val globalWeek = remember { SettingsStore(context).globalWorkWeek() }
   val calendar = remember(month, alarm.honorHolidays) {
-    if (alarm.honorHolidays) ProductionCalendars.merged("RU", month.year) else null
+    ProductionCalendars.calendarFor(alarm.honorHolidays, month.year)
+  }
+  // Подпись «рабочий день / выходной» — утверждение о государственном календаре. Без данных на год
+  // (например, 2028 до публикации) её показывать нельзя: пустой календарь назвал бы реальный
+  // праздник рабочим днём. Подсветка Сб/Вс при этом остаётся — это ожидаемая деградация.
+  // Условия считаем так же, как движок и журнал (AlarmTimes.usesProductionCalendar): иначе
+  // разовому будильнику календарь говорил бы «данных нет», а журнал молчал.
+  val calendarHasData = remember(month, alarm) {
+    AlarmTimes.usesProductionCalendar(alarm) && ProductionCalendars.hasData(month.year)
   }
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
   // Выбранный день — для подписи причины под календарём (только когда календарь не интерактивный).
@@ -266,7 +279,7 @@ fun WeeklyCalendar(
           DayCell(
             date = date,
             kind = cellKind,
-            rings = date != null && AlarmTimes.weeklyFiresOn(alarm, date, calendar, periods),
+            rings = date != null && AlarmTimes.firesOn(alarm, date, calendar, periods, globalWeek),
             isToday = date == today,
             isHighlighted = date != null && date == (highlightDay ?: selected),
             isInDragRange = date != null && dragRange != null && date in dragRange,
@@ -287,7 +300,7 @@ fun WeeklyCalendar(
 
     // Подпись причины по выбранному дню (только при «Учитывать праздники» — иначе календаря нет).
     selected?.let { sel ->
-      if (calendar != null) {
+      if (calendar != null && calendarHasData) {
         Spacer(Modifier.height(6.dp))
         val label = stateDayKindLabel(calendar.kindOf(sel))
           ?: if (calendar.isWorking(sel)) "рабочий день" else "выходной"
@@ -338,7 +351,7 @@ fun ShiftCalendarView(
   // Календарь праздников для точки-звонка — только если будильник учитывает праздники. Так точка
   // совпадает с тем, что реально запланирует планировщик (не рисуем звонок на празднике).
   val holidayCal = remember(month, honorHolidays) {
-    if (honorHolidays) ProductionCalendars.merged("RU", month.year) else null
+    ProductionCalendars.calendarFor(honorHolidays, month.year)
   }
   // Фактическая тема (учитывает выбор пользователя, не только систему) — по яркости поверхности.
   val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f

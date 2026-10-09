@@ -227,6 +227,32 @@ class ShiftEngineTest {
   }
 
   @Test
+  fun `пересекающиеся периоды при заморозке считаются один раз`() {
+    // Отпуск 0..1 и отпуск 1..2: день 1 входит в оба. Объединение = 0..2 (3 дня),
+    // а сумма длин дала бы 2 + 2 = 4 и сдвинула фазу цикла на день (F-2).
+    val overlapping = ShiftSchedule(
+      base = ShiftPattern.workRest(2, 2, work, anchor),
+      offPeriods = listOf(
+        OffPeriod(anchor, anchor.plusDays(1)),
+        OffPeriod(anchor.plusDays(1), anchor.plusDays(2))
+      ),
+      freezeCycleDuringOff = true
+    )
+    val merged = ShiftSchedule(
+      base = ShiftPattern.workRest(2, 2, work, anchor),
+      offPeriods = listOf(OffPeriod(anchor, anchor.plusDays(2))),
+      freezeCycleDuringOff = true
+    )
+
+    for (offset in 3L..8L) {
+      assertEquals(
+        ShiftEngine.shiftOn(anchor.plusDays(offset), merged).isWorkDay,
+        ShiftEngine.shiftOn(anchor.plusDays(offset), overlapping).isWorkDay
+      )
+    }
+  }
+
+  @Test
   fun next_alarm_skips_off_period() {
     val s = scheduleWithVacation(freeze = false)
     // из дня 0 06:00: дни 0,1 в отпуске (молчат), 2,3 выходные базовые → первый звонок день 4

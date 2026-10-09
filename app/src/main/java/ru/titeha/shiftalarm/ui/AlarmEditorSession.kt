@@ -11,6 +11,7 @@ import ru.titeha.shiftalarm.schedule.HolidayModePolicy
 internal enum class EditMethod {
     ONCE,
     WEEKLY,
+    CALENDAR,
     SHIFT
 }
 
@@ -21,6 +22,11 @@ internal fun methodOf(
     return when {
         alarm.mode == AlarmEntity.MODE_SHIFT ->
             EditMethod.SHIFT
+
+        // Режим календаря проверяется до маски: calendar-запись с пустой daysMask
+        // не должна попадать в ONCE (инвариант D-2 фазы D).
+        alarm.mode == AlarmEntity.MODE_CALENDAR ->
+            EditMethod.CALENDAR
 
         alarm.daysMask == 0 ->
             EditMethod.ONCE
@@ -50,6 +56,14 @@ internal fun effective(
         EditMethod.WEEKLY ->
             draft.copy(
                 mode = AlarmEntity.MODE_WEEKLY
+            )
+
+        // Календарный способ: honorHolidays фиксируется (инвариант D-1),
+        // daysMask не обнуляется (инвариант D-2) — при возврате в weekly дни сохранятся.
+        EditMethod.CALENDAR ->
+            draft.copy(
+                mode = AlarmEntity.MODE_CALENDAR,
+                honorHolidays = true
             )
 
         EditMethod.SHIFT ->

@@ -18,6 +18,19 @@ class AlarmEditorValidatorTest {
     }
 
     @Test
+    fun `календарный будильник проходит проверку без дней недели`() {
+        val result = AlarmEditorValidator.validateCalendar(
+            AlarmEntity(
+                mode = AlarmEntity.MODE_CALENDAR,
+                daysMask = 0,
+                honorHolidays = true
+            )
+        )
+
+        assertTrue(result.canSave)
+    }
+
+    @Test
     fun `повтор без дней недели блокирует сохранение`() {
         val result = AlarmEditorValidator.validateWeekly(
             AlarmEntity(daysMask = 0)
@@ -210,6 +223,25 @@ class AlarmEditorValidatorTest {
             mode = AlarmEntity.MODE_SHIFT,
             cycleSpec = ShiftCycleCodec.encode(slots)
         )
+    }
+
+    @Test
+    fun `сменный будильник без пресета и без своего цикла блокирует сохранение`() {
+        val result = AlarmEditorValidator.validateShift(
+            AlarmEntity(mode = AlarmEntity.MODE_SHIFT, presetId = "")
+        )
+
+        assertFalse(result.canSave)
+        assertTrue(result.has(AlarmEditorIssueCode.SHIFT_GRAPH_NOT_SELECTED))
+    }
+
+    @Test
+    fun `сменный будильник с выбранным пресетом проходит проверку`() {
+        val result = AlarmEditorValidator.validateShift(
+            AlarmEntity(mode = AlarmEntity.MODE_SHIFT, presetId = "2x2")
+        )
+
+        assertTrue(result.canSave)
     }
 
     private fun day(name: String, hour: Int, minute: Int): ShiftType {

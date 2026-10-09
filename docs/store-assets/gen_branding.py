@@ -88,7 +88,7 @@ def render_feature():
     d.text((x, 118*SS), "Будильник", font=f1, fill=WHITE)
     d.text((x, 218*SS), "работяги", font=f1, fill=WHITE)
     d.rectangle([x, 342*SS, x+128*SS, 348*SS], fill=ORANGE)
-    sub = "Смены 2/2, сутки/трое, ночные — не проспишь"
+    sub = "Смены 2/2, сутки/двое, ночные — не проспишь"
     f2 = fit_font(d, sub, FONT_REG, 30*SS, max_w)
     d.text((x, 372*SS), sub, font=f2, fill=SUB)
     return img.resize((1024, 500), Image.LANCZOS)

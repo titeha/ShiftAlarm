@@ -11,7 +11,9 @@ import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
+import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.schedule.AlarmTimes
+import ru.titeha.shiftalarm.schedule.ProductionCalendars
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 import java.time.LocalDateTime
 import ru.titeha.shiftalarm.schedule.AlarmInstant
@@ -41,6 +43,17 @@ object AlarmScheduler {
   /** Насколько должно просрочиться срабатывание из кэша, чтобы счесть его пропущенным (мс). */
   private const val MISS_GRACE_MS = 90_000L
 
+  /** Повтор «нет данных календаря» не чаще раза в сутки (мс): состояние устойчивое. */
+  private const val CALENDAR_DEGRADED_REPEAT_WINDOW_MS = 24L * 60 * 60 * 1000
+
+  /**
+   * Повтор «запланирован» с тем же временем не пишется в пределах этого окна (мс): старт процесса
+   * и обновление кэша планируют одно и то же дважды, системные события приходят подряд, и без
+   * дедупликации журнал состоял почти только из них (N6). Действия пользователя и сменившееся время
+   * звонка происходят заметно позже и в журнал попадают.
+   */
+  private const val SCHEDULED_REPEAT_WINDOW_MS = 10L * 60 * 1000
+
   /** Грейс для перевыставления просроченного за время ребута звонка при locked boot (мс). */
   private const val LOCKED_BOOT_OVERDUE_GRACE_MS = 30L * 60L * 1000L
 
@@ -69,7 +82,13 @@ object AlarmScheduler {
     overrides: List<ScheduleOverrides.DayOverride> = emptyList()
   ) {
     val next = if (alarm.enabled) {
-      AlarmTimes.next(alarm, periods, overrides, LocalDateTime.now())
+      AlarmTimes.next(
+        alarm,
+        periods,
+        overrides,
+        LocalDateTime.now(),
+        SettingsStore(context).globalWorkWeek()
+      )
     } else {
       null
     }
@@ -89,12 +108,13 @@ object AlarmScheduler {
       )
 
       if (scheduled) {
-        AlarmEventLog(context).record(
-          AlarmEventType.SCHEDULED,
-          "id=${alarm.id} → %02d.%02d %02d:%02d".format(
+        AlarmEventLog(context).recordIfFresh(
+          type = AlarmEventType.SCHEDULED,
+          detail = "id=${alarm.id} → %02d.%02d %02d:%02d".format(
             next.dayOfMonth, next.monthValue, next.hour, next.minute
           ),
-          System.currentTimeMillis()
+          atMillis = System.currentTimeMillis(),
+          windowMillis = SCHEDULED_REPEAT_WINDOW_MS
         )
       } else {
         AlarmEventLog(context).record(
@@ -103,6 +123,42 @@ object AlarmScheduler {
           System.currentTimeMillis()
         )
       }
+
+      // Деградация календаря — ПОСЛЕ системного планирования: сбой диагностического журнала не должен
+      // оставлять будильник без сигнала. Проверяется год ЗВОНКА, а не год отсчёта: иначе невидим самый
+      // частый случай «конец декабря → в следующем году данных нет» (находка F4 ревью TE1).
+      recordCalendarDegradation(context, alarm, next)
+    }
+  }
+
+  /**
+   * Записать в журнал, что на год звонка [next] нет данных производственного календаря, а будильник
+   * его учитывает ([AlarmTimes.usesProductionCalendar]).
+   *
+   * Состояние устойчивое (данных не будет, пока не обновится кэш), поэтому повтор не пишется, если
+   * такое же событие для этого будильника и года уже есть за последние
+   * [CALENDAR_DEGRADED_REPEAT_WINDOW_MS]: иначе каждый старт процесса добавлял бы запись на каждый
+   * будильник и вытеснял срабатывания из кольцевого буфера на 200 записей.
+   *
+   * Сбой записи или проверок глушится: диагностика не должна снова сломать уже завершённое планирование.
+   */
+  private fun recordCalendarDegradation(context: Context, alarm: AlarmEntity, next: LocalDateTime) {
+    // Внутри runCatching и проверки: hasData() дёргает внешний источник календаря, и исключение из него
+    // не должно доходить до вызывающего (в suspend-перегрузке за reschedule идёт refreshDirectBootCache).
+    runCatching {
+      if (!AlarmTimes.usesProductionCalendar(alarm)) return@runCatching
+      if (ProductionCalendars.hasData(next.year)) return@runCatching
+
+      AlarmEventLog(context).recordIfFresh(
+        type = AlarmEventType.CALENDAR_DEGRADED,
+        detail = "id=${alarm.id}: нет данных календаря на ${next.year} — " +
+          "нерабочие праздники не учитываются",
+        atMillis = System.currentTimeMillis(),
+        windowMillis = CALENDAR_DEGRADED_REPEAT_WINDOW_MS
+      )
+    }.onFailure {
+      // Глушим, но не бесследно: до правки исключение охраны доходило до отчёта батча и давало ERROR.
+      Log.w(TAG, "CALENDAR_DEGRADED: проверки или запись не удались", it)
     }
   }
 
@@ -273,13 +329,17 @@ object AlarmScheduler {
 
     val now = LocalDateTime.now()
     val horizonMillis = AlarmInstant.epochMilli(now.plusDays(DIRECT_BOOT_HORIZON_DAYS))
+    // Глобальная рабочая неделя — одна на весь кэш (настройка глобальная, Q1=1а); DE-хранилище
+    // читается и до разблокировки (Q2=2а).
+    val globalWeek = SettingsStore(context).globalWorkWeek()
 
     val entries = repo.enabled().mapNotNull { alarm ->
       val next = AlarmTimes.next(
         alarm,
         offPeriodsFor(repo, alarm),
         overridesFor(repo, alarm),
-        now
+        now,
+        globalWeek
       ) ?: return@mapNotNull null
 
       val millis = AlarmInstant.epochMilli(next)

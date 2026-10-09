@@ -10,6 +10,10 @@ import java.time.LocalDate
 /**
  * Golden-тесты матрицы «личная неделя × госкалендарь» (§2/§5 docs/WORKWEEK_AND_HOLIDAYS.md) на
  * реальной неделе 2026-06-22 (Пн) … 2026-06-28 (Вс).
+ *
+ * После TC02 (Q4=4a) правило переносов считается от ГЛОБАЛЬНОЙ рабочей недели пользователя:
+ * сценарии «своя неделя» передают её в конструктор резолвера явно вторым аргументом
+ * [work]/[rest]; переносы применяются только когда глобальная неделя равна стандартной.
  */
 class PersonalDayResolverTest {
 
@@ -26,11 +30,15 @@ class PersonalDayResolverTest {
   private fun cal(vararg pairs: Pair<LocalDate, StateDayKind>) =
     ProductionCalendar(kinds = mapOf(*pairs))
 
-  private fun work(calendar: ProductionCalendar?) =
-    PersonalDayResolver(CountryProfile.RU, calendar, AlarmPolarity.WORK)
+  private fun work(
+    calendar: ProductionCalendar?,
+    globalWeek: WorkWeek = CountryProfile.RU.standardWeek,
+  ) = PersonalDayResolver(CountryProfile.RU, calendar, AlarmPolarity.WORK, globalWeek)
 
-  private fun rest(calendar: ProductionCalendar?) =
-    PersonalDayResolver(CountryProfile.RU, calendar, AlarmPolarity.REST)
+  private fun rest(
+    calendar: ProductionCalendar?,
+    globalWeek: WorkWeek = CountryProfile.RU.standardWeek,
+  ) = PersonalDayResolver(CountryProfile.RU, calendar, AlarmPolarity.REST, globalWeek)
 
   private val fiveDay = week(
     DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
@@ -56,16 +64,17 @@ class PersonalDayResolverTest {
 
   @Test
   fun `2 шестидневка — праздник на субботе глушит, обычная и рабочая суббота звонят`() {
-    // Своя неделя (Пн–Сб): переносы не применяются, суббота — личный рабочий день.
-    assertFalse(work(cal(sat to StateDayKind.HOLIDAY)).ringOn(sat, sixDay))   // праздник — тишина
-    assertTrue(work(ProductionCalendar()).ringOn(sat, sixDay))               // обычная суббота — звонит
-    assertTrue(work(cal(sat to StateDayKind.TRANSFER_WORK)).ringOn(sat, sixDay)) // рабочая суббота — просто звонит
-    assertFalse(work(ProductionCalendar()).ringOn(sun, sixDay))             // воскресенье не в неделе — тишина
+    // Своя неделя (Пн–Сб) — и как маска, и как глобальная: переносы не применяются,
+    // суббота — личный рабочий день.
+    assertFalse(work(cal(sat to StateDayKind.HOLIDAY), sixDay).ringOn(sat, sixDay))   // праздник — тишина
+    assertTrue(work(ProductionCalendar(), sixDay).ringOn(sat, sixDay))               // обычная суббота — звонит
+    assertTrue(work(cal(sat to StateDayKind.TRANSFER_WORK), sixDay).ringOn(sat, sixDay)) // рабочая суббота — просто звонит
+    assertFalse(work(ProductionCalendar(), sixDay).ringOn(sun, sixDay))             // воскресенье не в неделе — тишина
   }
 
   @Test
   fun `3 четырёхдневка — перенос-рабочая суббота молчит, праздник во вторник глушит`() {
-    val r = work(cal(sat to StateDayKind.TRANSFER_WORK, tue to StateDayKind.HOLIDAY))
+    val r = work(cal(sat to StateDayKind.TRANSFER_WORK, tue to StateDayKind.HOLIDAY), fourDay)
     assertFalse(r.ringOn(sat, fourDay))  // переносы не применимы к своей неделе, суббота не в маске
     assertFalse(r.ringOn(tue, fourDay))  // праздник глушит личный рабочий день
     assertFalse(r.ringOn(fri, fourDay))  // пятница не в четырёхдневке
@@ -75,7 +84,7 @@ class PersonalDayResolverTest {
   @Test
   fun `4 странная неделя Вт Чт Сб — праздники глушат, переносы игнорируются`() {
     val oddWeek = week(DayOfWeek.TUESDAY, DayOfWeek.THURSDAY, DayOfWeek.SATURDAY)
-    val r = work(cal(tue to StateDayKind.HOLIDAY, mon to StateDayKind.TRANSFER_WORK))
+    val r = work(cal(tue to StateDayKind.HOLIDAY, mon to StateDayKind.TRANSFER_WORK), oddWeek)
     assertFalse(r.ringOn(tue, oddWeek))  // праздник глушит
     assertFalse(r.ringOn(mon, oddWeek))  // перенос-рабочий понедельник игнорируется (не в неделе)
     assertTrue(r.ringOn(thu, oddWeek))   // обычный личный день
@@ -84,7 +93,7 @@ class PersonalDayResolverTest {
 
   @Test
   fun `5 по выходным для шестидневки — звонит Вс и в праздник, молчит Пн-Сб`() {
-    val r = rest(cal(wed to StateDayKind.HOLIDAY))
+    val r = rest(cal(wed to StateDayKind.HOLIDAY), sixDay)
     assertTrue(r.ringOn(sun, sixDay))   // воскресенье — единственный личный выходной
     assertTrue(r.ringOn(wed, sixDay))   // праздник среди недели — звонит (по выходным)
     assertFalse(r.ringOn(mon, sixDay))  // рабочий — молчит

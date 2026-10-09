@@ -144,8 +144,8 @@ fun AddPeriodDialog(
       Spacer(Modifier.height(16.dp))
 
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(selected = byRange, onClick = { byRange = true }, label = { Text("По дату") })
-        FilterChip(selected = !byRange, onClick = { byRange = false }, label = { Text("На N дней") })
+        FilterChip(selected = byRange, onClick = { byRange = true }, shape = PillShape, label = { Text("По дату") })
+        FilterChip(selected = !byRange, onClick = { byRange = false }, shape = PillShape, label = { Text("На N дней") })
       }
       Spacer(Modifier.height(16.dp))
 
@@ -178,7 +178,7 @@ fun AddPeriodDialog(
       Spacer(Modifier.height(4.dp))
       FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         periodKinds.forEach { k ->
-          FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(k.label) })
+          FilterChip(selected = kind == k, onClick = { kind = k }, shape = PillShape, label = { Text(k.label) })
         }
       }
       Spacer(Modifier.height(8.dp))

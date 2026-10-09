@@ -14,6 +14,8 @@ import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmPeriod
 import ru.titeha.shiftalarm.data.AlarmRepository
+import ru.titeha.shiftalarm.data.SettingsStore
+import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ScheduleOverrides
 
 /**
@@ -104,7 +106,8 @@ class AlarmReceiver : BroadcastReceiver() {
       alarm = alarm,
       periods = periods,
       overrides = overrides,
-      scheduledTriggerAtMillis = scheduledTriggerAtMillis
+      scheduledTriggerAtMillis = scheduledTriggerAtMillis,
+      globalWeek = SettingsStore(context).globalWorkWeek()
     )
 
     if (!shouldRing) {
@@ -124,10 +127,15 @@ class AlarmReceiver : BroadcastReceiver() {
 
     when {
       isOneShot(alarm) && alarm.deleteAfterFiring -> {
+        // Разовое срабатывание не идёт через перепланирование, поэтому убираем запись из кэша
+        // ближайших звонков сами и ДО изменения базы: иначе оставшийся «призрак» на следующем
+        // обновлении кэша будет посчитан пропущенным звонком (F-1).
+        DirectBootAlarmStore(context).removeBase(alarmId)
         repo.delete(alarm)
       }
 
       isOneShot(alarm) -> {
+        DirectBootAlarmStore(context).removeBase(alarmId)
         repo.update(alarm.copy(enabled = false))
       }
 
@@ -189,9 +197,11 @@ class AlarmReceiver : BroadcastReceiver() {
     }
   }
 
-  private fun isOneShot(alarm: AlarmEntity): Boolean {
-    return alarm.mode == AlarmEntity.MODE_WEEKLY && alarm.daysMask == 0
-  }
+  /**
+   * Разовый ли будильник — правило живёт в чистом слое ([AlarmTimes.isOneShot]), приёмник только
+   * делегирует ему, чтобы «выключить/удалить после звонка» совпадало с тем, что посчитал движок.
+   */
+  private fun isOneShot(alarm: AlarmEntity): Boolean = AlarmTimes.isOneShot(alarm)
 
   private companion object {
     const val TAG = "AlarmReceiver"

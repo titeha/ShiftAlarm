@@ -101,6 +101,7 @@ fun DiagnosticsScreen(onBack: () -> Unit) {
       FilterChip(
         selected = importantOnly,
         onClick = { importantOnly = !importantOnly },
+        shape = PillShape,
         label = { Text("Только важные") }
       )
       Spacer(Modifier.height(4.dp))
@@ -146,6 +147,7 @@ private fun typeLabel(type: AlarmEventType): String = when (type) {
   AlarmEventType.SNOOZED -> "Отложен"
   AlarmEventType.MISSED -> "Не был выключен"
   AlarmEventType.ERROR -> "Ошибка обработки"
+  AlarmEventType.CALENDAR_DEGRADED -> "Нет данных календаря"
 }
 
 @Composable

@@ -11,18 +11,21 @@ enum class AlarmEventType {
   SNOOZED, // отложен (ручной снуз или авто-перезвон невыключенного)
   MISSED, // звонок не был выключен: лимит снуза исчерпан / авто-перезвон выключен
   ERROR, // исключение при обработке (ресивер) — чтобы «почему не сработало» было видно в журнале
+  CALENDAR_DEGRADED, // нет данных производственного календаря на год звонка: нерабочие праздники не учтены
 }
 
 /**
  * «Важные» события — то, что напрямую отвечает «почему зазвонил/не зазвонил»: сработал, пропущен,
- * сигнал деградировал, ошибка. Остальное (запланирован/снят/перепланирован) — техническое, шумит.
+ * сигнал деградировал, звонок рассчитан без данных календаря, ошибка. Остальное (запланирован/снят/
+ * перепланирован) — техническое, шумит.
  */
 val AlarmEventType.isImportant: Boolean
   get() = this == AlarmEventType.FIRED ||
     this == AlarmEventType.SKIPPED ||
     this == AlarmEventType.SIGNAL_DEGRADED ||
     this == AlarmEventType.MISSED ||
-    this == AlarmEventType.ERROR
+    this == AlarmEventType.ERROR ||
+    this == AlarmEventType.CALENDAR_DEGRADED
 
 /** Одна запись журнала: когда ([atMillis]), что ([type]) и детали ([detail], напр. id и время). */
 data class AlarmEvent(
@@ -60,5 +63,24 @@ object AlarmEventLogCodec {
   fun appendCapped(events: List<AlarmEvent>, event: AlarmEvent, max: Int): List<AlarmEvent> {
     val combined = events + event
     return if (combined.size > max) combined.takeLast(max) else combined
+  }
+
+  /**
+   * Есть ли среди [events] свежее (не старше [windowMillis] от [nowMillis]) событие [type] с теми же
+   * [detail]: повтор устойчивого состояния писать не нужно, иначе он вытеснит из кольцевого буфера
+   * срабатывания и пропуски.
+   *
+   * Сравниваются полные детали — в них и id будильника, и год, поэтому ключ «будильник + год»
+   * получается без разбора строки. Метка из будущего (перевод часов назад/вперёд) считается свежей:
+   * лучше пропустить запись, чем продублировать её.
+   */
+  fun hasRecentDuplicate(
+    events: List<AlarmEvent>,
+    type: AlarmEventType,
+    detail: String,
+    nowMillis: Long,
+    windowMillis: Long
+  ): Boolean = events.any {
+    it.type == type && it.detail == detail && nowMillis - it.atMillis < windowMillis
   }
 }
