@@ -175,6 +175,11 @@ class AlarmReceiver : BroadcastReceiver() {
 
     Log.i(TAG, "Locked: звоним по RingCache id=$alarmId")
     DirectBootEventBuffer(context).add(AlarmEventType.FIRED.name, "id=$alarmId «$label» (locked)", now)
+    // TF4: сработавшая запись не должна оставаться в DE-кэше: иначе после разблокировки
+    // stale-детектор в refreshDirectBootCache посчитает её ложным «пропуском» (все режимы).
+    // Убирать безопасно: полное перепланирование после разблокировки перестроит кэш из БД,
+    // а ребут в залоченном состоянии до разблокировки и так переставляет только кэш-записи.
+    DirectBootAlarmStore(context).removeBase(alarmId)
     AlarmService.start(context, alarmId, label)
   }
 
