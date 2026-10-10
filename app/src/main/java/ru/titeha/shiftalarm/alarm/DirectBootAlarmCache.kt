@@ -73,6 +73,18 @@ object DirectBootAlarmCacheCodec {
  * `directBootAware`-ресивер читает его при `LOCKED_BOOT_COMPLETED` и перевыставляет будильники,
  * не трогая Room (та до разблокировки недоступна).
  */
+/**
+ * Детект пропущенных звонков по старому кэшу (TL02): записи, чьё время прошло больше чем на
+ * [graceMs], а приложение не отработало срабатывание (при штатном звонке кэш обновился бы).
+ * Чистая функция — покрыта unit-тестами; вызывать ДО любой перезаписи кэша
+ * (см. `AlarmScheduler.collectMissed`), иначе перезапись скроет просроченные записи.
+ */
+internal fun staleMissed(
+  cache: List<CachedAlarm>,
+  nowMillis: Long,
+  graceMs: Long
+): List<CachedAlarm> = cache.filter { it.triggerAtMillis < nowMillis - graceMs }
+
 class DirectBootAlarmStore(context: Context) {
     private val prefs = context.applicationContext
         .createDeviceProtectedStorageContext()

@@ -58,7 +58,9 @@ fun VendorSetupScreen(guide: VendorGuide, onBack: () -> Unit) {
       Spacer(Modifier.height(4.dp))
       Text(
         "${guide.vendorName}: чтобы будильник срабатывал после перезагрузки и не выгружался системой, " +
-          "нужно один раз разрешить автозапуск и снять ограничения батареи.",
+          "нужно один раз разрешить автозапуск и снять ограничения батареи. " +
+          "Без автозапуска прошивка может также не доставить звонок до разблокировки экрана " +
+          "(наблюдение на MIUI, инцидент 2026-10-10).",
         style = MaterialTheme.typography.bodyMedium
       )
       Spacer(Modifier.height(16.dp))

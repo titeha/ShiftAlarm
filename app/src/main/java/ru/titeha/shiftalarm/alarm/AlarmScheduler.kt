@@ -174,6 +174,11 @@ object AlarmScheduler {
     repo: AlarmRepository,
     alarms: List<AlarmEntity>
   ): AlarmRescheduleReport {
+    // TL02: честный детект пропусков — ДО любой перезаписи DE-кэша ниже по методу.
+    // Инцидент 2026-10-10: без этого перезапись в цикле скрывала просроченные записи
+    // (locked-звонок не доставлен при выключенном автозапуске MIUI — пользователь
+    // не видел ни звонка, ни карточки пропуска).
+    collectMissed(context)
     // Все периоды и правки грузим ДВУМЯ запросами и группируем по alarmId, а не по запросу на каждый
     // будильник (N+1). Путь массовый (boot/системное событие) — так меньше обращений к БД.
     val periodsByAlarm = repo.allPeriodsList().groupBy { it.alarmId }
@@ -230,6 +235,18 @@ object AlarmScheduler {
     refreshDirectBootCache(context, repo)
 
     return report
+  }
+
+  /**
+   * Собрать пропущенные звонки из старого DE-кэша (TL02). Вызывается в начале rescheduleAll —
+   * до перезаписей кэша циклом перепланирования. Безопасно вызывать повторно: после первой
+   * перезаписи просроченных записей в кэше нет.
+   */
+  fun collectMissed(context: Context) {
+    val store = DirectBootAlarmStore(context)
+    store.addMissed(
+      staleMissed(store.read(), System.currentTimeMillis(), MISS_GRACE_MS)
+    )
   }
 
   /**
@@ -318,15 +335,8 @@ object AlarmScheduler {
   suspend fun refreshDirectBootCache(context: Context, repo: AlarmRepository) {
     val store = DirectBootAlarmStore(context)
 
-    /*
-     * Детект пропуска: если в СТАРОМ кэше остался будильник, чьё время прошло больше, чем на
-     * MISS_GRACE, значит приложение не отработало срабатывание (обычно система выгрузила его —
-     * при штатном звонке AlarmReceiver перепланировал бы и обновил кэш). Копим для показа.
-     */
-    val nowMillis = System.currentTimeMillis()
-    val stale = store.read().filter { it.triggerAtMillis < nowMillis - MISS_GRACE_MS }
-    store.addMissed(stale)
-
+    // Детект пропусков вынесен в collectMissed (TL02) и вызывается ДО перезаписей:
+    // здесь кэш уже можно только переписывать.
     val now = LocalDateTime.now()
     val horizonMillis = AlarmInstant.epochMilli(now.plusDays(DIRECT_BOOT_HORIZON_DAYS))
     // Глобальная рабочая неделя — одна на весь кэш (настройка глобальная, Q1=1а); DE-хранилище
