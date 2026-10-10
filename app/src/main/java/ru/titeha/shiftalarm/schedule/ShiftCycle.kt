@@ -17,7 +17,6 @@ object ShiftCycle {
 
   /** Авто-имя блока по категории (используется как имя по умолчанию). */
   fun autoNameFor(category: ShiftCategory): String = when (category) {
-    ShiftCategory.MORNING -> "Утро"
     ShiftCategory.DAY -> "День"
     ShiftCategory.NIGHT -> "Ночь"
     ShiftCategory.OFF -> "Выходной"
@@ -25,10 +24,21 @@ object ShiftCycle {
 
   /** Время будильника по умолчанию для категории (звонок раньше старта смены). */
   fun defaultAlarmFor(category: ShiftCategory): LocalTime = when (category) {
-    ShiftCategory.MORNING -> LocalTime.of(5, 0)
-    ShiftCategory.DAY -> LocalTime.of(13, 0)
+    ShiftCategory.DAY -> LocalTime.of(7, 0)
     ShiftCategory.NIGHT, ShiftCategory.OFF -> LocalTime.of(21, 0)
   }
+
+  /**
+   * Правило 17:00 (SH02, решение владельца 2026-10-10): ночной блок со звонком раньше 17:00
+   * не имеет смысла как «звонок накануне» и работает как дневной. Применяется и в редакторе
+   * при подтверждении, и защитно при декодировании сохранённых циклов.
+   */
+  fun applyNightDayRule(slot: ShiftType): ShiftType =
+    if (slot.category == ShiftCategory.NIGHT && slot.wakeTime != null && slot.wakeTime.hour < 17) {
+      slot.copy(category = ShiftCategory.DAY)
+    } else {
+      slot
+    }
 
   /** Имя блока — по умолчанию (совпадает с авто-именем своего типа), а не пользовательское. */
   fun isAutoNamed(slot: ShiftType): Boolean = slot.name == autoNameFor(slot.category)
@@ -63,7 +73,7 @@ object ShiftCycle {
    * и не слился при нормализации. Предпочтение: День → Утро → Ночь → Выходной; если все заняты — День.
    */
   fun distinctCategoryFrom(avoid: Set<ShiftCategory>): ShiftCategory =
-    listOf(ShiftCategory.DAY, ShiftCategory.MORNING, ShiftCategory.NIGHT, ShiftCategory.OFF)
+    listOf(ShiftCategory.DAY, ShiftCategory.NIGHT, ShiftCategory.OFF)
       .firstOrNull { it !in avoid } ?: ShiftCategory.DAY
 
   private fun same(a: ShiftType, b: ShiftType): Boolean =

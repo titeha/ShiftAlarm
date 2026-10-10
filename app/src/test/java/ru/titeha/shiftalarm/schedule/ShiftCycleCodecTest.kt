@@ -73,11 +73,19 @@ class ShiftCycleCodecTest {
   }
 
   @Test
+  fun `legacy-код M читается как DAY, ночь раньше 17 часов нормализуется в день (SH02)`() {
+    val decoded = ShiftCycleCodec.decode("M|0600|Утро\nN|0600|Ранняя ночь\nN|2100|Ночь")
+    assertEquals(ShiftCategory.DAY, decoded[0].category)   // алиас «M»
+    assertEquals(ShiftCategory.DAY, decoded[1].category)   // правило 17:00
+    assertEquals(ShiftCategory.NIGHT, decoded[2].category)
+  }
+
+  @Test
   fun `старый формат читается, категория выводится из времени`() {
     // Без категорий: HHMM|name и off|name (как писала прежняя версия).
     val decoded = ShiftCycleCodec.decode("0700|Работа\noff|Выходной")
     assertEquals(LocalTime.of(7, 0), decoded[0].wakeTime)
-    assertEquals(ShiftCategory.MORNING, decoded[0].category)
+    assertEquals(ShiftCategory.DAY, decoded[0].category)  // 7:00 → день (SH02: утро слито с днём)
     assertEquals(null, decoded[1].wakeTime)
     assertEquals(ShiftCategory.OFF, decoded[1].category)
   }

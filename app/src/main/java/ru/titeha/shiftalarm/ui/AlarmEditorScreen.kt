@@ -1253,7 +1253,6 @@ private fun ShiftCalendarAndOverrides(
 
 /** Русский ярлык категории для метки правки. */
 private fun labelOfCategory(category: ShiftCategory): String = when (category) {
-  ShiftCategory.MORNING -> "Утро"
   ShiftCategory.DAY -> "День"
   ShiftCategory.NIGHT -> "Ночь"
   ShiftCategory.OFF -> "Выходной"
@@ -1320,7 +1319,7 @@ private fun DayOverrideDialog(
         Text("Сделать сменой:", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(4.dp))
         listOf(
-          ShiftCategory.MORNING, ShiftCategory.DAY, ShiftCategory.NIGHT, ShiftCategory.OFF
+          ShiftCategory.DAY, ShiftCategory.NIGHT, ShiftCategory.OFF
         ).forEach { cat ->
           TextButton(
             onClick = { onPickCategory(cat) },

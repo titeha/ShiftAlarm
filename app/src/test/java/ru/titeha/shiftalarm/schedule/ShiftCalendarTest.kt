@@ -15,9 +15,9 @@ class ShiftCalendarTest {
   private val mdn = ShiftPresets.byId("mdn")!!.build(anchor)
 
   @Test
-  fun `утренние слоты — MORNING`() {
-    assertEquals(DayKind.MORNING, ShiftCalendar.kindOf(anchor, mdn))
-    assertEquals(DayKind.MORNING, ShiftCalendar.kindOf(anchor.plusDays(2), mdn))
+  fun `утренние слоты — DAY (категории слиты, SH02)`() {
+    assertEquals(DayKind.DAY, ShiftCalendar.kindOf(anchor, mdn))
+    assertEquals(DayKind.DAY, ShiftCalendar.kindOf(anchor.plusDays(2), mdn))
   }
 
   @Test
@@ -40,7 +40,7 @@ class ShiftCalendarTest {
 
   @Test
   fun `цикл повторяется — день 15 снова MORNING`() {
-    assertEquals(DayKind.MORNING, ShiftCalendar.kindOf(anchor.plusDays(15), mdn))
+    assertEquals(DayKind.DAY, ShiftCalendar.kindOf(anchor.plusDays(15), mdn))
   }
 
   @Test
@@ -67,9 +67,9 @@ class ShiftCalendarTest {
   }
 
   @Test
-  fun `2x2 — рабочий день MORNING, выходной OFF`() {
+  fun `2x2 — рабочий день DAY, выходной OFF`() {
     val s = ShiftPresets.byId("2x2")!!.build(anchor) // работа 7:00
-    assertEquals(DayKind.MORNING, ShiftCalendar.kindOf(anchor, s))
+    assertEquals(DayKind.DAY, ShiftCalendar.kindOf(anchor, s))
     assertEquals(DayKind.OFF, ShiftCalendar.kindOf(anchor.plusDays(2), s))
   }
 }

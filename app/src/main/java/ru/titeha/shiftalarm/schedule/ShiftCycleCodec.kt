@@ -17,7 +17,6 @@ import java.time.LocalTime
 object ShiftCycleCodec {
   private fun catCode(category: ShiftCategory): String {
     return when (category) {
-      ShiftCategory.MORNING -> "M"
       ShiftCategory.DAY -> "D"
       ShiftCategory.NIGHT -> "N"
       ShiftCategory.OFF -> "O"
@@ -26,7 +25,9 @@ object ShiftCycleCodec {
 
   private fun catFromCode(source: String): ShiftCategory? {
     return when (source) {
-      "M" -> ShiftCategory.MORNING
+      // «M» — legacy-код утра: до SH02 утро и день были разными категориями,
+      // сохранённые циклы с «M» читаются как дневные.
+      "M" -> ShiftCategory.DAY
       "D" -> ShiftCategory.DAY
       "N" -> ShiftCategory.NIGHT
       "O" -> ShiftCategory.OFF
@@ -107,11 +108,13 @@ object ShiftCycleCodec {
         val wake = parseTime(rest.substring(0, sep2))
         val name = unescape(rest.substring(sep2 + 1))
 
-        ShiftType(
-          id = "c$index",
-          name = name,
-          wakeTime = wake,
-          category = category
+        ShiftCycle.applyNightDayRule(
+          ShiftType(
+            id = "c$index",
+            name = name,
+            wakeTime = wake,
+            category = category
+          )
         )
       } else {
         val wake = if (first == "off") {

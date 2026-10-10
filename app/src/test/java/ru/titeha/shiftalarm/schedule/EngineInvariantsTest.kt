@@ -91,7 +91,7 @@ class EngineInvariantsTest {
   fun resolvePriority_exception_swap_offPeriod_rotation() {
     val day = ShiftType("d", "День", LocalTime.of(7, 0), ShiftCategory.DAY)
     val night = ShiftType("n", "Ночь", LocalTime.of(21, 0), ShiftCategory.NIGHT)
-    val morning = ShiftType("m", "Утро", LocalTime.of(5, 0), ShiftCategory.MORNING)
+    val morning = ShiftType("m", "Утро", LocalTime.of(5, 0), ShiftCategory.DAY)
     val d = anchor
     val everyDay = ShiftPattern(listOf(day), anchor) // каждый день — «День»
 
@@ -101,7 +101,7 @@ class EngineInvariantsTest {
       exceptions = mapOf(d to morning),
       offPeriods = listOf(OffPeriod(d, d)),
     )
-    assertEquals(ShiftCategory.MORNING, ShiftEngine.shiftOn(d, full).category)   // исключение
+    assertEquals(ShiftCategory.DAY, ShiftEngine.shiftOn(d, full).category)   // исключение
     assertEquals(ShiftCategory.NIGHT, ShiftEngine.shiftOn(d, full.copy(exceptions = emptyMap())).category) // подмена
     assertEquals(
       ShiftCategory.OFF,

@@ -8,7 +8,7 @@ import java.time.LocalTime
 
 class CycleAnchorTest {
 
-  private val morning = ShiftType("m", "Утро", LocalTime.of(5, 0), ShiftCategory.MORNING)
+  private val morning = ShiftType("m", "Утро", LocalTime.of(5, 0), ShiftCategory.DAY)
   private val day = ShiftType("d", "День", LocalTime.of(13, 0), ShiftCategory.DAY)
   private val off = ShiftType.off()
 

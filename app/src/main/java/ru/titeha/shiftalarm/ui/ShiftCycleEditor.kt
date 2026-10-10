@@ -400,15 +400,13 @@ private data class PendingNewBlock(
 )
 
 private val CATEGORIES = listOf(
-  ShiftCategory.MORNING to "Утро",
   ShiftCategory.DAY to "День",
   ShiftCategory.NIGHT to "Ночь",
   ShiftCategory.OFF to "Выходной"
 )
 
-/** Односимвольная метка типа для сегмента ленты («У/Д/Н/В»). */
+/** Односимвольная метка типа для сегмента ленты («Д/Н/В»). */
 private fun shortLabel(category: ShiftCategory): String = when (category) {
-  ShiftCategory.MORNING -> "У"
   ShiftCategory.DAY -> "Д"
   ShiftCategory.NIGHT -> "Н"
   ShiftCategory.OFF -> "В"
@@ -507,7 +505,11 @@ private fun BlockSheet(
   var pickingTime by remember { mutableStateOf(false) }
   var showAdvanced by remember(block) { mutableStateOf(false) }
   val wt = slot.wakeTime
-  val staged = SlotRun(slot, count)
+  // Правило 17:00 (SH02, решение владельца 2026-10-10): ночной блок со звонком раньше
+  // 17:00 фиксируется как дневной (звонок в те же сутки); защитно то же правило
+  // применяется при декодировании сохранённых циклов (ShiftCycleCodec).
+  val staged = SlotRun(ShiftCycle.applyNightDayRule(slot), count)
+  val nightBeforeRule = slot.category == ShiftCategory.NIGHT && wt != null && wt.hour < 17
   val maxCount = ShiftCycleEditLimits.maxBlockCount(otherDays)
   val countFits = ShiftCycleEditLimits.canUseBlockCount(otherDays = otherDays, count = count)
   val duplicateAllowed = ShiftCycleEditLimits.canDuplicate(otherDays = otherDays, editedCount = count)
@@ -555,6 +557,23 @@ private fun BlockSheet(
         }
       }
       Spacer(Modifier.height(12.dp))
+
+      // Пояснение категории (владелец, 2026-10-09/10): чем ночь отличается от дня по звонку.
+      Text(
+        when (slot.category) {
+          ShiftCategory.DAY -> "День — звонок в те же сутки, что и смена."
+          ShiftCategory.NIGHT -> "Ночь — смена после полуночи, звонок накануне вечером."
+          ShiftCategory.OFF -> "Выходной — звонка нет."
+        },
+        style = MaterialTheme.typography.bodySmall
+      )
+      if (nightBeforeRule) {
+        Spacer(Modifier.height(4.dp))
+        Text(
+          "Время звонка раньше 17:00 — при подтверждении блок станет дневным: звонок в те же сутки.",
+          style = MaterialTheme.typography.bodySmall
+        )
+      }
 
       // Дней подряд — степпер 1..30.
       Row(verticalAlignment = Alignment.CenterVertically) {

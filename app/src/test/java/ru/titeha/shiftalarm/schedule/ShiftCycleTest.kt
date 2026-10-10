@@ -6,7 +6,7 @@ import java.time.LocalTime
 
 class ShiftCycleTest {
 
-  private val morning = ShiftType("m", "Утро", LocalTime.of(5, 0), ShiftCategory.MORNING)
+  private val morning = ShiftType("m", "День", LocalTime.of(5, 0), ShiftCategory.DAY)  // SH02: авто-имя дня
   private val off = ShiftType.off()
 
   @Test
@@ -14,7 +14,7 @@ class ShiftCycleTest {
     val runs = ShiftCycle.group(listOf(morning, morning, morning, off, off))
     assertEquals(2, runs.size)
     assertEquals(3, runs[0].count)
-    assertEquals("Утро", runs[0].slot.name)
+    assertEquals("День", runs[0].slot.name)
     assertEquals(2, runs[1].count)
   }
 
@@ -61,15 +61,15 @@ class ShiftCycleTest {
 
   @Test
   fun `смена типа среднего блока склеивает соседей`() {
-    // День, Утро, День → сменили средний Утро (авто-имя) на День → должно склеиться в День×3.
-    val day = ShiftType("d", "День", LocalTime.of(13, 0), ShiftCategory.DAY)
+    // День(7:00), День(5:00), День(7:00) → ретайп среднего (авто-имя) даёт дефолт 7:00 → склейка в День×3.
+    val day = ShiftType("d", "День", LocalTime.of(7, 0), ShiftCategory.DAY)
     val slots = listOf(day, morning, day)
     val retyped = slots.toMutableList().also { it[1] = ShiftCycle.retype(it[1], ShiftCategory.DAY) }
     val runs = ShiftCycle.group(retyped)
     assertEquals(1, runs.size)
     assertEquals(3, runs[0].count)
     assertEquals("День", runs[0].slot.name)
-    assertEquals(LocalTime.of(13, 0), runs[0].slot.wakeTime)
+    assertEquals(LocalTime.of(7, 0), runs[0].slot.wakeTime)
   }
 
   @Test
@@ -88,21 +88,21 @@ class ShiftCycleTest {
     assertEquals(ShiftCategory.OFF, off1.category)
     assertEquals("Выходной", off1.name)
     val back = ShiftCycle.retype(off1, ShiftCategory.DAY)
-    assertEquals(LocalTime.of(13, 0), back.wakeTime)
+    assertEquals(LocalTime.of(7, 0), back.wakeTime)  // SH02: дефолт дневного блока — 7:00
     assertEquals("День", back.name)
   }
 
   @Test
   fun `distinctCategoryFrom выбирает тип, отличный от соседей`() {
-    // Между Утро и Выходной новый блок не должен быть ни тем, ни другим → День (первый свободный).
-    assertEquals(
-      ShiftCategory.DAY,
-      ShiftCycle.distinctCategoryFrom(setOf(ShiftCategory.MORNING, ShiftCategory.OFF))
-    )
-    // Если День и Утро заняты — следующий свободный по приоритету это Ночь.
+    // Между Днём и Выходным новый блок не должен быть ни тем, ни другим → Ночь (первая свободная).
     assertEquals(
       ShiftCategory.NIGHT,
-      ShiftCycle.distinctCategoryFrom(setOf(ShiftCategory.DAY, ShiftCategory.MORNING))
+      ShiftCycle.distinctCategoryFrom(setOf(ShiftCategory.DAY, ShiftCategory.OFF))
+    )
+    // Если День и Ночь заняты — следующий свободный по приоритету это Выходной.
+    assertEquals(
+      ShiftCategory.OFF,
+      ShiftCycle.distinctCategoryFrom(setOf(ShiftCategory.DAY, ShiftCategory.NIGHT))
     )
   }
 
@@ -110,7 +110,7 @@ class ShiftCycleTest {
   fun `blockOf делает стандартный блок с будильником, выходной — без`() {
     val day = ShiftCycle.blockOf(ShiftCategory.DAY)
     assertEquals("День", day.name)
-    assertEquals(LocalTime.of(13, 0), day.wakeTime)
+    assertEquals(LocalTime.of(7, 0), day.wakeTime)  // SH02: дефолт дневного блока — 7:00
     val off = ShiftCycle.blockOf(ShiftCategory.OFF)
     assertEquals(null, off.wakeTime)
   }
@@ -119,16 +119,23 @@ class ShiftCycleTest {
   fun `вставка умного блока между соседями не сливается`() {
     // Утро, Выходной → вставили умный блок после Утро → он не Утро и не Выходной → 3 блока.
     val day = ShiftCycle.blockOf(
-      ShiftCycle.distinctCategoryFrom(setOf(ShiftCategory.MORNING, ShiftCategory.OFF))
+      ShiftCycle.distinctCategoryFrom(setOf(ShiftCategory.DAY, ShiftCategory.OFF))
     )
     val runs = ShiftCycle.group(listOf(morning, day, off))
     assertEquals(3, runs.size)
   }
 
   @Test
+  fun `categoryFromTime — до 17 часов день, с 17 часов ночь (SH02)`() {
+    assertEquals(ShiftCategory.DAY, ShiftType.categoryFromTime(LocalTime.of(16, 59)))
+    assertEquals(ShiftCategory.NIGHT, ShiftType.categoryFromTime(LocalTime.of(17, 0)))
+    assertEquals(ShiftCategory.OFF, ShiftType.categoryFromTime(null))
+  }
+
+  @Test
   fun `retype сохраняет пользовательское имя`() {
-    val custom = ShiftType("c", "Моя смена", LocalTime.of(8, 0), ShiftCategory.MORNING)
-    val retyped = ShiftCycle.retype(custom, ShiftCategory.DAY)
+    val custom = ShiftType("c", "Моя смена", LocalTime.of(8, 0), ShiftCategory.DAY)
+    val retyped = ShiftCycle.retype(custom, ShiftCategory.NIGHT)
     assertEquals("Моя смена", retyped.name)
     assertEquals(LocalTime.of(8, 0), retyped.wakeTime) // время пользователя не трогаем
   }
