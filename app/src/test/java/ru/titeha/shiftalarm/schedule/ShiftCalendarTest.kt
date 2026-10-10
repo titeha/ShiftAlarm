@@ -39,7 +39,7 @@ class ShiftCalendarTest {
   }
 
   @Test
-  fun `цикл повторяется — день 15 снова MORNING`() {
+  fun `цикл повторяется — день 15 снова DAY`() {
     assertEquals(DayKind.DAY, ShiftCalendar.kindOf(anchor.plusDays(15), mdn))
   }
 
