@@ -40,8 +40,10 @@ object ShiftPresets {
     // Вариант Б: ночная отрабатывается в эти сутки (метка «Ночь»), но звонок — вечером
     // предыдущего дня. Поэтому последний выходной перед ночами несёт звонок (вых*), а последняя
     // ночь — без своего звонка (он был накануне). Цикл 3/2, 15 дней.
-    Preset("mdn", "Утро/День/Ночь 3×2") { anchor ->
-      val morning = ShiftType("m", "Утро", LocalTime.of(5, 0), ShiftCategory.MORNING)
+    // SH02 (2026-10-10): утро и день слиты в одну категорию DAY (звонок в те же сутки);
+    // имена слотов оставлены описательными, времена — прежние. Название пресета обновлено.
+    Preset("mdn", "День/Ночь 3×2") { anchor ->
+      val morning = ShiftType("m", "Утро", LocalTime.of(5, 0), ShiftCategory.DAY)
       val day = ShiftType("d", "День", LocalTime.of(13, 0), ShiftCategory.DAY)
       val night = ShiftType("n", "Ночь", LocalTime.of(21, 0), ShiftCategory.NIGHT)
       val nightLast = ShiftType("n", "Ночь", null, ShiftCategory.NIGHT)

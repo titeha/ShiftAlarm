@@ -69,7 +69,6 @@ private val WEEKDAYS = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "�
  * берутся более глубокие варианты, чтобы гармонировать с фоном и держать контраст с белым текстом.
  */
 internal fun colorOf(kind: DayKind, dark: Boolean): Color = if (!dark) when (kind) {
-  DayKind.MORNING -> Color(0xFFFFD54F)  // утро — жёлтый
   DayKind.DAY -> Color(0xFFFF9800)      // день — оранжевый
   DayKind.NIGHT -> Color(0xFF42A5F5)    // ночь — синий
   DayKind.OFF -> Color(0xFFE57373)      // выходной — красный
@@ -80,7 +79,6 @@ internal fun colorOf(kind: DayKind, dark: Boolean): Color = if (!dark) when (kin
   DayKind.SCHOOL_BREAK -> Color(0xFF26C6DA) // каникулы — голубой
   DayKind.SESSION -> Color(0xFFAB47BC)      // сессия — фиолетовый
 } else when (kind) {
-  DayKind.MORNING -> Color(0xFF6D5A16)
   DayKind.DAY -> Color(0xFF8A5200)
   DayKind.NIGHT -> Color(0xFF1E4A6E)
   DayKind.OFF -> Color(0xFF7A3B3B)
@@ -107,14 +105,12 @@ private fun periodDayKind(reason: String): DayKind = when (PeriodKind.fromReason
 
 /** Категория смены → тип дня календаря (для переиспользования палитры в ленте цикла). */
 internal fun categoryToDayKind(category: ShiftCategory): DayKind = when (category) {
-  ShiftCategory.MORNING -> DayKind.MORNING
   ShiftCategory.DAY -> DayKind.DAY
   ShiftCategory.NIGHT -> DayKind.NIGHT
   ShiftCategory.OFF -> DayKind.OFF
 }
 
 private fun labelOf(kind: DayKind): String = when (kind) {
-  DayKind.MORNING -> "Утро"
   DayKind.DAY -> "День"
   DayKind.NIGHT -> "Ночь"
   DayKind.OFF -> "Выходной"

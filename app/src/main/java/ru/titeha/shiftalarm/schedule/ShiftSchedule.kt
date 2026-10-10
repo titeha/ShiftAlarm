@@ -10,7 +10,6 @@ import java.time.temporal.ChronoUnit
  * Независима от того, звонит ли будильник.
  */
 enum class ShiftCategory {
-    MORNING,
     DAY,
     NIGHT,
     OFF
@@ -37,11 +36,12 @@ data class ShiftType(
         /** Выходной — слот без звонка. */
         fun off(name: String = "Выходной") = ShiftType("off", name, null, ShiftCategory.OFF)
 
-        /** Категория по времени звонка, если она не задана явно. */
+        /** Категория по времени звонка, если она не задана явно.
+         *  После слияния «Утра» и «Дня» (SH02, решение владельца 2026-10-10): дневной звонок —
+         *  в те же сутки, что и смена; ночной (звонок накануне) — только с 17:00 и позже. */
         fun categoryFromTime(wakeTime: LocalTime?): ShiftCategory = when {
             wakeTime == null -> ShiftCategory.OFF
-            wakeTime.hour < 10 -> ShiftCategory.MORNING
-            wakeTime.hour < 16 -> ShiftCategory.DAY
+            wakeTime.hour < 17 -> ShiftCategory.DAY
             else -> ShiftCategory.NIGHT
         }
     }

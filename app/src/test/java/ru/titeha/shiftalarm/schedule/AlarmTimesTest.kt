@@ -174,10 +174,10 @@ class AlarmTimesTest {
     // Утро 6:00, день 14:00, выходной, ночь 22:00 → {06:00, 14:00, 22:00} отсортированы, без дублей.
     val spec = ShiftCycleCodec.encode(
       listOf(
-        ShiftType("m", "Утро", LocalTime.of(6, 0), ShiftCategory.MORNING),
+        ShiftType("m", "Утро", LocalTime.of(6, 0), ShiftCategory.DAY),
         ShiftType("d", "День", LocalTime.of(14, 0), ShiftCategory.DAY),
         ShiftType.off(),
-        ShiftType("m2", "Утро", LocalTime.of(6, 0), ShiftCategory.MORNING),
+        ShiftType("m2", "Утро", LocalTime.of(6, 0), ShiftCategory.DAY),
         ShiftType("n", "Ночь", LocalTime.of(22, 0), ShiftCategory.NIGHT),
       )
     )
@@ -209,7 +209,7 @@ class AlarmTimesTest {
     // Утро 6:00, день 14:00, ночь 22:00 → «06:00–22:00», а не список всех времён.
     val spec = ShiftCycleCodec.encode(
       listOf(
-        ShiftType("m", "Утро", LocalTime.of(6, 0), ShiftCategory.MORNING),
+        ShiftType("m", "Утро", LocalTime.of(6, 0), ShiftCategory.DAY),
         ShiftType("d", "День", LocalTime.of(14, 0), ShiftCategory.DAY),
         ShiftType("n", "Ночь", LocalTime.of(22, 0), ShiftCategory.NIGHT),
       )

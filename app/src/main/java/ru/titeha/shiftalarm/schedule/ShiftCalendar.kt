@@ -12,9 +12,8 @@ import java.time.LocalDate
 object ShiftCalendar {
 
   enum class DayKind {
-    MORNING,   // утренняя смена
-    DAY,       // дневная смена
-    NIGHT,     // ночная смена
+    DAY,       // дневная смена (до SH02 — также утренняя: категории слиты, звонок в те же сутки)
+    NIGHT,     // ночная смена (звонок накануне вечером)
     OFF,       // выходной/отсыпной по ротации
     VACATION,     // отпуск
     SICK,         // больничный
@@ -39,7 +38,6 @@ object ShiftCalendar {
     }
 
     return when (ShiftEngine.shiftOn(date, schedule).category) {
-      ShiftCategory.MORNING -> DayKind.MORNING
       ShiftCategory.DAY -> DayKind.DAY
       ShiftCategory.NIGHT -> DayKind.NIGHT
       ShiftCategory.OFF -> DayKind.OFF
