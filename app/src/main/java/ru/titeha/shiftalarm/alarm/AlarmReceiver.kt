@@ -123,6 +123,11 @@ class AlarmReceiver : BroadcastReceiver() {
     AlarmEventLog(context).record(
       AlarmEventType.FIRED, "id=$alarmId «${alarm.label}»", System.currentTimeMillis()
     )
+    // TL03: сработавший будильник убираем из DE-кэша СРАЗУ (оба пути звонка): stale-детект
+    // считает пропуском запись старше 90 с, а перепланирование происходит только на «Стоп» —
+    // медленное выключение повторяющегося будильника иначе рисовало ложный пропуск.
+    // Новое срабатывание вернёт запись в кэш при перепланировании.
+    DirectBootAlarmStore(context).removeBase(alarmId)
     AlarmService.start(context, alarm.id, alarm.label)
 
     when {
