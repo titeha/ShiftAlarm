@@ -99,8 +99,41 @@ Unit-тесты проверяют:
 нормализацию подписи.
 ```
 
+## Требуемое разрешение
+
+`ACTION_SET_ALARM` адресован приложению-будильнику. Официальная документация
+(`developer.android.com/reference/android/provider/AlarmClock`) требует от activity-обработчика
+объявить разрешение, а значит вызывающий его должен держать. Дословно:
+
+> Applications that wish to receive the ACTION_SET_ALARM, ACTION_SET_TIMER,
+> ACTION_DISMISS_ALARM, ACTION_DISMISS_TIMER, and ACTION_SNOOZE_ALARM Intents
+> should create an activity to handle the Intent that
+> requires the permission, com.android.alarm.permission.SET_ALARM.
+
+Поэтому в манифесте у `SetAlarmActivity` объявлено
+`android:permission="com.android.alarm.permission.SET_ALARM"`.
+
+`SET_ALARM` — **normal**-разрешение (не signature): его держат Ассистент и системные часы, но
+запросить его может любое приложение. То есть A отсекает приложения, которые разрешение НЕ
+запросили, однако **не защищает** от приложения, которое его получило.
+
+## Защита от скрытой установки (правило A + C)
+
+- **A (манифест):** `android:permission="com.android.alarm.permission.SET_ALARM"` — без разрешения
+  система не доставит intent в `SetAlarmActivity`.
+- **C (код):** после успешного создания будильник ВСЕГДА открывается список (`openList()`);
+  `EXTRA_SKIP_UI` не даёт молчаливого создания. Исключений для «своих» вызовов нет: вызывающего
+  нельзя достоверно определить по foreground/referrer/extra — это не доказательство UID.
+
+Важно: показ списка ПОСЛЕ записи — это не согласие пользователя ДО записи. Сценарий явного
+подтверждения перед сохранением — отдельная задача и здесь не реализован.
+
 ## Правило для будущих изменений
 
 Новые параметры из внешнего intent нельзя напрямую записывать в AlarmEntity.
 
 Сначала они должны пройти через чистый слой валидации, который можно проверить unit-тестами.
+
+Запрещено добавлять путь, при котором внешний intent создаёт будильник **молча** (без показа
+результата пользователю). Нельзя ослаблять `android:permission` у `SetAlarmActivity` и нельзя
+вводить исключения по признаку вызывающего.

@@ -13,7 +13,12 @@ import ru.titeha.shiftalarm.schedule.SetAlarmSpec
 
 /**
  * Обработчик системного действия `ACTION_SET_ALARM` (Ассистент/сторонние приложения ставят
- * будильник «через нас»). Читает extras, создаёт будильник и планирует его; сам ничего не рисует.
+ * будильник «через нас»). Читает extras, создаёт будильник и планирует его.
+ *
+ * AUD-5: после успешного создания ВСЕГДА открывается список (C) — `EXTRA_SKIP_UI` больше не даёт
+ * молчаливого создания будильника сторонним вызывающим. Видимость результата НЕ является согласием
+ * пользователя ДО записи и не защищает от приложения, имеющего `SET_ALARM`; от скрытой установки
+ * защищает объявленное в манифесте `android:permission="com.android.alarm.permission.SET_ALARM"` (A).
  *
  * Разбор extras → [AlarmEntity] делает чистый [SetAlarmSpec]; здесь только Android-обвязка.
  */
@@ -32,7 +37,6 @@ class SetAlarmActivity : ComponentActivity() {
     val minute = intent.getIntExtra(AlarmClock.EXTRA_MINUTES, 0)
     val message = intent.getStringExtra(AlarmClock.EXTRA_MESSAGE).orEmpty()
     val days = intent.getIntegerArrayListExtra(AlarmClock.EXTRA_DAYS).orEmpty()
-    val skipUi = intent.getBooleanExtra(AlarmClock.EXTRA_SKIP_UI, false)
 
     val alarm = SetAlarmSpec.toAlarm(hour, minute, message, days)
     if (alarm == null) {
@@ -49,7 +53,8 @@ class SetAlarmActivity : ComponentActivity() {
         "Будильник поставлен: %02d:%02d".format(alarm.hour, alarm.minute),
         Toast.LENGTH_SHORT
       ).show()
-      if (!skipUi) openList()
+      // AUD-5 (C): список открывается ВСЕГДА после создания, независимо от EXTRA_SKIP_UI.
+      openList()
       finish()
     }
   }
