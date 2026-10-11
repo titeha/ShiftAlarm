@@ -13,7 +13,10 @@ AlarmManager не хранит будильники между перезагр�
 1. **Device-protected план ближайших срабатываний.** При каждом планировании
    (`AlarmScheduler.refreshDirectBootCache`) в device-protected хранилище
    (`createDeviceProtectedStorageContext`, доступно до разблокировки) пишется план включённых
-   будильников: до 4 записей на будильник в пределах 3 дней, суммарно не более 32
+   будильников: до 4 записей на будильник в пределах 3 дней. **Лимит мягкий:** каждому включённому
+   будильнику с ближайшим срабатыванием в пределах горизонта гарантируется минимум одна запись, а
+   `MAX_PLAN_TOTAL` (32) ограничивает только добор дополнительных (2–4-х) записей — recovery-запись
+   будильника не теряется никогда (решение владельца, 2026-10-11; `selectPlanEntries`).
    (`{alarmId, triggerAtMillis, label, oneShot}`; `DirectBootAlarmStore` + версионированный кодек
    `DirectBootAlarmCacheCodec` v2 с чтением старого v1, покрыт unit-тестами).
 2. **`directBootAware`-ресивер.** `BootReceiver` объявлен `android:directBootAware="true"` и
