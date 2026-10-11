@@ -409,6 +409,11 @@ class AlarmListViewModel(
         _userMessages.send("Рабочая неделя: ${preset.title}")
     }
 
+    /** Перепланировать все включённые будильники (NF1: тумблер плашки за час до звонка). */
+    fun rescheduleAll() = viewModelScope.launch {
+        AlarmScheduler.rescheduleAll(context(), repo, repo.enabled())
+    }
+
     /**
      * Сбросить завершённый результат перед новой сессией редактора
      * или после обработки сообщения.

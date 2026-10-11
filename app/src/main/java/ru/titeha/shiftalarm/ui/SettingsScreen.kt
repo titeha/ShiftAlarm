@@ -54,6 +54,8 @@ fun SettingsScreen(
   onFontScale: (Float) -> Unit = {},
   ringConfig: RingConfig = RingConfig(),
   onRingConfig: (RingConfig) -> Unit = {},
+  preRingEnabled: Boolean = false,
+  onPreRingEnabled: (Boolean) -> Unit = {},
   dismissMode: DismissMode = DismissMode.NORMAL,
   onDismissMode: (DismissMode) -> Unit = {},
   weekStart: WeekStart = WeekStart.AUTO,
@@ -212,6 +214,18 @@ fun SettingsScreen(
               }
             },
           )
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Switch(checked = preRingEnabled, onCheckedChange = onPreRingEnabled)
+          Spacer(Modifier.width(8.dp))
+          Column {
+            Text("Плашка за час до звонка", style = MaterialTheme.typography.bodyMedium)
+            Text(
+              "Тихое уведомление: будильник можно выключить заранее, не открывая приложение.",
+              style = MaterialTheme.typography.bodySmall
+            )
+          }
         }
       }
       if (FeatureFlags.HARD_MODE) {

@@ -1,6 +1,7 @@
 package ru.titeha.shiftalarm.data
 
 import android.content.Context
+import androidx.core.content.edit
 import ru.titeha.shiftalarm.alarm.DismissMode
 import ru.titeha.shiftalarm.alarm.RingConfig
 import ru.titeha.shiftalarm.schedule.WeekPairNaming
@@ -90,6 +91,16 @@ class SettingsStore(context: Context) {
   fun dismissMode(): DismissMode = runCatching {
     DismissMode.valueOf(alarmPrefs.getString(KEY_DISMISS_MODE, DismissMode.NORMAL.name)!!)
   }.getOrDefault(DismissMode.NORMAL)
+
+  /**
+   * Тихая плашка за час до звонка с действием «Выключить будильник» (NF1). По умолчанию
+   * ВЫКЛЮЧЕНА (AUD-4: фича — opt-in). DE-хранилище: настройку читает путь перепланирования,
+   * в т.ч. до разблокировки.
+   */
+  fun preRingEnabled(): Boolean = alarmPrefs.getBoolean(KEY_PRE_RING, false)
+
+  fun setPreRingEnabled(enabled: Boolean) =
+    alarmPrefs.edit { putBoolean(KEY_PRE_RING, enabled) }
 
   fun setDismissMode(mode: DismissMode) =
     alarmPrefs.edit().putString(KEY_DISMISS_MODE, mode.name).apply()
@@ -185,6 +196,7 @@ class SettingsStore(context: Context) {
     const val KEY_MAX_SNOOZES = "max_snoozes"
     const val KEY_AUTO_REPEAT = "auto_repeat_enabled"
     const val KEY_DISMISS_MODE = "dismiss_mode"
+    const val KEY_PRE_RING = "pre_ring_enabled"
     const val KEY_WEEK_START = "week_start"
     const val KEY_WEEK_PAIR_NAMING = "week_pair_naming"
     const val KEY_WORK_WEEK_PRESET = "work_week_preset"

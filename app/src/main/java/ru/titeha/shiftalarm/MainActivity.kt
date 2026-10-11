@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
       var weekPairNaming by remember { mutableStateOf(settings.weekPairNaming()) }
       var workWeekPreset by remember { mutableStateOf(settings.workWeekPreset()) }
       var workWeekCustomMask by remember { mutableStateOf(settings.workWeekCustomMask()) }
+      var preRingEnabled by remember { mutableStateOf(settings.preRingEnabled()) }
       val darkTheme = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
@@ -178,6 +179,13 @@ class MainActivity : ComponentActivity() {
               onFontScale = { fontScale = it; settings.setFontScale(it) },
               ringConfig = ringConfig,
               onRingConfig = { ringConfig = it; settings.setRingConfig(it) },
+              preRingEnabled = preRingEnabled,
+              onPreRingEnabled = { v ->
+                preRingEnabled = v
+                settings.setPreRingEnabled(v)
+                // Настройка влияет на расписание (пред-сигнал ставится/снимается) — перепланируем.
+                vm.rescheduleAll()
+              },
               weekStart = weekStart,
               onWeekStart = { weekStart = it; settings.setWeekStart(it) },
               weekPairNaming = weekPairNaming,

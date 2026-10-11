@@ -76,6 +76,12 @@
             android:exported="false"
             android:directBootAware="true" />
 
+        <!-- Тихая плашка «час до звонка» (NF1): не directBootAware — до разблокировки Room
+             недоступен, действие «выключить» невозможно; просроченная доставка гасится по грейсу. -->
+        <receiver
+            android:name=".alarm.PreRingReceiver"
+            android:exported="false" />
+
         <!-- Проигрывает сигнал независимо от UI. directBootAware: играет и до разблокировки. -->
         <service
             android:name=".alarm.AlarmService"

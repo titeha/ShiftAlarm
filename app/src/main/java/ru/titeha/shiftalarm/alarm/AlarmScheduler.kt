@@ -119,6 +119,9 @@ object AlarmScheduler {
       )
 
       if (scheduled) {
+        // B-01: пред-сигнал ставим ТОЛЬКО при успешно поставленном основном звонке и с собственной
+        // обработкой отказа (см. schedulePreRing) — вторичный сигнал не должен ломать перепланирование.
+        schedulePreRing(context, alarm.id, AlarmInstant.epochMilli(next))
         AlarmEventLog(context).recordIfFresh(
           type = AlarmEventType.SCHEDULED,
           detail = "id=${alarm.id} → %02d.%02d %02d:%02d".format(
@@ -272,6 +275,27 @@ object AlarmScheduler {
   }
 
   /**
+   * B-02: актуальное ближайшее срабатывание будильника (мс) тем же движком, что и планирование.
+   * null — будильник выключен или срабатываний нет. Нужно приёмнику пред-сигнала, чтобы перед
+   * показом плашки сверить сохранённое время с фактическим расписанием.
+   */
+  suspend fun nextTriggerAtMillis(
+    context: Context,
+    repo: AlarmRepository,
+    alarm: AlarmEntity,
+  ): Long? {
+    if (!alarm.enabled) return null
+    val next = AlarmTimes.next(
+      alarm,
+      offPeriodsFor(repo, alarm),
+      overridesFor(repo, alarm),
+      LocalDateTime.now(),
+      SettingsStore(context).globalWorkWeek()
+    ) ?: return null
+    return AlarmInstant.epochMilli(next)
+  }
+
+  /**
    * Поставить системный сигнal на [triggerAtMillis]. Возвращает false, если ОС отказала из-за
    * отсутствия разрешения на точные будильники (`SecurityException`, API 31-32) — тогда планировщик
    * не роняем (готовность уже ведёт в настройки), а событие фиксирует вызывающий код (журналом,
@@ -316,6 +340,71 @@ object AlarmScheduler {
         alarmId = alarmId,
         triggerAtMillis = NO_TRIGGER_AT_MILLIS
       )
+    )
+    cancelPreRing(context, alarmId)
+  }
+
+  /**
+   * Тихий точный сигнал за [PreRingPolicy.LEAD_MINUTES] минут до звонка (NF1): по нему
+   * `PreRingReceiver` покажет плашку «час до звонка» с действием «Выключить будильник».
+   * `setExactAndAllowWhileIdle`, а не `setAlarmClock` — чтобы не жечь системный значок
+   * будильника в статус-баре. Настройка выключена или до звонка меньше часа — сигнал снимается.
+   */
+  fun schedulePreRing(context: Context, alarmId: Long, ringAtMillis: Long) {
+    val manager = context.getSystemService(AlarmManager::class.java)
+    val pre = if (SettingsStore(context).preRingEnabled()) {
+      PreRingPolicy.preRingAtMillis(ringAtMillis, System.currentTimeMillis())
+    } else {
+      null
+    }
+    if (pre == null) {
+      manager.cancel(preRingPendingIntent(context, alarmId, NO_TRIGGER_AT_MILLIS))
+      return
+    }
+    try {
+      manager.setExactAndAllowWhileIdle(
+        AlarmManager.RTC_WAKEUP,
+        pre,
+        preRingPendingIntent(context, alarmId, pre)
+      )
+    } catch (error: SecurityException) {
+      // B-01: отказ вторичного сигнала не должен ломать основной звонок и перепланирование.
+      // Снимаем только pre-ring PendingIntent, основной сигнал не трогаем.
+      Log.w(
+        TAG,
+        "PreRing id=$alarmId: нет разрешения на точные будильники — плашка не поставлена",
+        error
+      )
+      runCatching {
+        AlarmEventLog(context).record(
+          AlarmEventType.ERROR,
+          "id=$alarmId: пред-сигнал «час до звонка» не поставлен (нет разрешения на точные будильники)",
+          System.currentTimeMillis()
+        )
+      }
+      manager.cancel(preRingPendingIntent(context, alarmId, NO_TRIGGER_AT_MILLIS))
+    }
+  }
+
+  fun cancelPreRing(context: Context, alarmId: Long) {
+    context.getSystemService(AlarmManager::class.java)
+      .cancel(preRingPendingIntent(context, alarmId, NO_TRIGGER_AT_MILLIS))
+  }
+
+  private fun preRingPendingIntent(
+    context: Context,
+    alarmId: Long,
+    triggerAtMillis: Long
+  ): PendingIntent {
+    val intent = Intent(context, PreRingReceiver::class.java)
+      .setAction(PreRingReceiver.ACTION_PRE_RING)
+      .putExtra(PreRingReceiver.EXTRA_ALARM_ID, alarmId)
+      .putExtra(PreRingReceiver.EXTRA_TRIGGER_AT_MILLIS, triggerAtMillis)
+    return PendingIntent.getBroadcast(
+      context,
+      AlarmRequestCodes.preRing(alarmId),
+      intent,
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
   }
 
