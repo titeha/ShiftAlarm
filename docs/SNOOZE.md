@@ -20,6 +20,10 @@ Scheduler → Receiver → Service → Activity; движок и расписа�
   requestCode-неймспейсе (`AlarmRequestCodes.snooze`) и пишется в снуз-список RingCache
   (`DirectBootAlarmStore.putSnooze`, ключ `snoozes_v1` — базовый кэш не тронут). После ребута
   `reArmFromCache` перевыставляет и снузы (то же грейс-окно).
+- **Отказ постановки снуза (S-01/AUD-12).** Снуз ставится ДО остановки сигнала: если
+  `AlarmScheduler.scheduleSnoozeAt` не удался (нет разрешения / любое исключение), текущий сигнал НЕ
+  глушится, сессия не переходит в `SNOOZING`, в журнал пишется `ERROR`. Поведение ручного и авто-снуза
+  согласовано (чистое правило `shouldStopRingingAfterSnooze`), чтобы звонок не «замолкал» молча.
 - Снуз-срабатывание помечено `EXTRA_IS_SNOOZE`: `AlarmReceiver` звонит по метке из extras БЕЗ
   валидатора актуальности и без Room (direct-boot-safe); «использованный» снуз убирается из кэша.
 
