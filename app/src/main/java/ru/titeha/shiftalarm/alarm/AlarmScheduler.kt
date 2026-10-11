@@ -47,6 +47,12 @@ object AlarmScheduler {
   private val RESCHEDULE_MUTEX = Mutex()
 
   /**
+   * AUD-14 (R-06): замок пересборки DE-плана (чтение CE → построение → запись). Отдельный от
+   * [RESCHEDULE_MUTEX], чтобы вложенный вызов из rescheduleAll не дал самоблокировку.
+   */
+  private val PLAN_MUTEX = Mutex()
+
+  /**
    * AUD-2: глубина device-protected плана срабатываний (дни). Открытый вопрос плана (3 против 7):
    * принято предложенное значение 3 — меняется одной константой.
    */
@@ -528,40 +534,54 @@ object AlarmScheduler {
    * [DE_PLAN_DAYS] дней (суммарно — не более [MAX_PLAN_TOTAL]).
    */
   suspend fun refreshDirectBootCache(context: Context, repo: AlarmRepository) {
-    // AUD-2/B-04: единственная точка перезаписи кэша — пропуски собираем ДО неё (идемпотентно).
-    collectMissed(context)
+    // AUD-14 (R-06): вся пересборка (чтение CE → построение → запись) под одним замком, чтобы
+    // конкурентные rescheduleAll/reschedule не записали устаревший снимок последним.
+    PLAN_MUTEX.withLock {
+      // AUD-2/B-04: единственная точка перезаписи кэша — пропуски собираем ДО неё (идемпотентно).
+      collectMissed(context)
 
-    val store = DirectBootAlarmStore(context)
+      val store = DirectBootAlarmStore(context)
 
-    val now = LocalDateTime.now()
-    val horizonMillis = AlarmInstant.epochMilli(now.plusDays(DE_PLAN_DAYS))
-    // Глобальная рабочая неделя — одна на весь кэш (настройка глобальная, Q1=1а); DE-хранилище
-    // читается и до разблокировки (Q2=2а).
-    val globalWeek = SettingsStore(context).globalWorkWeek()
+      val now = LocalDateTime.now()
+      val horizonMillis = AlarmInstant.epochMilli(now.plusDays(DE_PLAN_DAYS))
+      // Глобальная рабочая неделя — одна на весь кэш (настройка глобальная, Q1=1а); DE-хранилище
+      // читается и до разблокировки (Q2=2а).
+      val globalWeek = SettingsStore(context).globalWorkWeek()
 
-    // AUD-2: план ближайших срабатываний — до MAX_PLAN_PER_ALARM записей на будильник, чтобы
-    // залоченный телефон мог прозвонить несколько раз до разблокировки (N-2). Разовый будильник
-    // получает ровно одну запись с флагом oneShot (без «завтра то же время» — N-1).
-    val plan = repo.enabled().map { alarm ->
-      val oneShot = AlarmTimes.isOneShot(alarm)
-      val periods = offPeriodsFor(repo, alarm)
-      val overrides = overridesFor(repo, alarm)
-      val nextMillis = buildList {
-        var cursor = now
-        while (size < MAX_PLAN_PER_ALARM) {
-          val next = AlarmTimes.next(alarm, periods, overrides, cursor, globalWeek) ?: break
-          val millis = AlarmInstant.epochMilli(next)
-          if (millis > horizonMillis) break
-          add(millis)
-          if (oneShot) break
-          cursor = next
+      // AUD-2: план ближайших срабатываний — до MAX_PLAN_PER_ALARM записей на будильник, чтобы
+      // залоченный телефон мог прозвонить несколько раз до разблокировки (N-2). Разовый будильник
+      // получает ровно одну запись с флагом oneShot (без «завтра то же время» — N-1).
+      val plan = repo.enabled().map { alarm ->
+        val oneShot = AlarmTimes.isOneShot(alarm)
+        val periods = offPeriodsFor(repo, alarm)
+        val overrides = overridesFor(repo, alarm)
+        val nextMillis = buildList {
+          var cursor = now
+          while (size < MAX_PLAN_PER_ALARM) {
+            val next = AlarmTimes.next(alarm, periods, overrides, cursor, globalWeek) ?: break
+            val millis = AlarmInstant.epochMilli(next)
+            if (millis > horizonMillis) break
+            add(millis)
+            if (oneShot) break
+            cursor = next
+          }
+        }
+        planEntries(alarmId = alarm.id, label = alarm.label, nextMillis = nextMillis, oneShot = oneShot)
+      }
+
+      // AUD-13 (R-04): сначала гарантируем ближайшую запись каждому будильнику, затем добираем extras.
+      val saved = store.write(selectPlanEntries(plan, MAX_PLAN_PER_ALARM, MAX_PLAN_TOTAL))
+      if (!saved) {
+        // AUD-14 (R-06): не делаем вид, что recovery-план сохранён.
+        runCatching {
+          AlarmEventLog(context).record(
+            AlarmEventType.ERROR,
+            "device-protected план срабатываний не сохранён (commit=false)",
+            System.currentTimeMillis(),
+          )
         }
       }
-      planEntries(alarmId = alarm.id, label = alarm.label, nextMillis = nextMillis, oneShot = oneShot)
     }
-
-    // AUD-13 (R-04): сначала гарантируем ближайшую запись каждому будильнику, затем добираем extras.
-    store.write(selectPlanEntries(plan, MAX_PLAN_PER_ALARM, MAX_PLAN_TOTAL))
   }
 
   /**

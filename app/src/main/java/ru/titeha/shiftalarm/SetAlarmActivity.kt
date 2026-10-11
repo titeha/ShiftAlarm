@@ -3,11 +3,14 @@ package ru.titeha.shiftalarm
 import android.content.Intent
 import android.os.Bundle
 import android.provider.AlarmClock
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import ru.titeha.shiftalarm.alarm.AlarmScheduler
+import ru.titeha.shiftalarm.data.AlarmEventLog
+import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.schedule.SetAlarmSpec
 
@@ -45,17 +48,36 @@ class SetAlarmActivity : ComponentActivity() {
     }
 
     lifecycleScope.launch {
-      val repo = AlarmRepository(applicationContext)
-      val id = repo.upsert(alarm)
-      AlarmScheduler.reschedule(this@SetAlarmActivity, repo, alarm.copy(id = id))
-      Toast.makeText(
-        this@SetAlarmActivity,
-        "Будильник поставлен: %02d:%02d".format(alarm.hour, alarm.minute),
-        Toast.LENGTH_SHORT
-      ).show()
-      // AUD-5 (C): список открывается ВСЕГДА после создания, независимо от EXTRA_SKIP_UI.
-      openList()
-      finish()
+      try {
+        val repo = AlarmRepository(applicationContext)
+        val id = repo.upsert(alarm)
+        AlarmScheduler.reschedule(this@SetAlarmActivity, repo, alarm.copy(id = id))
+        Toast.makeText(
+          this@SetAlarmActivity,
+          "Будильник поставлен: %02d:%02d".format(alarm.hour, alarm.minute),
+          Toast.LENGTH_SHORT
+        ).show()
+      } catch (error: Exception) {
+        // AUD-14 (R-08): не оставляем пользователя с молча сохранённым нерабочим будильником —
+        // сообщаем результат и фиксируем событие.
+        Log.w("SetAlarmActivity", "Не удалось создать/запланировать будильник", error)
+        runCatching {
+          AlarmEventLog(applicationContext).record(
+            AlarmEventType.ERROR,
+            "SET_ALARM: не удалось создать/запланировать будильник: ${error.javaClass.simpleName}",
+            System.currentTimeMillis(),
+          )
+        }
+        Toast.makeText(
+          this@SetAlarmActivity,
+          "Не удалось поставить будильник — откройте приложение и попробуйте ещё раз.",
+          Toast.LENGTH_LONG
+        ).show()
+      } finally {
+        // AUD-5 (C): список открывается ВСЕГДА после попытки, независимо от EXTRA_SKIP_UI.
+        openList()
+        finish()
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 package ru.titeha.shiftalarm.alarm
 
 import android.content.Context
+import android.util.Log
 import androidx.core.content.edit
 import java.nio.charset.StandardCharsets
 import java.util.Base64
@@ -214,7 +215,7 @@ class DirectBootAlarmStore(context: Context) {
      * AUD-3: запись плана целиком. Критичная — `commit()` (последующий [read] должен видеть
      * результат). Всё — в критическом участке под общим замком [LOCK].
      */
-    fun write(alarms: List<CachedAlarm>) = synchronized(LOCK) {
+    fun write(alarms: List<CachedAlarm>): Boolean = synchronized(LOCK) {
         writeBaseLocked(alarms)
     }
 
@@ -300,8 +301,13 @@ class DirectBootAlarmStore(context: Context) {
 
     private fun readBaseLocked(): List<CachedAlarm> = decodeLocked(KEY)
 
-    private fun writeBaseLocked(alarms: List<CachedAlarm>) {
-        prefs.edit(commit = true) { putString(KEY, DirectBootAlarmCacheCodec.encode(alarms)) }
+    @Suppress("UseKtx")
+    private fun writeBaseLocked(alarms: List<CachedAlarm>): Boolean {
+        // AUD-14 (R-06): явный commit() — результат проверяется, чтобы не выдать «сохранено»
+        // при отказе записи (KTX edit(commit = true) возвращает Unit).
+        val ok = prefs.edit().putString(KEY, DirectBootAlarmCacheCodec.encode(alarms)).commit()
+        if (!ok) Log.w(TAG, "DirectBootAlarmStore: план срабатываний не записан (commit=false)")
+        return ok
     }
 
     private fun readSnoozesLocked(): List<CachedAlarm> = decodeLocked(KEY_SNOOZE)
@@ -332,6 +338,7 @@ class DirectBootAlarmStore(context: Context) {
          * по разным ключам не опасна и допускается сознательно.
          */
         private val LOCK = Any()
+        const val TAG = "DirectBootAlarmStore"
         const val PREFS = "direct_boot_alarms"
         const val KEY = "cache_v1"
         const val KEY_MISSED = "missed_v1"

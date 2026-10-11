@@ -42,29 +42,35 @@ class ShiftAlarmApp : Application() {
     holidays.install() // движок теперь читает календарь из кэша (иначе — встроенные данные)
 
     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-      val alarms = AlarmRepository(this@ShiftAlarmApp)
-      val year = LocalDate.now().year
+      // AUD-14 (R-07): фоновая инициализация/перепланирование — необязательная диагностика;
+      // её сбой не должен ронять процесс и обрывать путь звонка.
+      try {
+        val alarms = AlarmRepository(this@ShiftAlarmApp)
+        val year = LocalDate.now().year
 
-      // TD10 (AO-8): физически убираем из кэша плейсхолдер источника (нули за ещё не
-      // опубликованный год), если он успел туда попасть до защиты в парсере. Делается ДО
-      // перепланирования и до refreshIfStale: движок, настройки и hasData() не должны видеть
-      // фантомные «данные на год», а автообновление обязано повторять попытку каждый старт.
-      holidays.purgeInvalid("RU", year)
-      holidays.purgeInvalid("RU", year + 1)
+        // TD10 (AO-8): физически убираем из кэша плейсхолдер источника (нули за ещё не
+        // опубликованный год), если он успел туда попасть до защиты в парсере. Делается ДО
+        // перепланирования и до refreshIfStale: движок, настройки и hasData() не должны видеть
+        // фантомные «данные на год», а автообновление обязано повторять попытку каждый старт.
+        holidays.purgeInvalid("RU", year)
+        holidays.purgeInvalid("RU", year + 1)
 
-      // Перепланировать при каждом старте: AlarmManager не хранит расписание между процессами и
-      // устройствами, поэтому это покрывает восстановление из backup, обновление приложения и
-      // первый запуск — будильники из БД снова попадают в систему.
-      // AUD-10 (R-02): reconcile отметок разовых и актуальное чтение enabled — внутри rescheduleAll
-      // (единая граница под общим Mutex); список-аргумент игнорируется — см. KDoc rescheduleAll.
-      AlarmScheduler.rescheduleAll(this@ShiftAlarmApp, alarms, emptyList())
-
-      // Фоновое обновление календаря: текущий И следующий год (поиск звонка уходит за границу года),
-      // но не чаще раза в сутки (throttle). Если данные обновились — перепланировать с их учётом.
-      // Ошибка/оффлайн — тихо, планировщик уже работает на кэше/встроенном.
-      val updated = holidays.refreshIfStale("RU", year) or holidays.refreshIfStale("RU", year + 1)
-      if (updated) {
+        // Перепланировать при каждом старте: AlarmManager не хранит расписание между процессами и
+        // устройствами, поэтому это покрывает восстановление из backup, обновление приложения и
+        // первый запуск — будильники из БД снова попадают в систему.
+        // AUD-10 (R-02): reconcile отметок разовых и актуальное чтение enabled — внутри rescheduleAll
+        // (единая граница под общим Mutex); список-аргумент игнорируется — см. KDoc rescheduleAll.
         AlarmScheduler.rescheduleAll(this@ShiftAlarmApp, alarms, emptyList())
+
+        // Фоновое обновление календаря: текущий И следующий год (поиск звонка уходит за границу года),
+        // но не чаще раза в сутки (throttle). Если данные обновились — перепланировать с их учётом.
+        // Ошибка/оффлайн — тихо, планировщик уже работает на кэше/встроенном.
+        val updated = holidays.refreshIfStale("RU", year) or holidays.refreshIfStale("RU", year + 1)
+        if (updated) {
+          AlarmScheduler.rescheduleAll(this@ShiftAlarmApp, alarms, emptyList())
+        }
+      } catch (error: Exception) {
+        android.util.Log.w("ShiftAlarmApp", "Фоновая инициализация/перепланирование не удались", error)
       }
     }
   }

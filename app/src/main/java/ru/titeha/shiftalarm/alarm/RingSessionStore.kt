@@ -1,6 +1,7 @@
 package ru.titeha.shiftalarm.alarm
 
 import android.content.Context
+import android.util.Log
 import androidx.core.content.edit
 
 /**
@@ -100,9 +101,12 @@ class RingSessionStore(context: Context) {
             ?.let { RingSessionCodec.decodeOrNull(it) }
             ?: emptyList()
 
-    private fun writeLocked(sessions: List<RingSessionState>) {
-        // commit(): следующий шаг (авто-перезвон/счётчик снуза) зависит от факта записи.
-        prefs.edit(commit = true) { putString(KEY, RingSessionCodec.encode(sessions)) }
+    @Suppress("UseKtx")
+    private fun writeLocked(sessions: List<RingSessionState>): Boolean {
+        // AUD-14 (R-06): явный commit() — результат проверяем (KTX edit(commit = true) возвращает Unit).
+        val ok = prefs.edit().putString(KEY, RingSessionCodec.encode(sessions)).commit()
+        if (!ok) Log.w(TAG, "RingSessionStore: сессии звонка не записаны (commit=false)")
+        return ok
     }
 
     private companion object {
@@ -111,6 +115,7 @@ class RingSessionStore(context: Context) {
          * (receiver/service/UI), без общего замка `all() → write` теряет параллельные обновления.
          */
         private val LOCK = Any()
+        const val TAG = "RingSessionStore"
         const val PREFS = "ring_sessions"
         const val KEY = "sessions_v1"
     }
