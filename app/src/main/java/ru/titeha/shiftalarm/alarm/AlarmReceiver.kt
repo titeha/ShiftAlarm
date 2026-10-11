@@ -151,7 +151,7 @@ class AlarmReceiver : BroadcastReceiver() {
       AlarmScheduler.scheduleNextFromCache(context, alarmId, nowMillis)
     }
 
-    AlarmService.start(context, alarm.id, alarm.label)
+    AlarmService.start(context, alarm.id, alarm.label, firedAtMillis)
 
     when {
       isOneShot(alarm) && alarm.deleteAfterFiring -> {
@@ -215,7 +215,7 @@ class AlarmReceiver : BroadcastReceiver() {
     } else {
       AlarmScheduler.scheduleNextFromCache(context, alarmId, now)
     }
-    AlarmService.start(context, alarmId, label)
+    AlarmService.start(context, alarmId, label, scheduledTriggerAtMillis)
   }
 
   private suspend fun periodsFor(
