@@ -124,6 +124,31 @@ internal fun planEntries(
 }
 
 /**
+ * AUD-13 (R-04): выбрать подмножество плана так, чтобы у КАЖДОГО будильника (с ближайшим
+ * срабатыванием в горизонте) была хотя бы одна запись. Сначала берём ближайшую запись каждого
+ * будильника, затем добираем остальные записи (до [maxPerAlarm] на будильник) по времени, пока
+ * не исчерпан бюджет [maxTotal].
+ *
+ * Если будильников больше [maxTotal] (мягкий лимит), возвращаем их все по одной: молча отбрасывать
+ * recovery-запись будильника нельзя. Размер DE-prefs при этом ограничен числом будильников
+ * пользователя.
+ */
+internal fun selectPlanEntries(
+  perAlarm: List<List<CachedAlarm>>,
+  maxPerAlarm: Int,
+  maxTotal: Int,
+): List<CachedAlarm> {
+  val trimmed = perAlarm.map { it.take(maxPerAlarm) }.filter { it.isNotEmpty() }
+  val mandatory = trimmed.map { it.first() }
+  val budget = (maxTotal - mandatory.size).coerceAtLeast(0)
+  val extras = trimmed
+    .flatMap { it.drop(1) }
+    .sortedBy { it.triggerAtMillis }
+    .take(budget)
+  return (mandatory + extras).sortedBy { it.triggerAtMillis }
+}
+
+/**
  * AUD-2: ближайшая будущая (строго позже [nowMillis]) запись этого будильника.
  * Нужна locked-пути, чтобы после срабатывания поставить следующее звонок без Room.
  */

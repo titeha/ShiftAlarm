@@ -144,4 +144,32 @@ class PreRingPolicyTest {
     assertNull(PreRingPolicy.plan(null, now))
     assertNull(PreRingPolicy.plan(now + 59 * 60_000L, now))
   }
+
+  // --- AUD-13 (R-05): решение по действию из плашки ---
+
+  @Test
+  fun `AUD-13 действие из актуальной плашки - выключаем будильник`() {
+    val now = 1_000_000L
+    val ring = now + 30 * 60_000L
+    assertEquals(
+      PreRingPolicy.DisableDecision.DisableAlarm,
+      PreRingPolicy.disableDecision(ring, ring, now, PreRingPolicy.RELEVANCE_WINDOW_MS)
+    )
+  }
+
+  @Test
+  fun `AUD-13 устаревшее действие из плашки - только снять плашку`() {
+    val now = 1_000_000L
+    val oldRing = now + 30 * 60_000L
+    val changedRing = oldRing + 24 * 60 * 60_000L // будильник перенесли
+    assertEquals(
+      PreRingPolicy.DisableDecision.CancelNotificationOnly,
+      PreRingPolicy.disableDecision(oldRing, changedRing, now, PreRingPolicy.RELEVANCE_WINDOW_MS)
+    )
+    // Нет времени в extra (старая версия плашки) — тоже только снять, не выключать.
+    assertEquals(
+      PreRingPolicy.DisableDecision.CancelNotificationOnly,
+      PreRingPolicy.disableDecision(null, changedRing, now, PreRingPolicy.RELEVANCE_WINDOW_MS)
+    )
+  }
 }

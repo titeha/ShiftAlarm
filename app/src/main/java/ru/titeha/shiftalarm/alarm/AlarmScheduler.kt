@@ -1,6 +1,7 @@
 package ru.titeha.shiftalarm.alarm
 
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -395,17 +396,27 @@ object AlarmScheduler {
    */
   fun schedulePreRing(context: Context, alarmId: Long, ringAtMillis: Long) {
     val manager = context.getSystemService(AlarmManager::class.java)
+    val enabled = SettingsStore(context).preRingEnabled()
+
+    // AUD-13 (R-05): если опубликована плашка для ДРУГОГО времени звонка — план изменился, снимаем её.
+    val publishedRingAt = activePreRingRingAt(context, alarmId)
+    if (publishedRingAt != null && publishedRingAt != ringAtMillis) {
+      cancelPreRingNotification(context, alarmId)
+    }
+
     // R-01: два РАЗНЫХ времени. plan.preAtMillis — системный trigger (время доставки, звонок минус
     // LEAD_MINUTES); plan.ringAtMillis — время ОСНОВНОГО звонка, его кладём в extra для приёмника
-    // (приёмник сверяет extra с пересчитанным расписанием). Раньше в extra ошибочно попадало pre —
-    // расхождение в час делало isStillRelevant ложным, и плашка не показывалась никогда.
-    val plan = if (SettingsStore(context).preRingEnabled()) {
+    // (приёмник сверяет extra с пересчитанным расписанием).
+    val plan = if (enabled) {
       PreRingPolicy.plan(ringAtMillis, System.currentTimeMillis())
     } else {
       null
     }
     if (plan == null) {
       manager.cancel(preRingPendingIntent(context, alarmId, NO_TRIGGER_AT_MILLIS))
+      // Тумблер выключен — опубликованная плашка тоже не нужна. (<1 ч до звонка плашку НЕ трогаем:
+      // она про этот же звонок и могла быть штатно показана.)
+      if (!enabled) cancelPreRingNotification(context, alarmId)
       return
     }
     try {
@@ -436,7 +447,24 @@ object AlarmScheduler {
   fun cancelPreRing(context: Context, alarmId: Long) {
     context.getSystemService(AlarmManager::class.java)
       .cancel(preRingPendingIntent(context, alarmId, NO_TRIGGER_AT_MILLIS))
+    // AUD-13 (R-05): снимаем и уже опубликованную плашку (id плашки не пересекается с id звонка).
+    cancelPreRingNotification(context, alarmId)
   }
+
+  /** AUD-13 (R-05): снять опубликованное уведомление-плашку (уведомление звонка НЕ трогаем). */
+  private fun cancelPreRingNotification(context: Context, alarmId: Long) {
+    runCatching {
+      context.getSystemService(NotificationManager::class.java)
+        ?.cancel(PreRingPolicy.notificationId(alarmId))
+    }
+  }
+
+  /** AUD-13 (R-05): время звонка активной плашки (по `Notification.when`), либо null. */
+  private fun activePreRingRingAt(context: Context, alarmId: Long): Long? = runCatching {
+    val manager = context.getSystemService(NotificationManager::class.java) ?: return@runCatching null
+    val id = PreRingPolicy.notificationId(alarmId)
+    manager.activeNotifications.firstOrNull { it.id == id }?.notification?.`when`
+  }.getOrNull()
 
   /**
    * R-01: PendingIntent пред-сигнала. [ringAtMillis] — время ОСНОВНОГО звонка, его и кладём в
@@ -514,7 +542,7 @@ object AlarmScheduler {
     // AUD-2: план ближайших срабатываний — до MAX_PLAN_PER_ALARM записей на будильник, чтобы
     // залоченный телефон мог прозвонить несколько раз до разблокировки (N-2). Разовый будильник
     // получает ровно одну запись с флагом oneShot (без «завтра то же время» — N-1).
-    val plan = repo.enabled().flatMap { alarm ->
+    val plan = repo.enabled().map { alarm ->
       val oneShot = AlarmTimes.isOneShot(alarm)
       val periods = offPeriodsFor(repo, alarm)
       val overrides = overridesFor(repo, alarm)
@@ -532,7 +560,8 @@ object AlarmScheduler {
       planEntries(alarmId = alarm.id, label = alarm.label, nextMillis = nextMillis, oneShot = oneShot)
     }
 
-    store.write(plan.sortedBy { it.triggerAtMillis }.take(MAX_PLAN_TOTAL))
+    // AUD-13 (R-04): сначала гарантируем ближайшую запись каждому будильнику, затем добираем extras.
+    store.write(selectPlanEntries(plan, MAX_PLAN_PER_ALARM, MAX_PLAN_TOTAL))
   }
 
   /**

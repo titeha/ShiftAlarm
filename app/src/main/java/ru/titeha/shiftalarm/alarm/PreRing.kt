@@ -88,6 +88,26 @@ object PreRingPolicy {
   fun notificationId(alarmId: Long): Int =
     NOTIFICATION_BASE + (alarmId % NOTIFICATION_RANGE).toInt()
 
+  /** AUD-13 (R-05): решение по действию «Выключить будильник» из плашки. */
+  enum class DisableDecision { DisableAlarm, CancelNotificationOnly }
+
+  /**
+   * AUD-13 (R-05): устаревшее действие из плашки НЕ должно выключать уже изменённый будильник.
+   * Выключаем, только если время звонка в extra всё ещё совпадает с текущим расписанием
+   * ([isStillRelevant]); иначе — только снимаем старую плашку.
+   */
+  fun disableDecision(
+    extraRingAtMillis: Long?,
+    expectedNextMillis: Long?,
+    nowMillis: Long,
+    windowMs: Long,
+  ): DisableDecision =
+    if (isStillRelevant(extraRingAtMillis, expectedNextMillis, nowMillis, windowMs)) {
+      DisableDecision.DisableAlarm
+    } else {
+      DisableDecision.CancelNotificationOnly
+    }
+
   private const val NOTIFICATION_BASE = 10_000
   private const val NOTIFICATION_RANGE = 1_000_000
 }
@@ -124,8 +144,8 @@ class PreRingReceiver : BroadcastReceiver() {
               null
             }
             // B-02: показываем только если пересчитанное срабатывание совпадает с запланированным;
-            // иначе расписание устарело/изменилось — плашку (в т.ч. уже показанную) снимаем.
-            if (alarm != null && alarm.enabled &&
+            // иначе расписание устарело/изменилось — плашку (в т. ч. уже показанную) снимаем.
+            if (alarm != null && alarm.enabled && expected != null &&
               PreRingPolicy.isStillRelevant(
                 scheduledTriggerAtMillis = triggerAt.takeIf { it > 0 },
                 expectedNextMillis = expected,
@@ -133,7 +153,7 @@ class PreRingReceiver : BroadcastReceiver() {
                 windowMs = PreRingPolicy.RELEVANCE_WINDOW_MS,
               )
             ) {
-              post(context, alarmId, alarm.label, alarm.hour, alarm.minute)
+              post(context, alarmId, alarm.label, alarm.hour, alarm.minute, expected)
             } else {
               manager(context).cancel(PreRingPolicy.notificationId(alarmId))
             }
@@ -148,12 +168,26 @@ class PreRingReceiver : BroadcastReceiver() {
       }
 
       ACTION_DISABLE -> {
+        val actionRingAt = intent.getLongExtra(EXTRA_TRIGGER_AT_MILLIS, -1L)
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
           try {
             val repo = AlarmRepository(context)
             val alarm = repo.byId(alarmId)
-            if (alarm != null) {
+            val expected = if (alarm != null && alarm.enabled) {
+              AlarmScheduler.nextTriggerAtMillis(context, repo, alarm)
+            } else {
+              null
+            }
+            // AUD-13 (R-05): устаревшее действие (будильник уже изменён/выключен) НЕ выключает
+            // новый план — только снимаем старую плашку.
+            val decision = PreRingPolicy.disableDecision(
+              extraRingAtMillis = actionRingAt.takeIf { it > 0 },
+              expectedNextMillis = expected,
+              nowMillis = System.currentTimeMillis(),
+              windowMs = PreRingPolicy.RELEVANCE_WINDOW_MS,
+            )
+            if (decision == PreRingPolicy.DisableDecision.DisableAlarm && alarm != null) {
               repo.update(alarm.copy(enabled = false))
               AlarmScheduler.reschedule(context, repo, alarm.copy(enabled = false))
             }
@@ -161,7 +195,7 @@ class PreRingReceiver : BroadcastReceiver() {
           } catch (error: CancellationException) {
             throw error
           } catch (error: Exception) {
-            Log.e(TAG, "PreRing: не удалось выключить id=$alarmId", error)
+            Log.e(TAG, "PreRing: не удалось обработать действие id=$alarmId", error)
           } finally {
             pending.finish()
           }
@@ -170,7 +204,7 @@ class PreRingReceiver : BroadcastReceiver() {
     }
   }
 
-  private fun post(context: Context, alarmId: Long, label: String, hour: Int, minute: Int) {
+  private fun post(context: Context, alarmId: Long, label: String, hour: Int, minute: Int, ringAtMillis: Long) {
     if (!canPostNotifications(context)) {
       // B-06: на Android 13+ без POST_NOTIFICATIONS уведомление не показываем и не падаем.
       Log.w(TAG, "PreRing id=$alarmId: нет разрешения POST_NOTIFICATIONS — плашку не показываем")
@@ -204,7 +238,8 @@ class PreRingReceiver : BroadcastReceiver() {
       AlarmRequestCodes.preRingDisable(alarmId),
       Intent(context, PreRingReceiver::class.java)
         .setAction(ACTION_DISABLE)
-        .putExtra(EXTRA_ALARM_ID, alarmId),
+        .putExtra(EXTRA_ALARM_ID, alarmId)
+        .putExtra(EXTRA_TRIGGER_AT_MILLIS, ringAtMillis),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
     val open = PendingIntent.getActivity(
@@ -228,6 +263,9 @@ class PreRingReceiver : BroadcastReceiver() {
         .addAction(0, "Выключить будильник", disable)
         .setSilent(true)
         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+        // AUD-13 (R-05): время звонка в `when` — по нему AlarmScheduler отличает устаревшую плашку.
+        .setWhen(ringAtMillis)
+        .setShowWhen(false)
         .setAutoCancel(true)
         .build()
     )
