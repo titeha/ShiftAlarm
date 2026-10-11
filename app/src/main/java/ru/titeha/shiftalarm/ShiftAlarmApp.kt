@@ -59,15 +59,15 @@ class ShiftAlarmApp : Application() {
         // устройствами, поэтому это покрывает восстановление из backup, обновление приложения и
         // первый запуск — будильники из БД снова попадают в систему.
         // AUD-10 (R-02): reconcile отметок разовых и актуальное чтение enabled — внутри rescheduleAll
-        // (единая граница под общим Mutex); список-аргумент игнорируется — см. KDoc rescheduleAll.
-        AlarmScheduler.rescheduleAll(this@ShiftAlarmApp, alarms, emptyList())
+        // (единая граница под общим Mutex).
+        AlarmScheduler.rescheduleAll(this@ShiftAlarmApp, alarms)
 
         // Фоновое обновление календаря: текущий И следующий год (поиск звонка уходит за границу года),
         // но не чаще раза в сутки (throttle). Если данные обновились — перепланировать с их учётом.
         // Ошибка/оффлайн — тихо, планировщик уже работает на кэше/встроенном.
         val updated = holidays.refreshIfStale("RU", year) or holidays.refreshIfStale("RU", year + 1)
         if (updated) {
-          AlarmScheduler.rescheduleAll(this@ShiftAlarmApp, alarms, emptyList())
+          AlarmScheduler.rescheduleAll(this@ShiftAlarmApp, alarms)
         }
       } catch (error: Exception) {
         android.util.Log.w("ShiftAlarmApp", "Фоновая инициализация/перепланирование не удались", error)

@@ -379,7 +379,7 @@ class AlarmListViewModel(
             val current = holidays.refresh("RU", year)
             val next = holidays.refresh("RU", year + 1)
             if (current || next) {
-                AlarmScheduler.rescheduleAll(context(), repo, repo.enabled())
+                AlarmScheduler.rescheduleAll(context(), repo)
             }
             _userMessages.send(
                 when {
@@ -405,13 +405,13 @@ class AlarmListViewModel(
      */
     fun applyWorkWeek(preset: WorkWeekPreset, customMask: Int) = viewModelScope.launch {
         SettingsStore(context()).setWorkWeek(preset, customMask)
-        AlarmScheduler.rescheduleAll(context(), repo, repo.enabled())
+        AlarmScheduler.rescheduleAll(context(), repo)
         _userMessages.send("Рабочая неделя: ${preset.title}")
     }
 
     /** Перепланировать все включённые будильники (NF1: тумблер плашки за час до звонка). */
     fun rescheduleAll() = viewModelScope.launch {
-        AlarmScheduler.rescheduleAll(context(), repo, repo.enabled())
+        AlarmScheduler.rescheduleAll(context(), repo)
     }
 
     /**

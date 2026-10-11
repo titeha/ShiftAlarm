@@ -199,18 +199,16 @@ object AlarmScheduler {
    * попадает в диагностический журнал, а вызывающий код получает сводный отчёт.
    */
   /**
-   * AUD-10 (R-02): ЕДИНАЯ граница полного CE-перепланирования. Сначала применяет отметки
+   * AUD-10 (R-02)/AUD-16 (D2): ЕДИНАЯ граница полного CE-перепланирования. Сначала применяет отметки
    * сработавших в локе разовых будильников ([reconcileFiredOneShots]), затем читает АКТУАЛЬНЫЙ
-   * список `repo.enabled()` — аргумент [alarms] больше не источник истины (это снимок до reconcile) —
-   * и только потом планирует. Всё под общим [RESCHEDULE_MUTEX], чтобы конкурирующие пути
-   * (Application.onCreate и BootReceiver) не гоняли. Так разовый будильник, прозвонивший до
-   * разблокировки, не уезжает на завтра (N-1/R-02).
+   * список `repo.enabled()` (уже после reconcile — список не передаётся снаружи) и только потом
+   * планирует. Всё под общим [RESCHEDULE_MUTEX], чтобы конкурирующие пути (Application.onCreate и
+   * BootReceiver) не гоняли. Так разовый будильник, прозвонивший до разблокировки, не уезжает на
+   * завтра (N-1/R-02).
    */
-  @Suppress("UNUSED_PARAMETER")
   suspend fun rescheduleAll(
     context: Context,
-    repo: AlarmRepository,
-    alarms: List<AlarmEntity>
+    repo: AlarmRepository
   ): AlarmRescheduleReport = RESCHEDULE_MUTEX.withLock {
     reconcileFiredOneShots(context, repo)
     rescheduleAllLocked(context, repo, repo.enabled())

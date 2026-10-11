@@ -78,8 +78,7 @@ class BootReceiver : BroadcastReceiver() {
 
         val report = AlarmScheduler.rescheduleAll(
           context = appContext,
-          repo = repo,
-          alarms = emptyList(), // игнорируется: rescheduleAll сам читает enabled после reconcile (AUD-10)
+          repo = repo
         )
 
         val failedIds = report.failedIds()
