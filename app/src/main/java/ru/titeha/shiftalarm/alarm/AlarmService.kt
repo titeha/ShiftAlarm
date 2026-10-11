@@ -37,8 +37,15 @@ class AlarmService : Service() {
   private var player: MediaPlayer? = null
   private var wakeLock: PowerManager.WakeLock? = null
   private var signalStarted = false
-  private var alarmLabel: String = ""
-  private var alarmId: Long = AlarmScheduler.NO_ID
+
+  /**
+   * AUD-17 (BKL1): группа совпадающих звонков. Сущности остаются отдельными (по `alarmId`), но сигнал,
+   * уведомление и экран — одни на группу. Пустая до первого срабатывания.
+   */
+  private var group: List<RingGroupMember> = emptyList()
+
+  /** Допуск объединения: то же значение, что у валидатора (`AlarmFireValidator.DefaultTolerance`). */
+  private val joinWindowMillis: Long = AlarmFireValidator.DefaultTolerance.toMillis()
 
   // Таймаут авто-перезвона: пока сервис звенит (жив, с wake-lock), по истечении T глушим и авто-снузим.
   private val timeoutHandler = Handler(Looper.getMainLooper())
@@ -55,27 +62,20 @@ class AlarmService : Service() {
      * а не «липучесть» сервиса. «Стоп» дополнительно закрывает сессию звонка.
      */
     if (intent == null || action == ACTION_STOP) {
-      val id = intent?.getLongExtra(EXTRA_ALARM_ID, alarmId) ?: alarmId
-      if (id != AlarmScheduler.NO_ID) {
-        RingSessionController.onStopped(this, id)
-      }
+      // AUD-17: «Стоп» — по ВСЕЙ группе (решение владельца: действие над звонком, не над сущностью).
+      group.forEach { RingSessionController.onStopped(this, it.alarmId) }
       stopRingingAndSelf()
       return START_NOT_STICKY
     }
 
     /*
-     * «Отложить»: ставим снуз-звонок (через сессию) и глушим текущий сигнал. Будильник вернётся
-     * по снуз-звонку через интервал.
+     * «Отложить» — по всей группе. Снуз ставится КАЖДОМУ участнику отдельно (своя сессия) и только
+     * если он реально поставлен. AUD-12 (S-01): сигнал глушим, только если снуз удалось поставить
+     * (или глушить нечего) КАЖДОМУ участнику; иначе звонок продолжается.
      */
     if (action == ACTION_SNOOZE) {
-      val id = intent.getLongExtra(EXTRA_ALARM_ID, alarmId)
-      val label = intent.getStringExtra(EXTRA_LABEL).orEmpty()
-      // AUD-12 (S-01): глушим сигнал ТОЛЬКО если снуз реально поставлен. Иначе звонок продолжается,
-      // а не «замолкает» без будущего срабатывания.
-      val mayStop = if (id != AlarmScheduler.NO_ID) {
-        RingSessionController.onSnoozePressed(this, id, label)
-      } else {
-        false
+      val mayStop = group.isNotEmpty() && group.all { member ->
+        RingSessionController.onSnoozePressed(this, member.alarmId, member.label)
       }
       if (mayStop) {
         stopRingingAndSelf()
@@ -83,8 +83,25 @@ class AlarmService : Service() {
       return START_NOT_STICKY
     }
 
-    alarmId = intent.getLongExtra(EXTRA_ALARM_ID, AlarmScheduler.NO_ID)
-    alarmLabel = intent.getStringExtra(EXTRA_LABEL).orEmpty()
+    val alarmId = intent.getLongExtra(EXTRA_ALARM_ID, AlarmScheduler.NO_ID)
+    if (alarmId == AlarmScheduler.NO_ID) {
+      return START_NOT_STICKY
+    }
+    val label = intent.getStringExtra(EXTRA_LABEL).orEmpty()
+    val scheduledAt = intent
+      .getLongExtra(AlarmScheduler.EXTRA_TRIGGER_AT_MILLIS, AlarmScheduler.NO_TRIGGER_AT_MILLIS)
+      .takeIf { it != AlarmScheduler.NO_TRIGGER_AT_MILLIS }
+      ?: System.currentTimeMillis()
+    val member = RingGroupMember(
+      alarmId = alarmId,
+      label = label,
+      scheduledTriggerAtMillis = scheduledAt
+    )
+
+    // AUD-17: присоединяем к активной группе в пределах окна; иначе начинаем новую. Присоединение
+    // НЕ перезапускает мелодию (сигнал уже играет).
+    val joining = group.isNotEmpty() && ringGroupCanJoin(group, member, joinWindowMillis)
+    group = if (joining) ringGroupWith(group, member) else listOf(member)
 
     /*
     * Состояние устанавливается до foreground-уведомления:
@@ -96,10 +113,12 @@ class AlarmService : Service() {
     // должен ронять сервис и обрывать звонок.
     runCatching { goForeground() }
       .onFailure { Log.w("AlarmService", "goForeground не удался id=$alarmId", it) }
-    runCatching { startRinging() }
-      .onFailure { Log.w("AlarmService", "startRinging не удался id=$alarmId", it) }
-    launchScreen()
-    scheduleAutoRepeatTimeout()
+    if (!joining) {
+      runCatching { startRinging() }
+        .onFailure { Log.w("AlarmService", "startRinging не удался id=$alarmId", it) }
+      scheduleAutoRepeatTimeout()
+    }
+    launchScreen(member)
 
     return START_NOT_STICKY
   }
@@ -110,7 +129,7 @@ class AlarmService : Service() {
    */
   private fun scheduleAutoRepeatTimeout() {
     timeoutHandler.removeCallbacks(timeoutRunnable)
-    if (alarmId == AlarmScheduler.NO_ID) {
+    if (group.isEmpty()) {
       return
     }
     val config = SettingsStore(this).ringConfig()
@@ -120,8 +139,11 @@ class AlarmService : Service() {
   }
 
   private fun onRingTimeout() {
-    // AUD-12 (S-01): авто-снуз; глушим сигнал только если его удалось поставить (или глушить нечего).
-    val mayStop = RingSessionController.onRingTimeout(this, alarmId, alarmLabel)
+    // AUD-17: таймаут — один раз на группу, но авто-снуз ставится КАЖДОМУ участнику (своя сессия).
+    // AUD-12 (S-01): глушим сигнал, только если снуз удалось поставить (или глушить нечего) всем.
+    val mayStop = group.isNotEmpty() && group.all { member ->
+      RingSessionController.onRingTimeout(this, member.alarmId, member.label)
+    }
     if (mayStop) {
       stopRingingAndSelf()
     }
@@ -135,13 +157,14 @@ class AlarmService : Service() {
    * отсюда. В фоне на части прошивок запуск будет заблокирован — тогда остаётся heads-up
    * уведомление с кнопкой «Стоп».
    */
-  private fun launchScreen() {
+  private fun launchScreen(member: RingGroupMember) {
     try {
       startActivity(
         Intent(this, AlarmActivity::class.java)
           .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-          .putExtra(EXTRA_LABEL, alarmLabel)
-          .putExtra(EXTRA_ALARM_ID, alarmId)
+          .putExtra(EXTRA_LABEL, member.label)
+          .putExtra(EXTRA_ALARM_ID, member.alarmId)
+          .putExtra(AlarmScheduler.EXTRA_TRIGGER_AT_MILLIS, member.scheduledTriggerAtMillis)
       )
     } catch (_: Exception) {
       // Фоновый запуск Activity заблокирован ОС — звонок глушится из уведомления.
@@ -151,13 +174,19 @@ class AlarmService : Service() {
   private fun goForeground() {
     ensureChannel(this)
 
+    val primary = group.firstOrNull()
+
     val openScreen = PendingIntent.getActivity(
       this,
       0,
       Intent(this, AlarmActivity::class.java)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        .putExtra(EXTRA_LABEL, alarmLabel)
-        .putExtra(EXTRA_ALARM_ID, alarmId),
+        .putExtra(EXTRA_LABEL, primary?.label.orEmpty())
+        .putExtra(EXTRA_ALARM_ID, primary?.alarmId ?: AlarmScheduler.NO_ID)
+        .putExtra(
+          AlarmScheduler.EXTRA_TRIGGER_AT_MILLIS,
+          primary?.scheduledTriggerAtMillis ?: AlarmScheduler.NO_TRIGGER_AT_MILLIS
+        ),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 
@@ -165,30 +194,29 @@ class AlarmService : Service() {
       this,
       1,
       Intent(this, AlarmService::class.java)
-        .setAction(ACTION_STOP)
-        .putExtra(EXTRA_ALARM_ID, alarmId),
+        .setAction(ACTION_STOP),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 
     val builder = NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
       .setContentTitle("Будильник")
-      .setContentText(displayText(alarmLabel))
+      // AUD-17: перечисляем УНИКАЛЬНЫЕ названия участников группы с усечением (RingGroup).
+      .setContentText(ringGroupSummary(group, DEFAULT_TEXT))
       .setPriority(NotificationCompat.PRIORITY_MAX)
       .setCategory(NotificationCompat.CATEGORY_ALARM)
       .setFullScreenIntent(openScreen, true)
       .setContentIntent(openScreen)
 
-    // «Отложить» — только пока лимит снуза не исчерпан (0 = снуз выключен). Порядок: снуз, затем стоп.
-    if (alarmId != AlarmScheduler.NO_ID && RingSessionController.remainingSnoozes(this, alarmId) > 0) {
+    // «Отложить» — если снуз доступен ХОТЯ БЫ одному участнику (кнопка одна на группу).
+    val snoozeAvailable = group.any { RingSessionController.remainingSnoozes(this, it.alarmId) > 0 }
+    if (snoozeAvailable) {
       val minutes = RingSessionController.snoozeIntervalMinutes(this)
       val snoozePending = PendingIntent.getService(
         this,
         2,
         Intent(this, AlarmService::class.java)
-          .setAction(ACTION_SNOOZE)
-          .putExtra(EXTRA_ALARM_ID, alarmId)
-          .putExtra(EXTRA_LABEL, alarmLabel),
+          .setAction(ACTION_SNOOZE),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
       )
       builder.addAction(android.R.drawable.ic_lock_idle_alarm, "Отложить $minutes мин", snoozePending)
@@ -435,11 +463,20 @@ class AlarmService : Service() {
     const val DEFAULT_TEXT = "Подъём!"
     fun displayText(label: String): String = label.ifBlank { DEFAULT_TEXT }
 
-    /** Запустить звонок будильника [alarmId] с названием [label]. Разрешено из ресивера даже из фона. */
-    fun start(context: Context, alarmId: Long, label: String = "") {
+    /**
+     * Запустить звонок будильника [alarmId] с названием [label]. Разрешено из ресивера даже из фона.
+     * [scheduledTriggerAtMillis] — плановое время (для группировки совпадающих звонков, AUD-17).
+     */
+    fun start(
+      context: Context,
+      alarmId: Long,
+      label: String = "",
+      scheduledTriggerAtMillis: Long = AlarmScheduler.NO_TRIGGER_AT_MILLIS
+    ) {
       val intent = Intent(context, AlarmService::class.java)
         .putExtra(EXTRA_ALARM_ID, alarmId)
         .putExtra(EXTRA_LABEL, label)
+        .putExtra(AlarmScheduler.EXTRA_TRIGGER_AT_MILLIS, scheduledTriggerAtMillis)
 
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         context.startForegroundService(intent)

@@ -1,7 +1,6 @@
 package ru.titeha.shiftalarm.alarm
 
 import android.app.AlarmManager
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -454,21 +453,6 @@ object AlarmScheduler {
     // AUD-13 (R-05): снимаем и уже опубликованную плашку (id плашки не пересекается с id звонка).
     cancelPreRingNotification(context, alarmId)
   }
-
-  /** AUD-13 (R-05): снять опубликованное уведомление-плашку (уведомление звонка НЕ трогаем). */
-  private fun cancelPreRingNotification(context: Context, alarmId: Long) {
-    runCatching {
-      context.getSystemService(NotificationManager::class.java)
-        ?.cancel(PreRingPolicy.notificationId(alarmId))
-    }
-  }
-
-  /** AUD-13 (R-05): время звонка активной плашки (по `Notification.when`), либо null. */
-  private fun activePreRingRingAt(context: Context, alarmId: Long): Long? = runCatching {
-    val manager = context.getSystemService(NotificationManager::class.java) ?: return@runCatching null
-    val id = PreRingPolicy.notificationId(alarmId)
-    manager.activeNotifications.firstOrNull { it.id == id }?.notification?.`when`
-  }.getOrNull()
 
   /**
    * R-01: PendingIntent пред-сигнала. [ringAtMillis] — время ОСНОВНОГО звонка, его и кладём в

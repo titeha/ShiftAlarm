@@ -190,4 +190,20 @@ class PreRingPolicyTest {
     assertTrue(PreRingPolicy.shouldHandleAction(PreRingReceiver.ACTION_PRE_RING, preRingEnabled = true))
     assertTrue(PreRingPolicy.shouldHandleAction(PreRingReceiver.ACTION_DISABLE, preRingEnabled = true))
   }
+
+  @Test
+  fun `AUD-17 id плашки распознаётся по диапазону и не совпадает с id звонка`() {
+    assertTrue(PreRingPolicy.isPreRingNotificationId(PreRingPolicy.notificationId(1)))
+    assertTrue(PreRingPolicy.isPreRingNotificationId(PreRingPolicy.notificationId(999_999)))
+    assertFalse(PreRingPolicy.isPreRingNotificationId(AlarmService.NOTIFICATION_ID))
+    assertFalse(PreRingPolicy.isPreRingNotificationId(100))
+  }
+
+  @Test
+  fun `AUD-17 действие выключает всю группу, а без списка — только свой будильник`() {
+    assertEquals(listOf(1L, 2L, 3L), PreRingPolicy.disableTargets(1L, listOf(1L, 2L, 3L)))
+    assertEquals(listOf(1L, 2L), PreRingPolicy.disableTargets(1L, listOf(1L, 2L, 1L)))
+    assertEquals(listOf(2L), PreRingPolicy.disableTargets(2L, null))
+    assertEquals(listOf(2L), PreRingPolicy.disableTargets(2L, emptyList()))
+  }
 }
