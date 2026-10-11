@@ -123,10 +123,10 @@ class AlarmReceiver : BroadcastReceiver() {
     AlarmEventLog(context).record(
       AlarmEventType.FIRED, "id=$alarmId «${alarm.label}»", System.currentTimeMillis()
     )
-    // TL03: сработавший будильник убираем из DE-кэша СРАЗУ (оба пути звонка): stale-детект
-    // считает пропуском запись старше 90 с, а перепланирование происходит только на «Стоп» —
-    // медленное выключение повторяющегося будильника иначе рисовало ложный пропуск.
-    // Новое срабатывание вернёт запись в кэш при перепланировании.
+    // TL03/AUD-2: сработавший будильник убираем из DE-кэша СРАЗУ (оба пути звонка): stale-детект
+    // считает пропуском запись старше 90 с, а повторяющийся будильник перепланируется сразу после
+    // старта сервиса (ниже, ветка else) — но при медленном «Стоп» запись успела бы стать ложным
+    // пропуском. Для разового ветка ниже снимает/удаляет его окончательно.
     DirectBootAlarmStore(context).removeBase(alarmId)
     AlarmService.start(context, alarm.id, alarm.label)
 
@@ -173,18 +173,28 @@ class AlarmReceiver : BroadcastReceiver() {
       return
     }
 
-    val label = DirectBootAlarmStore(context).read()
-      .firstOrNull { it.alarmId == alarmId }
-      ?.label
-      .orEmpty()
+    val store = DirectBootAlarmStore(context)
+    val entry = store.read().firstOrNull { it.alarmId == alarmId }
+    val label = entry?.label.orEmpty()
 
     Log.i(TAG, "Locked: звоним по RingCache id=$alarmId")
     DirectBootEventBuffer(context).add(AlarmEventType.FIRED.name, "id=$alarmId «$label» (locked)", now)
-    // TF4: сработавшая запись не должна оставаться в DE-кэше: иначе после разблокировки
-    // stale-детектор в refreshDirectBootCache посчитает её ложным «пропуском» (все режимы).
-    // Убирать безопасно: полное перепланирование после разблокировки перестроит кэш из БД,
-    // а ребут в залоченном состоянии до разблокировки и так переставляет только кэш-записи.
-    DirectBootAlarmStore(context).removeBase(alarmId)
+    // AUD-2: убираем ровно сработавшую запись плана и не даём ей стать ложным пропуском.
+    //  - разовый: следующее срабатывание НЕ ставим (N-1 — иначе rescheduleAll на разблокировке
+    //    поставил бы «завтра то же время»); отметку применим после разблокировки;
+    //  - повторяющийся: сразу ставим следующее из кэша (N-2), чтобы залоченный телефон звенел
+    //    и дальше без разблокировки.
+    val firedAt = if (scheduledTriggerAtMillis == AlarmScheduler.NO_TRIGGER_AT_MILLIS) {
+      now
+    } else {
+      scheduledTriggerAtMillis
+    }
+    store.removeFired(alarmId, firedAt)
+    if (entry?.oneShot == true) {
+      store.markOneShotFired(alarmId)
+    } else {
+      AlarmScheduler.scheduleNextFromCache(context, alarmId, now)
+    }
     AlarmService.start(context, alarmId, label)
   }
 

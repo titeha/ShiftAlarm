@@ -21,7 +21,7 @@ class DirectBootAlarmCacheCodecTest {
   @Test
   fun `пустой список`() {
     val encoded = DirectBootAlarmCacheCodec.encode(emptyList())
-    assertEquals("v1", encoded)
+    assertEquals("v2", encoded)
     assertEquals(emptyList<CachedAlarm>(), DirectBootAlarmCacheCodec.decodeOrNull(encoded))
   }
 
@@ -40,6 +40,7 @@ class DirectBootAlarmCacheCodecTest {
   fun `повреждённая строка не декодируется`() {
     assertNull(DirectBootAlarmCacheCodec.decodeOrNull("это не наш формат"))
     assertNull(DirectBootAlarmCacheCodec.decodeOrNull("v1\n1|нечисло|abc"))
-    assertNull(DirectBootAlarmCacheCodec.decodeOrNull("v2\n1|100|YQ")) // чужая версия
+    assertNull(DirectBootAlarmCacheCodec.decodeOrNull("v3\n1|100|YQ|0")) // неизвестная версия
+    assertNull(DirectBootAlarmCacheCodec.decodeOrNull("v2\n1|100|YQ")) // v2 с неполной записью
   }
 }

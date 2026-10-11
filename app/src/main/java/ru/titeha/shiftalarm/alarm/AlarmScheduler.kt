@@ -37,8 +37,17 @@ object AlarmScheduler {
 
   private const val TAG = "AlarmScheduler"
 
-  /** Горизонт device-protected кэша ближайших звонков (дни). */
-  private const val DIRECT_BOOT_HORIZON_DAYS = 7L
+  /**
+   * AUD-2: глубина device-protected плана срабатываний (дни). Открытый вопрос плана (3 против 7):
+   * принято предложенное значение 3 — меняется одной константой.
+   */
+  private const val DE_PLAN_DAYS = 3L
+
+  /** AUD-2: максимум записей плана на один будильник. */
+  private const val MAX_PLAN_PER_ALARM = 4
+
+  /** AUD-2: максимум записей плана суммарно — защита device-protected prefs от разрастания. */
+  private const val MAX_PLAN_TOTAL = 32
 
   /** Насколько должно просрочиться срабатывание из кэша, чтобы счесть его пропущенным (мс). */
   private const val MISS_GRACE_MS = 90_000L
@@ -61,6 +70,8 @@ object AlarmScheduler {
    * Запланировать, подгрузив периоды отпуска и правки календаря из репозитория.
    */
   suspend fun reschedule(context: Context, repo: AlarmRepository, alarm: AlarmEntity) {
+    // AUD-2/B-04: собрать пропуски из старого кэша ДО перезаписи в refreshDirectBootCache ниже.
+    collectMissed(context)
     reschedule(
       context = context,
       alarm = alarm,
@@ -244,9 +255,20 @@ object AlarmScheduler {
    */
   fun collectMissed(context: Context) {
     val store = DirectBootAlarmStore(context)
-    store.addMissed(
-      staleMissed(store.read(), System.currentTimeMillis(), MISS_GRACE_MS)
-    )
+    val stale = staleMissed(store.read(), System.currentTimeMillis(), MISS_GRACE_MS)
+    if (stale.isEmpty()) return
+    // Идемпотентность: повторный вызов до перезаписи кэша не должен дублировать карточки пропусков.
+    val known = store.readMissed().map { it.alarmId to it.triggerAtMillis }.toSet()
+    store.addMissed(stale.filter { (it.alarmId to it.triggerAtMillis) !in known })
+  }
+
+  /**
+   * AUD-2: поставить ближайшее будущее срабатывание будильника из device-protected плана — без
+   * обращения к Room (locked-путь). true — сигнал поставлен; false — будущих записей нет.
+   */
+  fun scheduleNextFromCache(context: Context, alarmId: Long, nowMillis: Long): Boolean {
+    val next = nextCached(DirectBootAlarmStore(context).read(), alarmId, nowMillis) ?: return false
+    return scheduleAt(context = context, alarmId = alarmId, triggerAtMillis = next.triggerAtMillis)
   }
 
   /**
@@ -329,36 +351,47 @@ object AlarmScheduler {
    * Пересобрать device-protected кэш ближайших звонков — чтобы после ночного ребута залоченным
    * `directBootAware`-ресивер мог перевыставить будильники, не обращаясь к Room.
    *
-   * Берёт включённые будильники, считает ближайшее срабатывание каждого (тем же движком, что и
-   * планирование) и кладёт в кэш те, что в пределах горизонта [DIRECT_BOOT_HORIZON_DAYS] дней.
+   * Пересобрать device-protected кэш — план ближайших срабатываний, чтобы после ночного ребута
+   * залоченным `directBootAware`-ресивер мог перевыставить будильники, не обращаясь к Room.
+   *
+   * Берёт включённые будильники, считает ближайшие срабатывания каждого (тем же движком, что и
+   * планирование) и кладёт в кэш до [MAX_PLAN_PER_ALARM] записей на будильник в пределах горизонта
+   * [DE_PLAN_DAYS] дней (суммарно — не более [MAX_PLAN_TOTAL]).
    */
   suspend fun refreshDirectBootCache(context: Context, repo: AlarmRepository) {
+    // AUD-2/B-04: единственная точка перезаписи кэша — пропуски собираем ДО неё (идемпотентно).
+    collectMissed(context)
+
     val store = DirectBootAlarmStore(context)
 
-    // Детект пропусков вынесен в collectMissed (TL02) и вызывается ДО перезаписей:
-    // здесь кэш уже можно только переписывать.
     val now = LocalDateTime.now()
-    val horizonMillis = AlarmInstant.epochMilli(now.plusDays(DIRECT_BOOT_HORIZON_DAYS))
+    val horizonMillis = AlarmInstant.epochMilli(now.plusDays(DE_PLAN_DAYS))
     // Глобальная рабочая неделя — одна на весь кэш (настройка глобальная, Q1=1а); DE-хранилище
     // читается и до разблокировки (Q2=2а).
     val globalWeek = SettingsStore(context).globalWorkWeek()
 
-    val entries = repo.enabled().mapNotNull { alarm ->
-      val next = AlarmTimes.next(
-        alarm,
-        offPeriodsFor(repo, alarm),
-        overridesFor(repo, alarm),
-        now,
-        globalWeek
-      ) ?: return@mapNotNull null
-
-      val millis = AlarmInstant.epochMilli(next)
-      if (millis > horizonMillis) return@mapNotNull null
-
-      CachedAlarm(alarmId = alarm.id, triggerAtMillis = millis, label = alarm.label)
+    // AUD-2: план ближайших срабатываний — до MAX_PLAN_PER_ALARM записей на будильник, чтобы
+    // залоченный телефон мог прозвонить несколько раз до разблокировки (N-2). Разовый будильник
+    // получает ровно одну запись с флагом oneShot (без «завтра то же время» — N-1).
+    val plan = repo.enabled().flatMap { alarm ->
+      val oneShot = AlarmTimes.isOneShot(alarm)
+      val periods = offPeriodsFor(repo, alarm)
+      val overrides = overridesFor(repo, alarm)
+      val nextMillis = buildList {
+        var cursor = now
+        while (size < MAX_PLAN_PER_ALARM) {
+          val next = AlarmTimes.next(alarm, periods, overrides, cursor, globalWeek) ?: break
+          val millis = AlarmInstant.epochMilli(next)
+          if (millis > horizonMillis) break
+          add(millis)
+          if (oneShot) break
+          cursor = next
+        }
+      }
+      planEntries(alarmId = alarm.id, label = alarm.label, nextMillis = nextMillis, oneShot = oneShot)
     }
 
-    store.write(entries)
+    store.write(plan.sortedBy { it.triggerAtMillis }.take(MAX_PLAN_TOTAL))
   }
 
   /**
@@ -368,27 +401,27 @@ object AlarmScheduler {
    */
   fun reArmFromCache(context: Context) {
     val now = System.currentTimeMillis()
+    val store = DirectBootAlarmStore(context)
 
-    DirectBootAlarmStore(context).read().forEach { entry ->
-      /*
-       * Просроченный сверх грейса (ребут занял слишком долго) — не перевыставляем: звонить глубокой
-       * ночью за давно прошедший звонок не нужно (пропуск зафиксируется отдельно). Просроченный в
-       * пределах грейса — ставим на «сейчас», чтобы прозвенел сразу после загрузки.
-       */
-      if (entry.triggerAtMillis < now - LOCKED_BOOT_OVERDUE_GRACE_MS) {
-        return@forEach
+    // AUD-2: на будильник в плане несколько записей, а PendingIntent у него один — выставляем
+    // ближайшую допустимую запись каждого будильника (просроченные сверх грейса пропускаем).
+    store.read()
+      .groupBy { it.alarmId }
+      .forEach { (alarmId, entries) ->
+        val candidate = entries
+          .filter { it.triggerAtMillis >= now - LOCKED_BOOT_OVERDUE_GRACE_MS }
+          .minByOrNull { it.triggerAtMillis }
+          ?: return@forEach
+        scheduleAt(
+          context = context,
+          alarmId = alarmId,
+          triggerAtMillis = maxOf(candidate.triggerAtMillis, now)
+        )
       }
-
-      scheduleAt(
-        context = context,
-        alarmId = entry.alarmId,
-        triggerAtMillis = maxOf(entry.triggerAtMillis, now)
-      )
-    }
 
     // Отложенные (снуз) звонки — тем же правилом грейса, но снуз-неймспейсом, чтобы ребут внутри
     // снуз-окна не потерял звонок и сессия продолжилась (счётчик снуза лежит в RingSessionStore).
-    DirectBootAlarmStore(context).readSnoozes().forEach { snooze ->
+    store.readSnoozes().forEach { snooze ->
       if (snooze.triggerAtMillis < now - LOCKED_BOOT_OVERDUE_GRACE_MS) {
         return@forEach
       }
