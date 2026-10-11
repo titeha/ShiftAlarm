@@ -94,6 +94,14 @@ object PreRingPolicy {
   fun isPreRingNotificationId(id: Int): Boolean =
     id in NOTIFICATION_BASE until (NOTIFICATION_BASE + NOTIFICATION_RANGE)
 
+  /**
+   * AUD-17: кого выключает действие «Выключить будильник» из плашки — ВСЮ группу (решение владельца:
+   * действие над звонком, не над сущностью). Если участников нет (старая плашка до AUD-17) — выключается
+   * только сам будильник. Дубликаты id убираются; пустой список трактуется как отсутствие группы.
+   */
+  fun disableTargets(primaryAlarmId: Long, groupIds: List<Long>?): List<Long> =
+    (groupIds?.takeIf { it.isNotEmpty() } ?: listOf(primaryAlarmId)).distinct()
+
   /** AUD-13 (R-05): решение по действию «Выключить будильник» из плашки. */
   enum class DisableDecision { DisableAlarm, CancelNotificationOnly }
 
@@ -188,7 +196,10 @@ class PreRingReceiver : BroadcastReceiver() {
       ACTION_DISABLE -> {
         val actionRingAt = intent.getLongExtra(EXTRA_TRIGGER_AT_MILLIS, -1L)
         // AUD-17: действие выключает ВСЮ группу (решение владельца: действие над звонком).
-        val groupIds = intent.getLongArrayExtra(PRE_RING_GROUP_IDS)?.toList() ?: listOf(alarmId)
+        val groupIds = PreRingPolicy.disableTargets(
+          alarmId,
+          intent.getLongArrayExtra(PRE_RING_GROUP_IDS)?.toList(),
+        )
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
           try {

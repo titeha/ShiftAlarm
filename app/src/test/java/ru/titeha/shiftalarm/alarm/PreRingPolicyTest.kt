@@ -198,4 +198,12 @@ class PreRingPolicyTest {
     assertFalse(PreRingPolicy.isPreRingNotificationId(AlarmService.NOTIFICATION_ID))
     assertFalse(PreRingPolicy.isPreRingNotificationId(100))
   }
+
+  @Test
+  fun `AUD-17 действие выключает всю группу, а без списка — только свой будильник`() {
+    assertEquals(listOf(1L, 2L, 3L), PreRingPolicy.disableTargets(1L, listOf(1L, 2L, 3L)))
+    assertEquals(listOf(1L, 2L), PreRingPolicy.disableTargets(1L, listOf(1L, 2L, 1L)))
+    assertEquals(listOf(2L), PreRingPolicy.disableTargets(2L, null))
+    assertEquals(listOf(2L), PreRingPolicy.disableTargets(2L, emptyList()))
+  }
 }
