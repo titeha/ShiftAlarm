@@ -352,20 +352,24 @@ object AlarmScheduler {
    */
   fun schedulePreRing(context: Context, alarmId: Long, ringAtMillis: Long) {
     val manager = context.getSystemService(AlarmManager::class.java)
-    val pre = if (SettingsStore(context).preRingEnabled()) {
-      PreRingPolicy.preRingAtMillis(ringAtMillis, System.currentTimeMillis())
+    // R-01: два РАЗНЫХ времени. plan.preAtMillis — системный trigger (время доставки, звонок минус
+    // LEAD_MINUTES); plan.ringAtMillis — время ОСНОВНОГО звонка, его кладём в extra для приёмника
+    // (приёмник сверяет extra с пересчитанным расписанием). Раньше в extra ошибочно попадало pre —
+    // расхождение в час делало isStillRelevant ложным, и плашка не показывалась никогда.
+    val plan = if (SettingsStore(context).preRingEnabled()) {
+      PreRingPolicy.plan(ringAtMillis, System.currentTimeMillis())
     } else {
       null
     }
-    if (pre == null) {
+    if (plan == null) {
       manager.cancel(preRingPendingIntent(context, alarmId, NO_TRIGGER_AT_MILLIS))
       return
     }
     try {
       manager.setExactAndAllowWhileIdle(
         AlarmManager.RTC_WAKEUP,
-        pre,
-        preRingPendingIntent(context, alarmId, pre)
+        plan.preAtMillis,
+        preRingPendingIntent(context, alarmId, plan.ringAtMillis)
       )
     } catch (error: SecurityException) {
       // B-01: отказ вторичного сигнала не должен ломать основной звонок и перепланирование.
@@ -391,15 +395,20 @@ object AlarmScheduler {
       .cancel(preRingPendingIntent(context, alarmId, NO_TRIGGER_AT_MILLIS))
   }
 
+  /**
+   * R-01: PendingIntent пред-сигнала. [ringAtMillis] — время ОСНОВНОГО звонка, его и кладём в
+   * `EXTRA_TRIGGER_AT_MILLIS` (НЕ время доставки): приёмник сверяет его с пересчитанным расписанием.
+   * Системный trigger доставки задаётся отдельно в [schedulePreRing] (`plan.preAtMillis`).
+   */
   private fun preRingPendingIntent(
     context: Context,
     alarmId: Long,
-    triggerAtMillis: Long
+    ringAtMillis: Long
   ): PendingIntent {
     val intent = Intent(context, PreRingReceiver::class.java)
       .setAction(PreRingReceiver.ACTION_PRE_RING)
       .putExtra(PreRingReceiver.EXTRA_ALARM_ID, alarmId)
-      .putExtra(PreRingReceiver.EXTRA_TRIGGER_AT_MILLIS, triggerAtMillis)
+      .putExtra(PreRingReceiver.EXTRA_TRIGGER_AT_MILLIS, ringAtMillis)
     return PendingIntent.getBroadcast(
       context,
       AlarmRequestCodes.preRing(alarmId),

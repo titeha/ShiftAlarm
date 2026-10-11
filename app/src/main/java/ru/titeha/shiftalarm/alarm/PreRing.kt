@@ -44,6 +44,23 @@ object PreRingPolicy {
   fun preRingAt(next: LocalDateTime?, now: LocalDateTime): LocalDateTime? =
     next?.minusMinutes(LEAD_MINUTES)?.takeIf { it > now }
 
+  /**
+   * R-01: план пред-сигнала — ДВА разных времени, которые нельзя путать:
+   *  - [preAtMillis] — системный trigger доставки (время звонка минус [LEAD_MINUTES]);
+   *  - [ringAtMillis] — время ОСНОВНОГО звонка (его кладём в extra для приёмника).
+   */
+  data class PreRingPlan(val preAtMillis: Long, val ringAtMillis: Long)
+
+  /**
+   * R-01: построить план пред-сигнала по времени основного звонка [ringAtMillis].
+   * null — плашка не нужна (нет звонка или до него меньше [LEAD_MINUTES]).
+   */
+  fun plan(ringAtMillis: Long?, nowMillis: Long): PreRingPlan? {
+    if (ringAtMillis == null) return null
+    val pre = preRingAtMillis(ringAtMillis, nowMillis) ?: return null
+    return PreRingPlan(preAtMillis = pre, ringAtMillis = ringAtMillis)
+  }
+
   /** B-02: допустимое расхождение между запланированным и пересчитанным срабатыванием (мс). */
   const val RELEVANCE_WINDOW_MS = 60_000L
 
