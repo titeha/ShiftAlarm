@@ -24,7 +24,11 @@ import kotlin.math.abs
 object AlarmFireValidator {
   const val MISSING_TRIGGER_AT_MILLIS: Long = -1L
 
-  private val DefaultTolerance: Duration = Duration.ofMinutes(1)
+  /**
+   * Допуск актуальности срабатывания. AUD-17 (BKL1): это же значение — окно объединения
+   * совпадающих звонков в группу ([ringGroupCanJoin]), чтобы не вводить третью константу.
+   */
+  internal val DefaultTolerance: Duration = Duration.ofMinutes(1)
 
   /**
    * true — звонок соответствует текущему состоянию будильника и его можно запускать.
