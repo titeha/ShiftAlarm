@@ -172,4 +172,22 @@ class PreRingPolicyTest {
       PreRingPolicy.disableDecision(null, changedRing, now, PreRingPolicy.RELEVANCE_WINDOW_MS)
     )
   }
+
+  // --- AUD-16 (D3): действия приёмника при выключенном тумблере ---
+
+  @Test
+  fun `AUD-16 D3 - при выключенном тумблере новые плашки не ставятся`() {
+    assertFalse(PreRingPolicy.shouldHandleAction(PreRingReceiver.ACTION_PRE_RING, preRingEnabled = false))
+  }
+
+  @Test
+  fun `AUD-16 D3 - при выключенном тумблере ACTION_DISABLE и снятие плашки работают`() {
+    assertTrue(PreRingPolicy.shouldHandleAction(PreRingReceiver.ACTION_DISABLE, preRingEnabled = false))
+  }
+
+  @Test
+  fun `AUD-16 D3 - при включённом тумблере обрабатываются оба действия`() {
+    assertTrue(PreRingPolicy.shouldHandleAction(PreRingReceiver.ACTION_PRE_RING, preRingEnabled = true))
+    assertTrue(PreRingPolicy.shouldHandleAction(PreRingReceiver.ACTION_DISABLE, preRingEnabled = true))
+  }
 }

@@ -108,6 +108,14 @@ object PreRingPolicy {
       DisableDecision.CancelNotificationOnly
     }
 
+  /**
+   * AUD-16 (D3): обрабатывать ли действие приёмника при выключенном тумблере pre-ring.
+   * Новые плашки при выключенном тумблере НЕ ставим, но действие «Выключить» и снятие уже
+   * опубликованной плашки обязаны работать — иначе останется живая плашка с нерабочей кнопкой.
+   */
+  fun shouldHandleAction(action: String?, preRingEnabled: Boolean): Boolean =
+    preRingEnabled || action == PreRingReceiver.ACTION_DISABLE
+
   private const val NOTIFICATION_BASE = 10_000
   private const val NOTIFICATION_RANGE = 1_000_000
 }
@@ -124,13 +132,16 @@ object PreRingPolicy {
 class PreRingReceiver : BroadcastReceiver() {
 
   override fun onReceive(context: Context, intent: Intent) {
+    val action = intent.action
     val settings = SettingsStore(context)
-    if (!settings.preRingEnabled()) return
+    // AUD-16 (D3): при выключенном тумблере новые плашки НЕ ставим, но действие «Выключить» и
+    // снятие уже опубликованной плашки обязаны работать — иначе останется живая плашка с нерабочей кнопкой.
+    if (!PreRingPolicy.shouldHandleAction(action, settings.preRingEnabled())) return
 
     val alarmId = intent.getLongExtra(EXTRA_ALARM_ID, -1L)
     if (alarmId < 0) return
 
-    when (intent.action) {
+    when (action) {
       ACTION_PRE_RING -> {
         val triggerAt = intent.getLongExtra(EXTRA_TRIGGER_AT_MILLIS, -1L)
         val pending = goAsync()
