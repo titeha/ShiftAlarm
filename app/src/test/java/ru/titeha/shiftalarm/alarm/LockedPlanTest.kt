@@ -77,6 +77,24 @@ class LockedPlanTest {
     assertEquals(listOf(cached(1, 2000)), removeFired(cache, 1L, 2500))
   }
 
+  // --- AUD-11 (R-03): recovery-план повторяющегося после обрыва до Room-перепланирования ---
+
+  @Test
+  fun `AUD-11 после обрыва до reschedule в плане остаётся следующая запись`() {
+    val day = 86_400_000L
+    val plan = listOf(cached(1, 1_000), cached(1, 1_000 + day), cached(1, 1_000 + 2 * day))
+    val after = removeFired(plan, alarmId = 1L, firedAtMillis = 1_000)
+    // Следующий recovery entry сохранён и может быть поставлен без обращения к Room.
+    assertEquals(1_000 + day, nextCached(after, 1L, nowMillis = 1_001)?.triggerAtMillis)
+  }
+
+  @Test
+  fun `AUD-11 разовый после firing - в плане пусто, следующего нет`() {
+    val after = removeFired(listOf(cached(9, 5_000)), alarmId = 9L, firedAtMillis = 5_000)
+    assertTrue(after.isEmpty())
+    assertNull(nextCached(after, 9L, nowMillis = 5_001))
+  }
+
   // --- codec ---
 
   @Test
