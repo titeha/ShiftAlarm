@@ -69,10 +69,16 @@ class AlarmService : Service() {
     if (action == ACTION_SNOOZE) {
       val id = intent.getLongExtra(EXTRA_ALARM_ID, alarmId)
       val label = intent.getStringExtra(EXTRA_LABEL).orEmpty()
-      if (id != AlarmScheduler.NO_ID) {
+      // AUD-12 (S-01): глушим сигнал ТОЛЬКО если снуз реально поставлен. Иначе звонок продолжается,
+      // а не «замолкает» без будущего срабатывания.
+      val mayStop = if (id != AlarmScheduler.NO_ID) {
         RingSessionController.onSnoozePressed(this, id, label)
+      } else {
+        false
       }
-      stopRingingAndSelf()
+      if (mayStop) {
+        stopRingingAndSelf()
+      }
       return START_NOT_STICKY
     }
 
@@ -109,8 +115,11 @@ class AlarmService : Service() {
   }
 
   private fun onRingTimeout() {
-    RingSessionController.onRingTimeout(this, alarmId, alarmLabel)
-    stopRingingAndSelf()
+    // AUD-12 (S-01): авто-снуз; глушим сигнал только если его удалось поставить (или глушить нечего).
+    val mayStop = RingSessionController.onRingTimeout(this, alarmId, alarmLabel)
+    if (mayStop) {
+      stopRingingAndSelf()
+    }
   }
 
   /**
