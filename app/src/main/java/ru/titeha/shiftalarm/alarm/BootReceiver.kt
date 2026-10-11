@@ -68,7 +68,9 @@ class BootReceiver : BroadcastReceiver() {
         HolidayCalendarRepository(appContext).install()
 
         val repo = AlarmRepository(appContext)
-        val alarms = repo.enabled()
+        // AUD-10 (R-02): reconcile отметок разовых и актуальное чтение enabled теперь ВНУТРИ
+        // AlarmScheduler.rescheduleAll (единая граница под общим Mutex). Аргумент alarms
+        // игнорируется — см. KDoc rescheduleAll.
         val eventLog = AlarmEventLog(appContext)
 
         // Перелить события, накопленные до разблокировки (Direct Boot), в основной журнал с пометкой.
@@ -76,8 +78,7 @@ class BootReceiver : BroadcastReceiver() {
 
         val report = AlarmScheduler.rescheduleAll(
           context = appContext,
-          repo = repo,
-          alarms = alarms
+          repo = repo
         )
 
         val failedIds = report.failedIds()

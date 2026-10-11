@@ -48,7 +48,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.getValue
@@ -67,7 +71,9 @@ import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.schedule.AlarmTimes
 import ru.titeha.shiftalarm.schedule.ShiftCycleCodec
 import ru.titeha.shiftalarm.schedule.ShiftPresets
+import ru.titeha.shiftalarm.schedule.WorkWeek
 import ru.titeha.shiftalarm.schedule.WorkWeekPreset
+import ru.titeha.shiftalarm.schedule.workWeekOf
 import ru.titeha.shiftalarm.ui.AlarmEditorScreen
 import ru.titeha.shiftalarm.ui.AlarmListViewModel
 import ru.titeha.shiftalarm.alarm.CachedAlarm
@@ -107,6 +113,11 @@ class MainActivity : ComponentActivity() {
       var weekPairNaming by remember { mutableStateOf(settings.weekPairNaming()) }
       var workWeekPreset by remember { mutableStateOf(settings.workWeekPreset()) }
       var workWeekCustomMask by remember { mutableStateOf(settings.workWeekCustomMask()) }
+      var preRingEnabled by remember { mutableStateOf(settings.preRingEnabled()) }
+      // AUD-6/F-01: глобальная рабочая неделя — вход движка «след:». Берём из состояния экрана
+      // (обновляется в onWorkWeek), а не из prefs внутри строки списка: иначе после смены
+      // настройки подпись «след:» залипала бы на старом значении.
+      val globalWeek = workWeekOf(workWeekPreset, workWeekCustomMask)
       val darkTheme = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
@@ -129,6 +140,20 @@ class MainActivity : ComponentActivity() {
         // Пропущенные звонки (обнаружены планировщиком): показываем карточку, пока не закроют.
         val directBootStore = remember { DirectBootAlarmStore(applicationContext) }
         var missedAlarms by remember { mutableStateOf(directBootStore.readMissed()) }
+
+        // AUD-6: планировщик пишет пропуски в фоне (locked boot/фоновое перепланирование),
+        // пока экран не виден. Перечитываем хранилище на каждом ON_RESUME — иначе карточка
+        // пропуска не появится до перезапуска приложения.
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner) {
+          val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+              missedAlarms = directBootStore.readMissed()
+            }
+          }
+          lifecycleOwner.lifecycle.addObserver(observer)
+          onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
 
         var saveWarning by remember { mutableStateOf<String?>(null) }
 
@@ -178,6 +203,13 @@ class MainActivity : ComponentActivity() {
               onFontScale = { fontScale = it; settings.setFontScale(it) },
               ringConfig = ringConfig,
               onRingConfig = { ringConfig = it; settings.setRingConfig(it) },
+              preRingEnabled = preRingEnabled,
+              onPreRingEnabled = { v ->
+                preRingEnabled = v
+                settings.setPreRingEnabled(v)
+                // Настройка влияет на расписание (пред-сигнал ставится/снимается) — перепланируем.
+                vm.rescheduleAll()
+              },
               weekStart = weekStart,
               onWeekStart = { weekStart = it; settings.setWeekStart(it) },
               weekPairNaming = weekPairNaming,
@@ -257,6 +289,7 @@ class MainActivity : ComponentActivity() {
 
           else -> {
             AlarmListScreen(
+              globalWeek = globalWeek,
               alarms = state.alarms,
               periodsByAlarm = state.periodsByAlarm,
               overridesByAlarm = state.overridesByAlarm,
@@ -404,6 +437,7 @@ private fun AlarmListScreen(
   alarms: List<AlarmEntity>,
   periodsByAlarm: Map<Long, List<AlarmPeriod>>,
   overridesByAlarm: Map<Long, List<AlarmOverride>>,
+  globalWeek: WorkWeek,
   onAdd: () -> Unit,
   onEdit: (AlarmEntity) -> Unit,
   onToggle: (AlarmEntity, Boolean) -> Unit,
@@ -515,6 +549,7 @@ private fun AlarmListScreen(
               periods = periodsByAlarm[alarm.id].orEmpty(),
               overrides = overridesByAlarm[alarm.id].orEmpty(),
               now = currentMinute,
+              globalWeek = globalWeek,
               onClick = { onEdit(alarm) },
               onToggle = { on -> onToggle(alarm, on) },
               onDelete = { onDelete(alarm) },
@@ -533,6 +568,7 @@ private fun AlarmRow(
   periods: List<AlarmPeriod>,
   overrides: List<AlarmOverride>,
   now: LocalDateTime,
+  globalWeek: WorkWeek,
   onClick: () -> Unit,
   onToggle: (Boolean) -> Unit,
   onDelete: () -> Unit,
@@ -541,9 +577,6 @@ private fun AlarmRow(
   var confirmOff by remember { mutableStateOf(false) }
   var confirmDelete by remember { mutableStateOf(false) }
   var menuOpen by remember { mutableStateOf(false) }
-  val context = LocalContext.current
-  // Глобальная рабочая неделя — вход движка (TC03); настройка в DE-хранилище.
-  val globalWeek = remember { SettingsStore(context).globalWorkWeek() }
 
   Card(
     modifier = Modifier

@@ -25,10 +25,13 @@ alarm_overrides
 BootReceiver обрабатывает следующие события:
 
 ```text
+android.intent.action.LOCKED_BOOT_COMPLETED
 android.intent.action.BOOT_COMPLETED
+android.intent.action.USER_UNLOCKED
 android.intent.action.MY_PACKAGE_REPLACED
 android.intent.action.TIME_SET
 android.intent.action.TIMEZONE_CHANGED
+android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
 ```
 
 ## BOOT_COMPLETED
@@ -54,6 +57,23 @@ android.intent.action.TIMEZONE_CHANGED
 Событие приходит после изменения часового пояса.
 
 ShiftAlarm рассчитывает расписание в локальных датах и локальном времени. При смене часового пояса ближайшее срабатывание нужно пересчитать относительно нового локального времени.
+
+## SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
+
+Событие приходит, когда пользователь разрешает или отзывает точные будильники (Android 12+). После
+выдачи разрешения ранее не поставленные срабатывания нужно поставить заново.
+
+## Direct Boot: события до разблокировки (LOCKED_BOOT_COMPLETED / USER_UNLOCKED)
+
+До первой разблокировки credential-encrypted хранилище (в т.ч. Room) недоступно. Поэтому:
+
+- `LOCKED_BOOT_COMPLETED` (и любое событие, пришедшее пока устройство залочено) — перевыставление
+  **без** Room: `AlarmScheduler.reArmFromCache` ставит ближайшее срабатывание каждого будильника из
+  device-protected кэша (план срабатываний). Полный пересчёт из Room отложен;
+- `USER_UNLOCKED` — полный пересчёт из Room (`rescheduleAll`), который применяет отметки сработавших
+  разовых будильников (reconcile — в единой границе `rescheduleAll`, поэтому то же происходит и при
+  старте приложения/UI — AUD-10) и переливает накопленный DE-буфер событий в основной журнал;
+- подробности — в `docs/DIRECT_BOOT.md`.
 
 ## Порядок обработки
 

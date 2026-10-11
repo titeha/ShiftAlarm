@@ -80,11 +80,14 @@ class AlarmReceiver : BroadcastReceiver() {
         )
       } catch (error: Exception) {
         Log.w(TAG, "Не удалось обработать срабатывание будильника", error)
-        AlarmEventLog(appContext).record(
-          AlarmEventType.ERROR,
-          "срабатывание id=$id: ${error.message ?: error.javaClass.simpleName}",
-          System.currentTimeMillis()
-        )
+        // AUD-14 (R-07): журналирование не должно снова бросить исключение — минимальный сигнал важнее диагностики.
+        runCatching {
+          AlarmEventLog(appContext).record(
+            AlarmEventType.ERROR,
+            "срабатывание id=$id: ${error.message ?: error.javaClass.simpleName}",
+            System.currentTimeMillis()
+          )
+        }
       } finally {
         pending.finish()
       }
@@ -98,6 +101,15 @@ class AlarmReceiver : BroadcastReceiver() {
   ) {
     val repo = AlarmRepository(context)
     val alarm = repo.byId(alarmId) ?: return
+
+    // AUD-11 (R-03): время сработавшего firing'а — для точечного удаления записи из DE-плана
+    // (fallback на «сейчас», если extra не пришёл).
+    val nowMillis = System.currentTimeMillis()
+    val firedAtMillis = if (scheduledTriggerAtMillis == AlarmScheduler.NO_TRIGGER_AT_MILLIS) {
+      nowMillis
+    } else {
+      scheduledTriggerAtMillis
+    }
 
     val periods = periodsFor(repo, alarm)
     val overrides = overridesFor(repo, alarm)
@@ -114,28 +126,41 @@ class AlarmReceiver : BroadcastReceiver() {
       AlarmEventLog(context).record(
         AlarmEventType.SKIPPED,
         "id=$alarmId (устаревшее срабатывание или будильник выключен)",
-        System.currentTimeMillis()
+        nowMillis
       )
+      // AUD-11 (R-03): отклонённый (устаревший/выключенный) firing — убираем РОВНО его запись из
+      // DE-плана ДО reschedule/collectMissed, иначе она была бы посчитана ложным пропуском.
+      // Следующее здесь не ставим — reschedule пересоберёт план из Room.
+      DirectBootAlarmStore(context).removeFired(alarmId, firedAtMillis)
       AlarmScheduler.reschedule(context, repo, alarm)
       return
     }
 
     AlarmEventLog(context).record(
-      AlarmEventType.FIRED, "id=$alarmId «${alarm.label}»", System.currentTimeMillis()
+      AlarmEventType.FIRED, "id=$alarmId «${alarm.label}»", nowMillis
     )
+    // AUD-11 (R-03): убираем РОВНО сработавшую запись, СОХРАНЯЯ будущие записи плана. Для
+    // повторяющегося будильника СРАЗУ (до AlarmService.start и до Room-перепланирования) ставим
+    // следующее срабатывание из кэша — это recovery-план, если процесс/устройство оборвётся до
+    // перепланирования. Раньше здесь был removeBase, стиравший весь план (crash → locked boot без
+    // recovery). Для разового следующее не ставим (однократная семантика).
+    val directBootStore = DirectBootAlarmStore(context)
+    directBootStore.removeFired(alarmId, firedAtMillis)
+    val repeating = !isOneShot(alarm)
+    if (repeating) {
+      AlarmScheduler.scheduleNextFromCache(context, alarmId, nowMillis)
+    }
+
     AlarmService.start(context, alarm.id, alarm.label)
 
     when {
       isOneShot(alarm) && alarm.deleteAfterFiring -> {
-        // Разовое срабатывание не идёт через перепланирование, поэтому убираем запись из кэша
-        // ближайших звонков сами и ДО изменения базы: иначе оставшийся «призрак» на следующем
-        // обновлении кэша будет посчитан пропущенным звонком (F-1).
-        DirectBootAlarmStore(context).removeBase(alarmId)
+        // Разовое срабатывание не идёт через перепланирование: DE-запись уже убрана выше,
+        // осталось применить к Room окончательно.
         repo.delete(alarm)
       }
 
       isOneShot(alarm) -> {
-        DirectBootAlarmStore(context).removeBase(alarmId)
         repo.update(alarm.copy(enabled = false))
       }
 
@@ -168,13 +193,28 @@ class AlarmReceiver : BroadcastReceiver() {
       return
     }
 
-    val label = DirectBootAlarmStore(context).read()
-      .firstOrNull { it.alarmId == alarmId }
-      ?.label
-      .orEmpty()
+    val store = DirectBootAlarmStore(context)
+    val entry = store.read().firstOrNull { it.alarmId == alarmId }
+    val label = entry?.label.orEmpty()
 
     Log.i(TAG, "Locked: звоним по RingCache id=$alarmId")
     DirectBootEventBuffer(context).add(AlarmEventType.FIRED.name, "id=$alarmId «$label» (locked)", now)
+    // AUD-2: убираем ровно сработавшую запись плана и не даём ей стать ложным пропуском.
+    //  - разовый: следующее срабатывание НЕ ставим (N-1 — иначе rescheduleAll на разблокировке
+    //    поставил бы «завтра то же время»); отметку применим после разблокировки;
+    //  - повторяющийся: сразу ставим следующее из кэша (N-2), чтобы залоченный телефон звенел
+    //    и дальше без разблокировки.
+    val firedAt = if (scheduledTriggerAtMillis == AlarmScheduler.NO_TRIGGER_AT_MILLIS) {
+      now
+    } else {
+      scheduledTriggerAtMillis
+    }
+    store.removeFired(alarmId, firedAt)
+    if (entry?.oneShot == true) {
+      store.markOneShotFired(alarmId)
+    } else {
+      AlarmScheduler.scheduleNextFromCache(context, alarmId, now)
+    }
     AlarmService.start(context, alarmId, label)
   }
 

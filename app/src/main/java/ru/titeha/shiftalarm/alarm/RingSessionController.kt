@@ -23,7 +23,10 @@ import java.time.ZoneId
  */
 object RingSessionController {
 
-    /** «Отложить» нажато. true — снуз поставлен (false — нет разрешения на точные будильники). */
+    /**
+     * «Отложить» нажато. true — текущий сигнал можно глушить (снуз поставлен или глушить нечего);
+     * false — снуз НЕ поставлен, сигнал продолжает звонить (S-01/AUD-12).
+     */
     fun onSnoozePressed(context: Context, alarmId: Long, label: String): Boolean =
         applyEvent(context, alarmId, label, RingEvent.SnoozePressed)
 
@@ -39,10 +42,12 @@ object RingSessionController {
         }
     }
 
-    /** Прошло T минут без взаимодействия — авто-перезвон или, если лимит исчерпан, пропущен. */
-    fun onRingTimeout(context: Context, alarmId: Long, label: String) {
+    /**
+     * Прошло T минут без взаимодействия — авто-перезвон или, если лимит исчерпан, пропущен.
+     * true — сигнал можно глушить; false — авто-снуз НЕ поставлен, сигнал продолжает звонить (S-01/AUD-12).
+     */
+    fun onRingTimeout(context: Context, alarmId: Long, label: String): Boolean =
         applyEvent(context, alarmId, label, RingEvent.RingTimeout)
-    }
 
     /** Сколько снузов ещё доступно для будильника (для подписи «осталось N» и показа кнопки). */
     fun remainingSnoozes(context: Context, alarmId: Long): Int {
@@ -54,6 +59,15 @@ object RingSessionController {
     fun snoozeIntervalMinutes(context: Context): Int =
         SettingsStore(context).ringConfig().snoozeIntervalMinutes
 
+    /**
+     * Применить событие и вернуть решение по сигналу: true — можно глушить, false — оставить звонить.
+     *
+     * AUD-12 (S-01): снуз пытаемся поставить ДО остановки сигнала. Если `ScheduleSnooze` не удался
+     * (нет разрешения точных будильников / любое исключение планирования) — сигнал НЕ глушим, сессию
+     * в `SNOOZING` НЕ переводим, пишем `ERROR`. Иначе пользователь получил бы «тишину» без будущего
+     * звонка. Поведение ручного и авто-снуза согласовано (один код и одно чистое правило
+     * [shouldStopRingingAfterSnooze]).
+     */
     private fun applyEvent(
         context: Context,
         alarmId: Long,
@@ -67,11 +81,37 @@ object RingSessionController {
 
         val result = RingSessionReducer.reduce(state, event, config, now)
 
-        var scheduled = true
+        // 1. Сначала — попытка поставить снуз (если редьюсер её запросил), и только потом — остановка.
+        val snoozeAction = result.actions.filterIsInstance<RingAction.ScheduleSnooze>().firstOrNull()
+        var snoozeScheduled = true
+        if (snoozeAction != null) {
+            // Ловим ЛЮБОЙ отказ планирования (не только SecurityException), чтобы исключение
+            // не вышло в сервис и не оборвало звонок.
+            snoozeScheduled = runCatching {
+                AlarmScheduler.scheduleSnoozeAt(context, alarmId, snoozeAction.atMillis, label)
+            }.getOrDefault(false)
+            if (!snoozeScheduled) {
+                writeJournal(
+                    context,
+                    AlarmEventType.ERROR,
+                    "id=$alarmId: снуз не поставлен — сигнал продолжает звонить",
+                    now,
+                )
+            }
+        }
+
+        // 2. Решение по сигналу: не глушим, пока снуз не поставлен; сессию в SNOOZING не фиксируем.
+        if (!shouldStopRingingAfterSnooze(
+                hadSnoozeAttempt = snoozeAction != null,
+                snoozeScheduled = snoozeScheduled,
+            )
+        ) {
+            return false
+        }
+
         result.actions.forEach { action ->
             when (action) {
-                is RingAction.ScheduleSnooze ->
-                    scheduled = AlarmScheduler.scheduleSnoozeAt(context, alarmId, action.atMillis, label)
+                is RingAction.ScheduleSnooze -> Unit // уже обработан выше
 
                 RingAction.MarkMissed -> postMissedNotification(context, alarmId, label)
 
@@ -88,7 +128,7 @@ object RingSessionController {
         if (result.state.phase != RingPhase.CLOSED) {
             store.put(result.state)
         }
-        return scheduled
+        return true
     }
 
     private fun journal(context: Context, entry: RingJournalEntry, alarmId: Long, nowMillis: Long) {
@@ -120,7 +160,19 @@ object RingSessionController {
             }
         }
 
-        // Журнал (CE) может быть недоступен до разблокировки (авто-снуз залоченным) — тогда в DPS-буфер.
+        writeJournal(context, type, detail, nowMillis)
+    }
+
+    /**
+     * Запись в диагностический журнал с fallback в device-protected буфер: CE-журнал недоступен
+     * до разблокировки (авто-снуз залоченным), а сам звонок важнее записи — ошибки глушим.
+     */
+    private fun writeJournal(
+        context: Context,
+        type: AlarmEventType,
+        detail: String,
+        nowMillis: Long,
+    ) {
         try {
             AlarmEventLog(context).record(type, detail, nowMillis)
         } catch (_: Exception) {

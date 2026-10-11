@@ -46,9 +46,14 @@
 
         <!-- Обработчик «поставить будильник» (Ассистент/сторонние приложения). Без своего UI —
              создаёт будильник и закрывается, поэтому прозрачная тема. -->
+        <!-- Обработчик SET_ALARM. AUD-5: требует com.android.alarm.permission.SET_ALARM —
+             защита от скрытой установки будильников сторонними приложениями; Ассистент и часы
+             держат его штатно (AlarmClock: activity-обработчик "requires the permission,
+             com.android.alarm.permission.SET_ALARM"). -->
         <activity
             android:name=".SetAlarmActivity"
             android:exported="true"
+            android:permission="com.android.alarm.permission.SET_ALARM"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
@@ -75,6 +80,12 @@
             android:name=".alarm.AlarmReceiver"
             android:exported="false"
             android:directBootAware="true" />
+
+        <!-- Тихая плашка «час до звонка» (NF1): не directBootAware — до разблокировки Room
+             недоступен, действие «выключить» невозможно; просроченная доставка гасится по грейсу. -->
+        <receiver
+            android:name=".alarm.PreRingReceiver"
+            android:exported="false" />
 
         <!-- Проигрывает сигнал независимо от UI. directBootAware: играет и до разблокировки. -->
         <service

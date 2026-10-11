@@ -1,10 +1,13 @@
 package ru.titeha.shiftalarm.alarm
 
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import ru.titeha.shiftalarm.AlarmActivity
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmEventLog
@@ -37,8 +40,29 @@ object AlarmScheduler {
 
   private const val TAG = "AlarmScheduler"
 
-  /** Горизонт device-protected кэша ближайших звонков (дни). */
-  private const val DIRECT_BOOT_HORIZON_DAYS = 7L
+  /**
+   * AUD-10 (R-02): сериализует полное CE-перепланирование в процессе — app-start, boot и UI
+   * не гоняют между собой (Application.onCreate и BootReceiver поднимают конкурирующие корутины).
+   */
+  private val RESCHEDULE_MUTEX = Mutex()
+
+  /**
+   * AUD-14 (R-06): замок пересборки DE-плана (чтение CE → построение → запись). Отдельный от
+   * [RESCHEDULE_MUTEX], чтобы вложенный вызов из rescheduleAll не дал самоблокировку.
+   */
+  private val PLAN_MUTEX = Mutex()
+
+  /**
+   * AUD-2: глубина device-protected плана срабатываний (дни). Открытый вопрос плана (3 против 7):
+   * принято предложенное значение 3 — меняется одной константой.
+   */
+  private const val DE_PLAN_DAYS = 3L
+
+  /** AUD-2: максимум записей плана на один будильник. */
+  private const val MAX_PLAN_PER_ALARM = 4
+
+  /** AUD-2: максимум записей плана суммарно — защита device-protected prefs от разрастания. */
+  private const val MAX_PLAN_TOTAL = 32
 
   /** Насколько должно просрочиться срабатывание из кэша, чтобы счесть его пропущенным (мс). */
   private const val MISS_GRACE_MS = 90_000L
@@ -61,6 +85,8 @@ object AlarmScheduler {
    * Запланировать, подгрузив периоды отпуска и правки календаря из репозитория.
    */
   suspend fun reschedule(context: Context, repo: AlarmRepository, alarm: AlarmEntity) {
+    // AUD-2/B-04: собрать пропуски из старого кэша ДО перезаписи в refreshDirectBootCache ниже.
+    collectMissed(context)
     reschedule(
       context = context,
       alarm = alarm,
@@ -108,6 +134,9 @@ object AlarmScheduler {
       )
 
       if (scheduled) {
+        // B-01: пред-сигнал ставим ТОЛЬКО при успешно поставленном основном звонке и с собственной
+        // обработкой отказа (см. schedulePreRing) — вторичный сигнал не должен ломать перепланирование.
+        schedulePreRing(context, alarm.id, AlarmInstant.epochMilli(next))
         AlarmEventLog(context).recordIfFresh(
           type = AlarmEventType.SCHEDULED,
           detail = "id=${alarm.id} → %02d.%02d %02d:%02d".format(
@@ -169,11 +198,49 @@ object AlarmScheduler {
    * Ошибка одной записи не прекращает обработку остальных. Каждая ошибка
    * попадает в диагностический журнал, а вызывающий код получает сводный отчёт.
    */
+  /**
+   * AUD-10 (R-02)/AUD-16 (D2): ЕДИНАЯ граница полного CE-перепланирования. Сначала применяет отметки
+   * сработавших в локе разовых будильников ([reconcileFiredOneShots]), затем читает АКТУАЛЬНЫЙ
+   * список `repo.enabled()` (уже после reconcile — список не передаётся снаружи) и только потом
+   * планирует. Всё под общим [RESCHEDULE_MUTEX], чтобы конкурирующие пути (Application.onCreate и
+   * BootReceiver) не гоняли. Так разовый будильник, прозвонивший до разблокировки, не уезжает на
+   * завтра (N-1/R-02).
+   */
   suspend fun rescheduleAll(
+    context: Context,
+    repo: AlarmRepository
+  ): AlarmRescheduleReport = RESCHEDULE_MUTEX.withLock {
+    reconcileFiredOneShots(context, repo)
+    rescheduleAllLocked(context, repo, repo.enabled())
+  }
+
+  /**
+   * AUD-10 (R-02): применить отметки разовых будильников, сработавших в locked-пути
+   * (`deleteAfterFiring` → удалить, иначе → выключить; затем снять отметку). Решение — в чистой
+   * [firedOneShotAction]. Идемпотентно; вызывается до любого CE-перепланирования.
+   */
+  suspend fun reconcileFiredOneShots(context: Context, repo: AlarmRepository) {
+    val store = DirectBootAlarmStore(context)
+    store.readFiredOneShots().forEach { alarmId ->
+      when (val action = firedOneShotAction(repo.byId(alarmId))) {
+        is FiredOneShotAction.Delete -> repo.delete(action.alarm)
+        is FiredOneShotAction.Disable -> repo.update(action.alarm.copy(enabled = false))
+        FiredOneShotAction.ClearMarkOnly -> Unit
+      }
+      store.clearFiredOneShot(alarmId)
+    }
+  }
+
+  private suspend fun rescheduleAllLocked(
     context: Context,
     repo: AlarmRepository,
     alarms: List<AlarmEntity>
   ): AlarmRescheduleReport {
+    // TL02: честный детект пропусков — ДО любой перезаписи DE-кэша ниже по методу.
+    // Инцидент 2026-10-10: без этого перезапись в цикле скрывала просроченные записи
+    // (locked-звонок не доставлен при выключенном автозапуске MIUI — пользователь
+    // не видел ни звонка, ни карточки пропуска).
+    collectMissed(context)
     // Все периоды и правки грузим ДВУМЯ запросами и группируем по alarmId, а не по запросу на каждый
     // будильник (N+1). Путь массовый (boot/системное событие) — так меньше обращений к БД.
     val periodsByAlarm = repo.allPeriodsList().groupBy { it.alarmId }
@@ -233,6 +300,50 @@ object AlarmScheduler {
   }
 
   /**
+   * Собрать пропущенные звонки из старого DE-кэша (TL02). Вызывается в начале rescheduleAll —
+   * до перезаписей кэша циклом перепланирования. Безопасно вызывать повторно: после первой
+   * перезаписи просроченных записей в кэше нет.
+   */
+  fun collectMissed(context: Context) {
+    val store = DirectBootAlarmStore(context)
+    val stale = staleMissed(store.read(), System.currentTimeMillis(), MISS_GRACE_MS)
+    if (stale.isEmpty()) return
+    // Идемпотентность: повторный вызов до перезаписи кэша не должен дублировать карточки пропусков.
+    val known = store.readMissed().map { it.alarmId to it.triggerAtMillis }.toSet()
+    store.addMissed(stale.filter { (it.alarmId to it.triggerAtMillis) !in known })
+  }
+
+  /**
+   * AUD-2: поставить ближайшее будущее срабатывание будильника из device-protected плана — без
+   * обращения к Room (locked-путь). true — сигнал поставлен; false — будущих записей нет.
+   */
+  fun scheduleNextFromCache(context: Context, alarmId: Long, nowMillis: Long): Boolean {
+    val next = nextCached(DirectBootAlarmStore(context).read(), alarmId, nowMillis) ?: return false
+    return scheduleAt(context = context, alarmId = alarmId, triggerAtMillis = next.triggerAtMillis)
+  }
+
+  /**
+   * B-02: актуальное ближайшее срабатывание будильника (мс) тем же движком, что и планирование.
+   * null — будильник выключен или срабатываний нет. Нужно приёмнику пред-сигнала, чтобы перед
+   * показом плашки сверить сохранённое время с фактическим расписанием.
+   */
+  suspend fun nextTriggerAtMillis(
+    context: Context,
+    repo: AlarmRepository,
+    alarm: AlarmEntity,
+  ): Long? {
+    if (!alarm.enabled) return null
+    val next = AlarmTimes.next(
+      alarm,
+      offPeriodsFor(repo, alarm),
+      overridesFor(repo, alarm),
+      LocalDateTime.now(),
+      SettingsStore(context).globalWorkWeek()
+    ) ?: return null
+    return AlarmInstant.epochMilli(next)
+  }
+
+  /**
    * Поставить системный сигнal на [triggerAtMillis]. Возвращает false, если ОС отказала из-за
    * отсутствия разрешения на точные будильники (`SecurityException`, API 31-32) — тогда планировщик
    * не роняем (готовность уже ведёт в настройки), а событие фиксирует вызывающий код (журналом,
@@ -278,6 +389,107 @@ object AlarmScheduler {
         triggerAtMillis = NO_TRIGGER_AT_MILLIS
       )
     )
+    cancelPreRing(context, alarmId)
+  }
+
+  /**
+   * Тихий точный сигнал за [PreRingPolicy.LEAD_MINUTES] минут до звонка (NF1): по нему
+   * `PreRingReceiver` покажет плашку «час до звонка» с действием «Выключить будильник».
+   * `setExactAndAllowWhileIdle`, а не `setAlarmClock` — чтобы не жечь системный значок
+   * будильника в статус-баре. Настройка выключена или до звонка меньше часа — сигнал снимается.
+   */
+  fun schedulePreRing(context: Context, alarmId: Long, ringAtMillis: Long) {
+    val manager = context.getSystemService(AlarmManager::class.java)
+    val enabled = SettingsStore(context).preRingEnabled()
+
+    // AUD-13 (R-05): если опубликована плашка для ДРУГОГО времени звонка — план изменился, снимаем её.
+    val publishedRingAt = activePreRingRingAt(context, alarmId)
+    if (publishedRingAt != null && publishedRingAt != ringAtMillis) {
+      cancelPreRingNotification(context, alarmId)
+    }
+
+    // R-01: два РАЗНЫХ времени. plan.preAtMillis — системный trigger (время доставки, звонок минус
+    // LEAD_MINUTES); plan.ringAtMillis — время ОСНОВНОГО звонка, его кладём в extra для приёмника
+    // (приёмник сверяет extra с пересчитанным расписанием).
+    val plan = if (enabled) {
+      PreRingPolicy.plan(ringAtMillis, System.currentTimeMillis())
+    } else {
+      null
+    }
+    if (plan == null) {
+      manager.cancel(preRingPendingIntent(context, alarmId, NO_TRIGGER_AT_MILLIS))
+      // Тумблер выключен — опубликованная плашка тоже не нужна. (<1 ч до звонка плашку НЕ трогаем:
+      // она про этот же звонок и могла быть штатно показана.)
+      if (!enabled) cancelPreRingNotification(context, alarmId)
+      return
+    }
+    try {
+      manager.setExactAndAllowWhileIdle(
+        AlarmManager.RTC_WAKEUP,
+        plan.preAtMillis,
+        preRingPendingIntent(context, alarmId, plan.ringAtMillis)
+      )
+    } catch (error: SecurityException) {
+      // B-01: отказ вторичного сигнала не должен ломать основной звонок и перепланирование.
+      // Снимаем только pre-ring PendingIntent, основной сигнал не трогаем.
+      Log.w(
+        TAG,
+        "PreRing id=$alarmId: нет разрешения на точные будильники — плашка не поставлена",
+        error
+      )
+      runCatching {
+        AlarmEventLog(context).record(
+          AlarmEventType.ERROR,
+          "id=$alarmId: пред-сигнал «час до звонка» не поставлен (нет разрешения на точные будильники)",
+          System.currentTimeMillis()
+        )
+      }
+      manager.cancel(preRingPendingIntent(context, alarmId, NO_TRIGGER_AT_MILLIS))
+    }
+  }
+
+  fun cancelPreRing(context: Context, alarmId: Long) {
+    context.getSystemService(AlarmManager::class.java)
+      .cancel(preRingPendingIntent(context, alarmId, NO_TRIGGER_AT_MILLIS))
+    // AUD-13 (R-05): снимаем и уже опубликованную плашку (id плашки не пересекается с id звонка).
+    cancelPreRingNotification(context, alarmId)
+  }
+
+  /** AUD-13 (R-05): снять опубликованное уведомление-плашку (уведомление звонка НЕ трогаем). */
+  private fun cancelPreRingNotification(context: Context, alarmId: Long) {
+    runCatching {
+      context.getSystemService(NotificationManager::class.java)
+        ?.cancel(PreRingPolicy.notificationId(alarmId))
+    }
+  }
+
+  /** AUD-13 (R-05): время звонка активной плашки (по `Notification.when`), либо null. */
+  private fun activePreRingRingAt(context: Context, alarmId: Long): Long? = runCatching {
+    val manager = context.getSystemService(NotificationManager::class.java) ?: return@runCatching null
+    val id = PreRingPolicy.notificationId(alarmId)
+    manager.activeNotifications.firstOrNull { it.id == id }?.notification?.`when`
+  }.getOrNull()
+
+  /**
+   * R-01: PendingIntent пред-сигнала. [ringAtMillis] — время ОСНОВНОГО звонка, его и кладём в
+   * `EXTRA_TRIGGER_AT_MILLIS` (НЕ время доставки): приёмник сверяет его с пересчитанным расписанием.
+   * Системный trigger доставки задаётся отдельно в [schedulePreRing] (`plan.preAtMillis`).
+   */
+  private fun preRingPendingIntent(
+    context: Context,
+    alarmId: Long,
+    ringAtMillis: Long
+  ): PendingIntent {
+    val intent = Intent(context, PreRingReceiver::class.java)
+      .setAction(PreRingReceiver.ACTION_PRE_RING)
+      .putExtra(PreRingReceiver.EXTRA_ALARM_ID, alarmId)
+      .putExtra(PreRingReceiver.EXTRA_TRIGGER_AT_MILLIS, ringAtMillis)
+    return PendingIntent.getBroadcast(
+      context,
+      AlarmRequestCodes.preRing(alarmId),
+      intent,
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
   }
 
   /**
@@ -312,43 +524,62 @@ object AlarmScheduler {
    * Пересобрать device-protected кэш ближайших звонков — чтобы после ночного ребута залоченным
    * `directBootAware`-ресивер мог перевыставить будильники, не обращаясь к Room.
    *
-   * Берёт включённые будильники, считает ближайшее срабатывание каждого (тем же движком, что и
-   * планирование) и кладёт в кэш те, что в пределах горизонта [DIRECT_BOOT_HORIZON_DAYS] дней.
+   * Пересобрать device-protected кэш — план ближайших срабатываний, чтобы после ночного ребута
+   * залоченным `directBootAware`-ресивер мог перевыставить будильники, не обращаясь к Room.
+   *
+   * Берёт включённые будильники, считает ближайшие срабатывания каждого (тем же движком, что и
+   * планирование) и кладёт в кэш до [MAX_PLAN_PER_ALARM] записей на будильник в пределах горизонта
+   * [DE_PLAN_DAYS] дней (суммарно — не более [MAX_PLAN_TOTAL]).
    */
   suspend fun refreshDirectBootCache(context: Context, repo: AlarmRepository) {
-    val store = DirectBootAlarmStore(context)
+    // AUD-14 (R-06): вся пересборка (чтение CE → построение → запись) под одним замком, чтобы
+    // конкурентные rescheduleAll/reschedule не записали устаревший снимок последним.
+    PLAN_MUTEX.withLock {
+      // AUD-2/B-04: единственная точка перезаписи кэша — пропуски собираем ДО неё (идемпотентно).
+      collectMissed(context)
 
-    /*
-     * Детект пропуска: если в СТАРОМ кэше остался будильник, чьё время прошло больше, чем на
-     * MISS_GRACE, значит приложение не отработало срабатывание (обычно система выгрузила его —
-     * при штатном звонке AlarmReceiver перепланировал бы и обновил кэш). Копим для показа.
-     */
-    val nowMillis = System.currentTimeMillis()
-    val stale = store.read().filter { it.triggerAtMillis < nowMillis - MISS_GRACE_MS }
-    store.addMissed(stale)
+      val store = DirectBootAlarmStore(context)
 
-    val now = LocalDateTime.now()
-    val horizonMillis = AlarmInstant.epochMilli(now.plusDays(DIRECT_BOOT_HORIZON_DAYS))
-    // Глобальная рабочая неделя — одна на весь кэш (настройка глобальная, Q1=1а); DE-хранилище
-    // читается и до разблокировки (Q2=2а).
-    val globalWeek = SettingsStore(context).globalWorkWeek()
+      val now = LocalDateTime.now()
+      val horizonMillis = AlarmInstant.epochMilli(now.plusDays(DE_PLAN_DAYS))
+      // Глобальная рабочая неделя — одна на весь кэш (настройка глобальная, Q1=1а); DE-хранилище
+      // читается и до разблокировки (Q2=2а).
+      val globalWeek = SettingsStore(context).globalWorkWeek()
 
-    val entries = repo.enabled().mapNotNull { alarm ->
-      val next = AlarmTimes.next(
-        alarm,
-        offPeriodsFor(repo, alarm),
-        overridesFor(repo, alarm),
-        now,
-        globalWeek
-      ) ?: return@mapNotNull null
+      // AUD-2: план ближайших срабатываний — до MAX_PLAN_PER_ALARM записей на будильник, чтобы
+      // залоченный телефон мог прозвонить несколько раз до разблокировки (N-2). Разовый будильник
+      // получает ровно одну запись с флагом oneShot (без «завтра то же время» — N-1).
+      val plan = repo.enabled().map { alarm ->
+        val oneShot = AlarmTimes.isOneShot(alarm)
+        val periods = offPeriodsFor(repo, alarm)
+        val overrides = overridesFor(repo, alarm)
+        val nextMillis = buildList {
+          var cursor = now
+          while (size < MAX_PLAN_PER_ALARM) {
+            val next = AlarmTimes.next(alarm, periods, overrides, cursor, globalWeek) ?: break
+            val millis = AlarmInstant.epochMilli(next)
+            if (millis > horizonMillis) break
+            add(millis)
+            if (oneShot) break
+            cursor = next
+          }
+        }
+        planEntries(alarmId = alarm.id, label = alarm.label, nextMillis = nextMillis, oneShot = oneShot)
+      }
 
-      val millis = AlarmInstant.epochMilli(next)
-      if (millis > horizonMillis) return@mapNotNull null
-
-      CachedAlarm(alarmId = alarm.id, triggerAtMillis = millis, label = alarm.label)
+      // AUD-13 (R-04): сначала гарантируем ближайшую запись каждому будильнику, затем добираем extras.
+      val saved = store.write(selectPlanEntries(plan, MAX_PLAN_PER_ALARM, MAX_PLAN_TOTAL))
+      if (!saved) {
+        // AUD-14 (R-06): не делаем вид, что recovery-план сохранён.
+        runCatching {
+          AlarmEventLog(context).record(
+            AlarmEventType.ERROR,
+            "device-protected план срабатываний не сохранён (commit=false)",
+            System.currentTimeMillis(),
+          )
+        }
+      }
     }
-
-    store.write(entries)
   }
 
   /**
@@ -358,27 +589,27 @@ object AlarmScheduler {
    */
   fun reArmFromCache(context: Context) {
     val now = System.currentTimeMillis()
+    val store = DirectBootAlarmStore(context)
 
-    DirectBootAlarmStore(context).read().forEach { entry ->
-      /*
-       * Просроченный сверх грейса (ребут занял слишком долго) — не перевыставляем: звонить глубокой
-       * ночью за давно прошедший звонок не нужно (пропуск зафиксируется отдельно). Просроченный в
-       * пределах грейса — ставим на «сейчас», чтобы прозвенел сразу после загрузки.
-       */
-      if (entry.triggerAtMillis < now - LOCKED_BOOT_OVERDUE_GRACE_MS) {
-        return@forEach
+    // AUD-2: на будильник в плане несколько записей, а PendingIntent у него один — выставляем
+    // ближайшую допустимую запись каждого будильника (просроченные сверх грейса пропускаем).
+    store.read()
+      .groupBy { it.alarmId }
+      .forEach { (alarmId, entries) ->
+        val candidate = entries
+          .filter { it.triggerAtMillis >= now - LOCKED_BOOT_OVERDUE_GRACE_MS }
+          .minByOrNull { it.triggerAtMillis }
+          ?: return@forEach
+        scheduleAt(
+          context = context,
+          alarmId = alarmId,
+          triggerAtMillis = maxOf(candidate.triggerAtMillis, now)
+        )
       }
-
-      scheduleAt(
-        context = context,
-        alarmId = entry.alarmId,
-        triggerAtMillis = maxOf(entry.triggerAtMillis, now)
-      )
-    }
 
     // Отложенные (снуз) звонки — тем же правилом грейса, но снуз-неймспейсом, чтобы ребут внутри
     // снуз-окна не потерял звонок и сессия продолжилась (счётчик снуза лежит в RingSessionStore).
-    DirectBootAlarmStore(context).readSnoozes().forEach { snooze ->
+    store.readSnoozes().forEach { snooze ->
       if (snooze.triggerAtMillis < now - LOCKED_BOOT_OVERDUE_GRACE_MS) {
         return@forEach
       }

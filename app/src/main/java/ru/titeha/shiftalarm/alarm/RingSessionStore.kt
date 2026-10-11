@@ -1,6 +1,8 @@
 package ru.titeha.shiftalarm.alarm
 
 import android.content.Context
+import android.util.Log
+import androidx.core.content.edit
 
 /**
  * Кодек состояний сессий звонка (список ↔ строка). Чистый и версионированный — round-trip и
@@ -55,35 +57,65 @@ object RingSessionCodec {
  * состояние (в т.ч. счётчик снуза) переживает перезагрузку внутри снуз-окна и доступно до разблокировки.
  * Сессия привязана к паре (alarmId, плановое время исходного срабатывания).
  */
+/**
+ * AUD-3 (F-02): вставить/обновить сессию будильника (одна активная сессия на будильник).
+ * Чистая функция — RMW вынесен из Android-обёртки, чтобы покрыть его тестами.
+ */
+internal fun withSession(
+    sessions: List<RingSessionState>,
+    session: RingSessionState,
+): List<RingSessionState> = sessions.filterNot { it.alarmId == session.alarmId } + session
+
+/** AUD-3: убрать сессию будильника. */
+internal fun withoutSession(
+    sessions: List<RingSessionState>,
+    alarmId: Long,
+): List<RingSessionState> = sessions.filterNot { it.alarmId == alarmId }
+
 class RingSessionStore(context: Context) {
     private val prefs = context.applicationContext
         .createDeviceProtectedStorageContext()
         .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun all(): List<RingSessionState> =
+    fun all(): List<RingSessionState> = synchronized(LOCK) { allLocked() }
+
+    /** Активная сессия будильника, либо null. Ключ — alarmId: одна активная сессия на будильник. */
+    fun find(alarmId: Long): RingSessionState? = synchronized(LOCK) {
+        allLocked().firstOrNull { it.alarmId == alarmId }
+    }
+
+    /** Вставить/обновить сессию (по alarmId). AUD-3: RMW под общим замком, `commit()`. */
+    fun put(session: RingSessionState) = synchronized(LOCK) {
+        writeLocked(withSession(allLocked(), session))
+    }
+
+    /** Удалить сессию будильника. AUD-3: RMW под общим замком, `commit()`. */
+    fun remove(alarmId: Long) = synchronized(LOCK) {
+        writeLocked(withoutSession(allLocked(), alarmId))
+    }
+
+    // --- вызывать ТОЛЬКО под замком [LOCK] ---
+
+    private fun allLocked(): List<RingSessionState> =
         prefs.getString(KEY, null)
             ?.let { RingSessionCodec.decodeOrNull(it) }
             ?: emptyList()
 
-    /** Активная сессия будильника, либо null. Ключ — alarmId: одна активная сессия на будильник. */
-    fun find(alarmId: Long): RingSessionState? =
-        all().firstOrNull { it.alarmId == alarmId }
-
-    /** Вставить/обновить сессию (по alarmId). */
-    fun put(session: RingSessionState) {
-        write(all().filterNot { it.alarmId == session.alarmId } + session)
-    }
-
-    /** Удалить сессию будильника. */
-    fun remove(alarmId: Long) {
-        write(all().filterNot { it.alarmId == alarmId })
-    }
-
-    private fun write(sessions: List<RingSessionState>) {
-        prefs.edit().putString(KEY, RingSessionCodec.encode(sessions)).apply()
+    @Suppress("UseKtx")
+    private fun writeLocked(sessions: List<RingSessionState>): Boolean {
+        // AUD-14 (R-06): явный commit() — результат проверяем (KTX edit(commit = true) возвращает Unit).
+        val ok = prefs.edit().putString(KEY, RingSessionCodec.encode(sessions)).commit()
+        if (!ok) Log.w(TAG, "RingSessionStore: сессии звонка не записаны (commit=false)")
+        return ok
     }
 
     private companion object {
+        /**
+         * AUD-3 (F-02): общий замок на ВСЕ экземпляры [RingSessionStore]. Экземпляров много
+         * (receiver/service/UI), без общего замка `all() → write` теряет параллельные обновления.
+         */
+        private val LOCK = Any()
+        const val TAG = "RingSessionStore"
         const val PREFS = "ring_sessions"
         const val KEY = "sessions_v1"
     }

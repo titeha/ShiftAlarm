@@ -27,4 +27,13 @@ object AlarmRequestCodes {
      * диапазон: он гарантированно дизъюнктен с fire/show, а разные id дают разные коды.
      */
     fun snooze(id: Long): Int = -(id * 2 + 2).toInt()
+
+    /** requestCode тихого пред-сигнала «час до звонка» (NF1): свой отрицательный слот. */
+    fun preRing(id: Long): Int = -(id * 2 + 3).toInt()
+
+    /** requestCode открытия списка из плашки пред-звонка. */
+    fun preRingOpen(id: Long): Int = -(id * 2 + 4).toInt()
+
+    /** requestCode действия «Выключить будильник» из плашки пред-звонка. */
+    fun preRingDisable(id: Long): Int = -(id * 2 + 5).toInt()
 }
