@@ -10,18 +10,27 @@ AlarmManager не хранит будильники между перезагр�
 
 ## Что сделано (слой A — перевыставление)
 
-1. **Device-protected кэш ближайших звонков.** При каждом планировании
+1. **Device-protected план ближайших срабатываний.** При каждом планировании
    (`AlarmScheduler.refreshDirectBootCache`) в device-protected хранилище
-   (`createDeviceProtectedStorageContext`, доступно до разблокировки) пишется срез включённых
-   будильников на 7 дней: `{alarmId, triggerAtMillis, label}` (`DirectBootAlarmStore` +
-   версионированный кодек `DirectBootAlarmCacheCodec`, покрытый unit-тестом).
+   (`createDeviceProtectedStorageContext`, доступно до разблокировки) пишется план включённых
+   будильников: до 4 записей на будильник в пределах 3 дней, суммарно не более 32
+   (`{alarmId, triggerAtMillis, label, oneShot}`; `DirectBootAlarmStore` + версионированный кодек
+   `DirectBootAlarmCacheCodec` v2 с чтением старого v1, покрыт unit-тестами).
 2. **`directBootAware`-ресивер.** `BootReceiver` объявлен `android:directBootAware="true"` и
    слушает `LOCKED_BOOT_COMPLETED`. На это событие — **слепое** перевыставление
-   (`AlarmScheduler.reArmFromCache`): для каждой записи кэша `setAlarmClock`, без единого
-   обращения к Room. PendingIntent собирается только из данных кэша (id + время).
+   (`AlarmScheduler.reArmFromCache`): для каждого будильника берётся его **ближайшая** запись плана и
+   ставится `setAlarmClock`, без единого обращения к Room. PendingIntent собирается только из данных
+   кэша (id + время).
 3. **Полный пересчёт при разблокировке.** По `USER_UNLOCKED` (и обычным событиям
-   `BOOT_COMPLETED`/`TIME_SET`/…) — полный пересчёт из Room + обновление кэша.
+   `BOOT_COMPLETED`/`TIME_SET`/…) — полный пересчёт из Room + обновление кэша; также применяются
+   отметки сработавших разовых будильников (см. п. 5).
 4. Сериализация кэша покрыта `DirectBootAlarmCacheCodecTest`.
+5. **Следующее срабатывание после locked-звонка.** `AlarmReceiver.handleAlarmLocked` убирает
+   сработавшую запись плана; для повторяющегося будильника сразу ставит следующее срабатывание из
+   кэша (`AlarmScheduler.scheduleNextFromCache`) — поэтому при залоченном телефоне звонки продолжаются
+   несколько дней. Разовый будильник помечается «сработал» (`markOneShotFired`), следующее для него НЕ
+   ставится; отметка применяется при `USER_UNLOCKED` (выключение или удаление по `deleteAfterFiring`).
+   Это закрывает N-1 («разовый звонит второй раз наутро») и N-2 (повторяющийся при локе > суток).
 
 Итог слоя A: после ночного ребута залоченным будильники **перевыставляются рано** и не
 теряются как таймеры.
@@ -32,7 +41,8 @@ AlarmManager не хранит будильники между перезагр�
 
 - `AlarmReceiver`/`AlarmService`/`AlarmActivity` — `android:directBootAware="true"`;
 - `AlarmReceiver`: при `!UserManager.isUserUnlocked()` звонит по метке из RingCache
-  (`handleAlarmLocked`), не трогая Room/журнал; перепланирование отложено до `USER_UNLOCKED`.
+  (`handleAlarmLocked`), не трогая Room/журнал; полное перепланирование/удаление отложено до
+  `USER_UNLOCKED`, а следующее срабатывание повторяющегося ставится сразу из кэша (слой A, п. 5).
   Просроченный за время ребута сверх грейса (30 мин) не звонит;
 - `reArmFromCache` тоже с грейсом (просроченный в пределах грейса ставится на «сейчас»);
 - запись в журнал в сервисе под try/catch (CE недоступен залоченным); текст экрана — из extras/кэша;

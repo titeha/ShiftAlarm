@@ -5,7 +5,12 @@
   Бэкапим личные данные пользователя (будильники, смены, периоды, правки календаря — БД Room),
   чтобы они переносились на новое устройство. Исключаем device-специфичное и легко восстановимое:
     - alarm_event_log — диагностический журнал этого устройства;
-    - holiday_calendar_cache — кэш производственного календаря (подтягивается заново с источника).
+    - holiday_calendar_cache — кэш производственного календаря (подтягивается заново с источника);
+    - direct_boot_alarms (DE) — машинно-зависимый кэш срабатываний/снузов/пропусков; пересобирается из Room;
+    - ring_sessions (DE) — состояние активных сессий звонка этого устройства.
+
+  DE-хранилище — отдельный домен `device_sharedpref` (не `sharedpref`). Настройки пользователя
+  в DE (alarm_settings_de.xml, в т.ч. рабочая неделя) НЕ исключаем — они должны переноситься.
 
   Разрешения (точные будильники, уведомления, полноэкранные, энергосбережение) НЕ переносятся
   системой — после восстановления пользователь увидит баннер готовности и настроит их заново.
@@ -15,9 +20,13 @@
     <cloud-backup>
         <exclude domain="sharedpref" path="alarm_event_log.xml" />
         <exclude domain="sharedpref" path="holiday_calendar_cache.xml" />
+        <exclude domain="device_sharedpref" path="direct_boot_alarms.xml" />
+        <exclude domain="device_sharedpref" path="ring_sessions.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="alarm_event_log.xml" />
         <exclude domain="sharedpref" path="holiday_calendar_cache.xml" />
+        <exclude domain="device_sharedpref" path="direct_boot_alarms.xml" />
+        <exclude domain="device_sharedpref" path="ring_sessions.xml" />
     </device-transfer>
 </data-extraction-rules>
