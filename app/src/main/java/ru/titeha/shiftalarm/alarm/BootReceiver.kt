@@ -68,10 +68,9 @@ class BootReceiver : BroadcastReceiver() {
         HolidayCalendarRepository(appContext).install()
 
         val repo = AlarmRepository(appContext)
-        // AUD-2: разовые будильники, прозвонившие до разблокировки (Room была недоступна), применяем
-        // ДО чтения списка — иначе rescheduleAll поставил бы разовому «завтра то же время» (N-1).
-        applyFiredOneShots(appContext, repo)
-        val alarms = repo.enabled()
+        // AUD-10 (R-02): reconcile отметок разовых и актуальное чтение enabled теперь ВНУТРИ
+        // AlarmScheduler.rescheduleAll (единая граница под общим Mutex). Аргумент alarms
+        // игнорируется — см. KDoc rescheduleAll.
         val eventLog = AlarmEventLog(appContext)
 
         // Перелить события, накопленные до разблокировки (Direct Boot), в основной журнал с пометкой.
@@ -80,7 +79,7 @@ class BootReceiver : BroadcastReceiver() {
         val report = AlarmScheduler.rescheduleAll(
           context = appContext,
           repo = repo,
-          alarms = alarms
+          alarms = emptyList(), // игнорируется: rescheduleAll сам читает enabled после reconcile (AUD-10)
         )
 
         val failedIds = report.failedIds()
@@ -136,23 +135,6 @@ class BootReceiver : BroadcastReceiver() {
       } finally {
         pending.finish()
       }
-    }
-  }
-
-  /**
-   * AUD-2: применить отметки разовых будильников, прозвонивших в locked-режиме: выключить или
-   * удалить по [AlarmEntity.deleteAfterFiring] и снять отметку. Вызывается ДО `rescheduleAll`.
-   */
-  private suspend fun applyFiredOneShots(context: Context, repo: AlarmRepository) {
-    val store = DirectBootAlarmStore(context)
-    store.readFiredOneShots().forEach { alarmId ->
-      val alarm = repo.byId(alarmId)
-      when {
-        alarm == null -> Unit // будильник уже удалён — просто снимаем отметку
-        alarm.deleteAfterFiring -> repo.delete(alarm)
-        else -> repo.update(alarm.copy(enabled = false))
-      }
-      store.clearFiredOneShot(alarmId)
     }
   }
 

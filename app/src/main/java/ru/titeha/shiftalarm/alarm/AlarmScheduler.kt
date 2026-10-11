@@ -5,6 +5,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import ru.titeha.shiftalarm.AlarmActivity
 import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmEventLog
@@ -36,6 +38,12 @@ object AlarmScheduler {
   const val NO_TRIGGER_AT_MILLIS = AlarmFireValidator.MISSING_TRIGGER_AT_MILLIS
 
   private const val TAG = "AlarmScheduler"
+
+  /**
+   * AUD-10 (R-02): сериализует полное CE-перепланирование в процессе — app-start, boot и UI
+   * не гоняют между собой (Application.onCreate и BootReceiver поднимают конкурирующие корутины).
+   */
+  private val RESCHEDULE_MUTEX = Mutex()
 
   /**
    * AUD-2: глубина device-protected плана срабатываний (дни). Открытый вопрос плана (3 против 7):
@@ -183,7 +191,42 @@ object AlarmScheduler {
    * Ошибка одной записи не прекращает обработку остальных. Каждая ошибка
    * попадает в диагностический журнал, а вызывающий код получает сводный отчёт.
    */
+  /**
+   * AUD-10 (R-02): ЕДИНАЯ граница полного CE-перепланирования. Сначала применяет отметки
+   * сработавших в локе разовых будильников ([reconcileFiredOneShots]), затем читает АКТУАЛЬНЫЙ
+   * список `repo.enabled()` — аргумент [alarms] больше не источник истины (это снимок до reconcile) —
+   * и только потом планирует. Всё под общим [RESCHEDULE_MUTEX], чтобы конкурирующие пути
+   * (Application.onCreate и BootReceiver) не гоняли. Так разовый будильник, прозвонивший до
+   * разблокировки, не уезжает на завтра (N-1/R-02).
+   */
+  @Suppress("UNUSED_PARAMETER")
   suspend fun rescheduleAll(
+    context: Context,
+    repo: AlarmRepository,
+    alarms: List<AlarmEntity>
+  ): AlarmRescheduleReport = RESCHEDULE_MUTEX.withLock {
+    reconcileFiredOneShots(context, repo)
+    rescheduleAllLocked(context, repo, repo.enabled())
+  }
+
+  /**
+   * AUD-10 (R-02): применить отметки разовых будильников, сработавших в locked-пути
+   * (`deleteAfterFiring` → удалить, иначе → выключить; затем снять отметку). Решение — в чистой
+   * [firedOneShotAction]. Идемпотентно; вызывается до любого CE-перепланирования.
+   */
+  suspend fun reconcileFiredOneShots(context: Context, repo: AlarmRepository) {
+    val store = DirectBootAlarmStore(context)
+    store.readFiredOneShots().forEach { alarmId ->
+      when (val action = firedOneShotAction(repo.byId(alarmId))) {
+        is FiredOneShotAction.Delete -> repo.delete(action.alarm)
+        is FiredOneShotAction.Disable -> repo.update(action.alarm.copy(enabled = false))
+        FiredOneShotAction.ClearMarkOnly -> Unit
+      }
+      store.clearFiredOneShot(alarmId)
+    }
+  }
+
+  private suspend fun rescheduleAllLocked(
     context: Context,
     repo: AlarmRepository,
     alarms: List<AlarmEntity>
