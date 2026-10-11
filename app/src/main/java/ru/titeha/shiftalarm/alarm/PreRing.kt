@@ -9,6 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
+import android.service.notification.StatusBarNotification
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -88,6 +90,10 @@ object PreRingPolicy {
   fun notificationId(alarmId: Long): Int =
     NOTIFICATION_BASE + (alarmId % NOTIFICATION_RANGE).toInt()
 
+  /** AUD-17: id относится к диапазону уведомлений-плашек pre-ring (для сканирования активных). */
+  fun isPreRingNotificationId(id: Int): Boolean =
+    id in NOTIFICATION_BASE until (NOTIFICATION_BASE + NOTIFICATION_RANGE)
+
   /** AUD-13 (R-05): решение по действию «Выключить будильник» из плашки. */
   enum class DisableDecision { DisableAlarm, CancelNotificationOnly }
 
@@ -164,9 +170,10 @@ class PreRingReceiver : BroadcastReceiver() {
                 windowMs = PreRingPolicy.RELEVANCE_WINDOW_MS,
               )
             ) {
-              post(context, alarmId, alarm.label, alarm.hour, alarm.minute, expected)
+              // AUD-17: одна плашка на ВСЕ совпадающие по времени будильники.
+              post(context, preRingGroup(context, repo, alarm.id, alarm.label, expected))
             } else {
-              manager(context).cancel(PreRingPolicy.notificationId(alarmId))
+              cancelPreRingNotification(context, alarmId)
             }
           } catch (error: CancellationException) {
             throw error
@@ -180,29 +187,33 @@ class PreRingReceiver : BroadcastReceiver() {
 
       ACTION_DISABLE -> {
         val actionRingAt = intent.getLongExtra(EXTRA_TRIGGER_AT_MILLIS, -1L)
+        // AUD-17: действие выключает ВСЮ группу (решение владельца: действие над звонком).
+        val groupIds = intent.getLongArrayExtra(PRE_RING_GROUP_IDS)?.toList() ?: listOf(alarmId)
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
           try {
             val repo = AlarmRepository(context)
-            val alarm = repo.byId(alarmId)
-            val expected = if (alarm != null && alarm.enabled) {
-              AlarmScheduler.nextTriggerAtMillis(context, repo, alarm)
-            } else {
-              null
+            groupIds.forEach { id ->
+              val alarm = repo.byId(id)
+              val expected = if (alarm != null && alarm.enabled) {
+                AlarmScheduler.nextTriggerAtMillis(context, repo, alarm)
+              } else {
+                null
+              }
+              // AUD-13 (R-05): устаревшее действие (будильник уже изменён/выключен) НЕ выключает
+              // новый план — только снимаем старую плашку.
+              val decision = PreRingPolicy.disableDecision(
+                extraRingAtMillis = actionRingAt.takeIf { it > 0 },
+                expectedNextMillis = expected,
+                nowMillis = System.currentTimeMillis(),
+                windowMs = PreRingPolicy.RELEVANCE_WINDOW_MS,
+              )
+              if (decision == PreRingPolicy.DisableDecision.DisableAlarm && alarm != null) {
+                repo.update(alarm.copy(enabled = false))
+                AlarmScheduler.reschedule(context, repo, alarm.copy(enabled = false))
+              }
             }
-            // AUD-13 (R-05): устаревшее действие (будильник уже изменён/выключен) НЕ выключает
-            // новый план — только снимаем старую плашку.
-            val decision = PreRingPolicy.disableDecision(
-              extraRingAtMillis = actionRingAt.takeIf { it > 0 },
-              expectedNextMillis = expected,
-              nowMillis = System.currentTimeMillis(),
-              windowMs = PreRingPolicy.RELEVANCE_WINDOW_MS,
-            )
-            if (decision == PreRingPolicy.DisableDecision.DisableAlarm && alarm != null) {
-              repo.update(alarm.copy(enabled = false))
-              AlarmScheduler.reschedule(context, repo, alarm.copy(enabled = false))
-            }
-            manager(context).cancel(PreRingPolicy.notificationId(alarmId))
+            groupIds.forEach { cancelPreRingNotification(context, it) }
           } catch (error: CancellationException) {
             throw error
           } catch (error: Exception) {
@@ -215,14 +226,15 @@ class PreRingReceiver : BroadcastReceiver() {
     }
   }
 
-  private fun post(context: Context, alarmId: Long, label: String, hour: Int, minute: Int, ringAtMillis: Long) {
+  private fun post(context: Context, members: List<RingGroupMember>) {
+    val primary = members.minByOrNull { it.alarmId } ?: return
     if (!canPostNotifications(context)) {
       // B-06: на Android 13+ без POST_NOTIFICATIONS уведомление не показываем и не падаем.
-      Log.w(TAG, "PreRing id=$alarmId: нет разрешения POST_NOTIFICATIONS — плашку не показываем")
+      Log.w(TAG, "PreRing id=${primary.alarmId}: нет разрешения POST_NOTIFICATIONS — плашку не показываем")
       runCatching {
         AlarmEventLog(context).record(
           AlarmEventType.ERROR,
-          "id=$alarmId: плашка «час до звонка» не показана (нет разрешения на уведомления)",
+          "id=${primary.alarmId}: плашка «час до звонка» не показана (нет разрешения на уведомления)",
           System.currentTimeMillis(),
         )
       }
@@ -230,7 +242,6 @@ class PreRingReceiver : BroadcastReceiver() {
     }
 
     val manager = manager(context)
-    // B-06: канал DEFAULT + setSilent — тихая плашка без heads-up; важнось и «тихость» согласованы.
     manager.createNotificationChannel(
       NotificationChannel(CHANNEL_ID, "Предстоящий звонок", NotificationManager.IMPORTANCE_DEFAULT)
         .apply {
@@ -241,35 +252,43 @@ class PreRingReceiver : BroadcastReceiver() {
         }
     )
 
-    val timeText = TIME_FMT.format(java.time.LocalTime.of(hour, minute))
-    val title = if (label.isBlank()) timeText else "$timeText · $label"
+    val ringAtMillis = members.minByOrNull { it.scheduledTriggerAtMillis }?.scheduledTriggerAtMillis
+      ?: System.currentTimeMillis()
+    val timeText = TIME_FMT.format(
+      java.time.Instant.ofEpochMilli(ringAtMillis)
+        .atZone(java.time.ZoneId.systemDefault())
+        .toLocalTime()
+    )
+    val names = ringGroupSummary(members, AlarmService.DEFAULT_TEXT)
+    val groupIds = members.map { it.alarmId }
 
     val disable = PendingIntent.getBroadcast(
       context,
-      AlarmRequestCodes.preRingDisable(alarmId),
+      AlarmRequestCodes.preRingDisable(primary.alarmId),
       Intent(context, PreRingReceiver::class.java)
         .setAction(ACTION_DISABLE)
-        .putExtra(EXTRA_ALARM_ID, alarmId)
-        .putExtra(EXTRA_TRIGGER_AT_MILLIS, ringAtMillis),
+        .putExtra(EXTRA_ALARM_ID, primary.alarmId)
+        .putExtra(EXTRA_TRIGGER_AT_MILLIS, ringAtMillis)
+        .putExtra(PRE_RING_GROUP_IDS, groupIds.toLongArray()),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
     val open = PendingIntent.getActivity(
       context,
-      AlarmRequestCodes.preRingOpen(alarmId),
+      AlarmRequestCodes.preRingOpen(primary.alarmId),
       Intent(context, MainActivity::class.java),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
 
+    val notifExtras = Bundle().apply {
+      putString(PRE_RING_GROUP_IDS, groupIds.joinToString(","))
+    }
     manager.notify(
-      PreRingPolicy.notificationId(alarmId),
+      PreRingPolicy.notificationId(primary.alarmId),
       NotificationCompat.Builder(context, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-        .setContentTitle(title)
-        .setContentText("Зазвонит примерно через час. Можно выключить заранее.")
-        .setStyle(
-          NotificationCompat.BigTextStyle()
-            .bigText("Зазвонит примерно через час. Можно выключить заранее.")
-        )
+        .setContentTitle(timeText)
+        .setContentText(names)
+        .setStyle(NotificationCompat.BigTextStyle().bigText("$names. Зазвонит примерно через час."))
         .setContentIntent(open)
         .addAction(0, "Выключить будильник", disable)
         .setSilent(true)
@@ -278,8 +297,34 @@ class PreRingReceiver : BroadcastReceiver() {
         .setWhen(ringAtMillis)
         .setShowWhen(false)
         .setAutoCancel(true)
+        .addExtras(notifExtras)
         .build()
     )
+  }
+
+  /**
+   * AUD-17: все включённые будильники, у которых ближайшее срабатывание совпадает с [ringAtMillis]
+   * (в пределах `RELEVANCE_WINDOW_MS`), плюс входящий. Названия берём из Room (приёмник НЕ
+   * directBootAware, CE доступно).
+   */
+  private suspend fun preRingGroup(
+    context: Context,
+    repo: AlarmRepository,
+    incomingId: Long,
+    incomingLabel: String,
+    ringAtMillis: Long,
+  ): List<RingGroupMember> {
+    var members = listOf(RingGroupMember(incomingId, incomingLabel, ringAtMillis))
+    runCatching {
+      repo.enabled().forEach { other ->
+        if (other.id == incomingId) return@forEach
+        val next = AlarmScheduler.nextTriggerAtMillis(context, repo, other) ?: return@forEach
+        if (kotlin.math.abs(next - ringAtMillis) <= PreRingPolicy.RELEVANCE_WINDOW_MS) {
+          members = ringGroupWith(members, RingGroupMember(other.id, other.label, next))
+        }
+      }
+    }
+    return members.sortedForGroup()
   }
 
   /** B-06: на Android 13+ `POST_NOTIFICATIONS` — runtime-разрешение; без него плашку не показать. */
@@ -304,3 +349,38 @@ class PreRingReceiver : BroadcastReceiver() {
     private val TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
   }
 }
+
+/**
+ * AUD-17 (R-05): активные уведомления-плашки, относящиеся к будильнику [alarmId] — по id
+ * первичного участника или по списку id группы из `extras` (плашка сгруппированная).
+ */
+internal fun activePreRingNotifications(context: Context, alarmId: Long): List<StatusBarNotification> =
+  runCatching {
+    val manager = context.getSystemService(NotificationManager::class.java)
+      ?: return@runCatching emptyList()
+    val wantedId = PreRingPolicy.notificationId(alarmId)
+    manager.activeNotifications.filter { sbn ->
+      PreRingPolicy.isPreRingNotificationId(sbn.id) &&
+        (
+          sbn.id == wantedId ||
+            sbn.notification.extras.getString(PRE_RING_GROUP_IDS)
+              ?.split(',')
+              ?.any { it.trim() == alarmId.toString() } == true
+          )
+    }
+  }.getOrDefault(emptyList())
+
+/** AUD-17 (R-05): снять все плашки, относящиеся к будильнику (или его группе). */
+internal fun cancelPreRingNotification(context: Context, alarmId: Long) {
+  runCatching {
+    val manager = context.getSystemService(NotificationManager::class.java) ?: return@runCatching
+    activePreRingNotifications(context, alarmId).forEach { manager.cancel(it.tag, it.id) }
+  }
+}
+
+/** AUD-17 (R-05): время звонка активной плашки (или её группы) для будильника [alarmId], либо null. */
+internal fun activePreRingRingAt(context: Context, alarmId: Long): Long? =
+  activePreRingNotifications(context, alarmId).firstOrNull()?.notification?.`when`
+
+/** Ключ extras плашки: список id участников группы (csv) и LongArray в интенте действия. */
+internal const val PRE_RING_GROUP_IDS = "pre_ring_group_ids"

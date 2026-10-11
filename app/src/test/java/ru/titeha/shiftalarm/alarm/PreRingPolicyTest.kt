@@ -190,4 +190,12 @@ class PreRingPolicyTest {
     assertTrue(PreRingPolicy.shouldHandleAction(PreRingReceiver.ACTION_PRE_RING, preRingEnabled = true))
     assertTrue(PreRingPolicy.shouldHandleAction(PreRingReceiver.ACTION_DISABLE, preRingEnabled = true))
   }
+
+  @Test
+  fun `AUD-17 id плашки распознаётся по диапазону и не совпадает с id звонка`() {
+    assertTrue(PreRingPolicy.isPreRingNotificationId(PreRingPolicy.notificationId(1)))
+    assertTrue(PreRingPolicy.isPreRingNotificationId(PreRingPolicy.notificationId(999_999)))
+    assertFalse(PreRingPolicy.isPreRingNotificationId(AlarmService.NOTIFICATION_ID))
+    assertFalse(PreRingPolicy.isPreRingNotificationId(100))
+  }
 }
