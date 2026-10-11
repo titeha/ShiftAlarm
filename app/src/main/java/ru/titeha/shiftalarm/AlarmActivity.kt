@@ -28,12 +28,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.OutlinedButton
+import ru.titeha.shiftalarm.alarm.AlarmFireValidator
 import ru.titeha.shiftalarm.alarm.AlarmScheduler
 import ru.titeha.shiftalarm.alarm.AlarmService
 import ru.titeha.shiftalarm.alarm.AlarmSignalState
 import ru.titeha.shiftalarm.alarm.DismissMode
 import ru.titeha.shiftalarm.alarm.FeatureFlags
+import ru.titeha.shiftalarm.alarm.RingGroupMember
 import ru.titeha.shiftalarm.alarm.RingSessionController
+import ru.titeha.shiftalarm.alarm.ringGroupCanJoin
+import ru.titeha.shiftalarm.alarm.ringGroupDisplayNames
+import ru.titeha.shiftalarm.alarm.ringGroupWith
 import ru.titeha.shiftalarm.data.SettingsStore
 import ru.titeha.shiftalarm.ui.MathChallengeView
 import ru.titeha.shiftalarm.ui.ShakeChallengeView
@@ -49,12 +54,16 @@ import ru.titeha.shiftalarm.ui.theme.ThemeMode
  * кнопкой на экране, действием в уведомлении или смахиванием уведомления.
  */
 class AlarmActivity : ComponentActivity() {
-    /** Название может обновиться, если новый сигнал пришёл в существующую singleTask Activity. */
-    private var label by mutableStateOf("")
-    private var alarmId by mutableStateOf(AlarmScheduler.NO_ID)
+    /**
+     * AUD-17 (BKL1): группа совпадающих звонков. `onNewIntent` ДОПОЛНЯЕТ группу, а не затирает.
+     */
+    private var groupMembers by mutableStateOf<List<RingGroupMember>>(emptyList())
 
-    /** Остаток снузов на момент показа кнопки (пересчитывается при обновлении интента). */
+    /** Остаток снузов — минимум по участникам (консервативная подпись «осталось N»). */
     private var snoozeRemaining by mutableStateOf(0)
+
+    /** Снуз доступен хотя бы одному участнику (кнопка одна на группу). */
+    private var snoozeAvailable by mutableStateOf(false)
     private var snoozeIntervalMinutes by mutableStateOf(0)
 
     /** Способ выключения (жёсткий режим): задание усложняет «Стоп». «Отложить» работает всегда. */
@@ -120,15 +129,18 @@ class AlarmActivity : ComponentActivity() {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
+                    // AUD-17: уникальные названия всех участников группы (пустые схлопнуты в один
+                    // дефолтный текст, повторы убраны — RingGroup).
                     Text(
-                        AlarmService.displayText(label),
+                        ringGroupDisplayNames(groupMembers, AlarmService.DEFAULT_TEXT)
+                            .joinToString(", "),
                         style = MaterialTheme.typography.displaySmall,
                         textAlign = TextAlign.Center
                     )
 
                     Spacer(Modifier.height(32.dp))
 
-                    if (snoozeRemaining > 0) {
+                    if (snoozeAvailable) {
                         OutlinedButton(onClick = ::snoozeAlarm) {
                             Text("Отложить на $snoozeIntervalMinutes мин  ·  осталось $snoozeRemaining")
                         }
@@ -177,20 +189,34 @@ class AlarmActivity : ComponentActivity() {
     }
 
     private fun updateFromIntent(intent: Intent) {
-        label = intent
-            .getStringExtra(AlarmService.EXTRA_LABEL)
-            .orEmpty()
-        alarmId = intent.getLongExtra(AlarmService.EXTRA_ALARM_ID, AlarmScheduler.NO_ID)
-        if (alarmId != AlarmScheduler.NO_ID) {
-            snoozeRemaining = RingSessionController.remainingSnoozes(this, alarmId)
-            snoozeIntervalMinutes = RingSessionController.snoozeIntervalMinutes(this)
+        val id = intent.getLongExtra(AlarmService.EXTRA_ALARM_ID, AlarmScheduler.NO_ID)
+        if (id == AlarmScheduler.NO_ID) return
+        val label = intent.getStringExtra(AlarmService.EXTRA_LABEL).orEmpty()
+        val at = intent
+            .getLongExtra(AlarmScheduler.EXTRA_TRIGGER_AT_MILLIS, AlarmScheduler.NO_TRIGGER_AT_MILLIS)
+            .takeIf { it != AlarmScheduler.NO_TRIGGER_AT_MILLIS }
+            ?: System.currentTimeMillis()
+        val member = RingGroupMember(alarmId = id, label = label, scheduledTriggerAtMillis = at)
+
+        // Присоединяем к текущей группе в пределах окна; иначе начинаем новую (как в сервисе).
+        val window = AlarmFireValidator.DefaultTolerance.toMillis()
+        groupMembers = if (groupMembers.isEmpty() || ringGroupCanJoin(groupMembers, member, window)) {
+            ringGroupWith(groupMembers, member)
         } else {
-            snoozeRemaining = 0
+            listOf(member)
         }
+
+        // Кнопка «Отложить»: доступна, если снуз есть хотя бы у одного; «осталось N» — минимум
+        // по участникам (консервативная оценка, решение владельца).
+        val remainings = groupMembers.map { RingSessionController.remainingSnoozes(this, it.alarmId) }
+        snoozeRemaining = remainings.minOrNull() ?: 0
+        snoozeAvailable = remainings.any { it > 0 }
+        snoozeIntervalMinutes = RingSessionController.snoozeIntervalMinutes(this)
     }
 
     private fun snoozeAlarm() {
-        AlarmService.snooze(this, alarmId, label)
+        val primary = groupMembers.firstOrNull() ?: return
+        AlarmService.snooze(this, primary.alarmId, primary.label)
         finish()
     }
 
