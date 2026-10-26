@@ -15,10 +15,12 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import ru.titeha.shiftalarm.MainActivity
+import ru.titeha.shiftalarm.data.AlarmEntity
 import ru.titeha.shiftalarm.data.AlarmEventLog
 import ru.titeha.shiftalarm.data.AlarmEventType
 import ru.titeha.shiftalarm.data.AlarmRepository
 import ru.titeha.shiftalarm.data.SettingsStore
+import ru.titeha.shiftalarm.schedule.AlarmTimes
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CoroutineScope
@@ -122,6 +124,24 @@ object PreRingPolicy {
       DisableDecision.CancelNotificationOnly
     }
 
+  /** AUD-17: что делает действие «Выключить будильник» с одним участником группы. */
+  enum class DisableAction { SkipCurrentOccurrence, CompleteOneShot, CancelNotificationOnly }
+
+  /**
+   * Итог действия «Выключить будильник» из плашки для одного будильника:
+   *  - [DisableAction.SkipCurrentOccurrence] — повторяющийся: пропустить ТЕКУЩЕЕ срабатывание,
+   *    будильник остаётся включённым;
+   *  - [DisableAction.CompleteOneShot] — разовый: завершить по правилу `deleteAfterFiring`;
+   *  - [DisableAction.CancelNotificationOnly] — устаревшее действие/будильник удалён: только
+   *    снять плашку, будильник не трогать.
+   */
+  fun disableAction(alarm: AlarmEntity?, decision: DisableDecision): DisableAction = when {
+    alarm == null || decision == DisableDecision.CancelNotificationOnly ->
+      DisableAction.CancelNotificationOnly
+    AlarmTimes.isOneShot(alarm) -> DisableAction.CompleteOneShot
+    else -> DisableAction.SkipCurrentOccurrence
+  }
+
   /**
    * AUD-16 (D3): обрабатывать ли действие приёмника при выключенном тумблере pre-ring.
    * Новые плашки при выключенном тумблере НЕ ставим, но действие «Выключить» и снятие уже
@@ -205,13 +225,13 @@ class PreRingReceiver : BroadcastReceiver() {
           try {
             val repo = AlarmRepository(context)
             groupIds.forEach { id ->
-              val alarm = repo.byId(id)
-              val expected = if (alarm != null && alarm.enabled) {
+              val alarm = repo.byId(id) ?: return@forEach
+              val expected = if (alarm.enabled) {
                 AlarmScheduler.nextTriggerAtMillis(context, repo, alarm)
               } else {
                 null
               }
-              // AUD-13 (R-05): устаревшее действие (будильник уже изменён/выключен) НЕ выключает
+              // AUD-13 (R-05): устаревшее действие (будильник уже изменён/выключен) НЕ трогает
               // новый план — только снимаем старую плашку.
               val decision = PreRingPolicy.disableDecision(
                 extraRingAtMillis = actionRingAt.takeIf { it > 0 },
@@ -219,9 +239,29 @@ class PreRingReceiver : BroadcastReceiver() {
                 nowMillis = System.currentTimeMillis(),
                 windowMs = PreRingPolicy.RELEVANCE_WINDOW_MS,
               )
-              if (decision == PreRingPolicy.DisableDecision.DisableAlarm && alarm != null) {
-                repo.update(alarm.copy(enabled = false))
-                AlarmScheduler.reschedule(context, repo, alarm.copy(enabled = false))
+              when (PreRingPolicy.disableAction(alarm, decision)) {
+                PreRingPolicy.DisableAction.CancelNotificationOnly -> return@forEach
+
+                PreRingPolicy.DisableAction.CompleteOneShot -> {
+                  // Разовый: «пропустить текущий звонок» = завершить по правилу обычного срабатывания
+                  // (удалить при deleteAfterFiring, иначе выключить).
+                  if (alarm.deleteAfterFiring) {
+                    repo.delete(alarm)
+                  } else {
+                    repo.update(alarm.copy(enabled = false))
+                  }
+                  // Снять системный сигнал (enabled=false → cancel) и пересобрать DE-кэш без этого будильника.
+                  AlarmScheduler.reschedule(context, repo, alarm.copy(enabled = false))
+                }
+
+                PreRingPolicy.DisableAction.SkipCurrentOccurrence -> {
+                  // DisableAlarm => expected не null (иначе isStillRelevant был бы false).
+                  val ringAt = expected ?: return@forEach
+                  // Повторяющийся: помечаем ТЕКУЩЕЕ срабатывание пропущенным (enabled НЕ меняется),
+                  // reschedule пересчитает следующее непропущенное срабатывание.
+                  repo.addSkipped(id, ringAt)
+                  AlarmScheduler.reschedule(context, repo, alarm)
+                }
               }
             }
             groupIds.forEach { cancelPreRingNotification(context, it) }
