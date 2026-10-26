@@ -27,10 +27,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *    см. [MIGRATION_5_6]).
  *  - v7 — «по календарю страны»: режим [AlarmEntity.MODE_CALENDAR] вынесен в собственное
  *    значение `mode` (см. [MIGRATION_6_7]); `honorHolidays` остаётся включённым.
+ *  - v8 — пропуск текущего звонка из плашки PreRing: таблица `skipped_alarm_occurrences`
+ *    (см. [MIGRATION_7_8]).
  */
 @Database(
-  entities = [AlarmEntity::class, AlarmPeriod::class, AlarmOverride::class],
-  version = 7,
+  entities = [
+    AlarmEntity::class,
+    AlarmPeriod::class,
+    AlarmOverride::class,
+    SkippedAlarmOccurrence::class
+  ],
+  version = 8,
   exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -38,6 +45,7 @@ abstract class AppDatabase : RoomDatabase() {
   abstract fun alarmDao(): AlarmDao
   abstract fun alarmPeriodDao(): AlarmPeriodDao
   abstract fun alarmOverrideDao(): AlarmOverrideDao
+  abstract fun skippedAlarmOccurrenceDao(): SkippedAlarmOccurrenceDao
 
   companion object {
     @Volatile private var instance: AppDatabase? = null
@@ -156,6 +164,28 @@ abstract class AppDatabase : RoomDatabase() {
       }
     }
 
+    /**
+     * Миграция 7→8 (пропуск текущего звонка из плашки PreRing): таблица пропущенных срабатываний.
+     * SQL таблицы/индекса скопирован дословно из `app/schemas/.../8.json` (поле `createSql`) —
+     * иначе хэш схемы разойдётся и Room упадёт на старте. Проверяется в `AppDatabaseMigrationTest`.
+     */
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          "CREATE TABLE IF NOT EXISTS `skipped_alarm_occurrences` (" +
+            "`alarmId` INTEGER NOT NULL, " +
+            "`triggerAtMillis` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`alarmId`, `triggerAtMillis`), " +
+            "FOREIGN KEY(`alarmId`) REFERENCES `alarms`(`id`) " +
+            "ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
+        db.execSQL(
+          "CREATE INDEX IF NOT EXISTS `index_skipped_alarm_occurrences_alarmId` " +
+            "ON `skipped_alarm_occurrences` (`alarmId`)"
+        )
+      }
+    }
+
     fun get(context: Context): AppDatabase =
       instance ?: synchronized(this) {
         instance ?: Room.databaseBuilder(
@@ -169,7 +199,8 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_3_4,
             MIGRATION_4_5,
             MIGRATION_5_6,
-            MIGRATION_6_7
+            MIGRATION_6_7,
+            MIGRATION_7_8
           )
           .build().also { instance = it }
       }
