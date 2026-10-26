@@ -7,6 +7,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ru.titeha.shiftalarm.data.AlarmEntity
 import java.time.LocalDateTime
 
 /**
@@ -205,5 +206,39 @@ class PreRingPolicyTest {
     assertEquals(listOf(1L, 2L), PreRingPolicy.disableTargets(1L, listOf(1L, 2L, 1L)))
     assertEquals(listOf(2L), PreRingPolicy.disableTargets(2L, null))
     assertEquals(listOf(2L), PreRingPolicy.disableTargets(2L, emptyList()))
+  }
+
+  // --- Пропуск текущего звонка (вариант Б): решение по одному будильнику ---
+
+  private fun recurring() = AlarmEntity(mode = AlarmEntity.MODE_WEEKLY, daysMask = 1)
+  private fun oneShot(deleteAfterFiring: Boolean = false) =
+    AlarmEntity(mode = AlarmEntity.MODE_WEEKLY, daysMask = 0, deleteAfterFiring = deleteAfterFiring)
+
+  @Test
+  fun `актуальное действие для повторяющегося - пропустить текущее срабатывание`() {
+    assertEquals(
+      PreRingPolicy.DisableAction.SkipCurrentOccurrence,
+      PreRingPolicy.disableAction(recurring(), PreRingPolicy.DisableDecision.DisableAlarm)
+    )
+  }
+
+  @Test
+  fun `актуальное действие для разового - завершить будильник`() {
+    assertEquals(
+      PreRingPolicy.DisableAction.CompleteOneShot,
+      PreRingPolicy.disableAction(oneShot(), PreRingPolicy.DisableDecision.DisableAlarm)
+    )
+  }
+
+  @Test
+  fun `устаревшее действие или удалённый будильник - только снять плашку`() {
+    assertEquals(
+      PreRingPolicy.DisableAction.CancelNotificationOnly,
+      PreRingPolicy.disableAction(recurring(), PreRingPolicy.DisableDecision.CancelNotificationOnly)
+    )
+    assertEquals(
+      PreRingPolicy.DisableAction.CancelNotificationOnly,
+      PreRingPolicy.disableAction(null, PreRingPolicy.DisableDecision.DisableAlarm)
+    )
   }
 }

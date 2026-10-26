@@ -176,6 +176,40 @@ class AppDatabaseMigrationTest {
   }
 
   @Test
+  fun migrate7To8_addsSkippedOccurrences_andPreservesAlarms() {
+    // v7: будильник-смена (таблицы skipped_alarm_occurrences ещё нет).
+    helper.createDatabase(dbName, 7).apply {
+      execSQL(
+        "INSERT INTO alarms " +
+          "(label, enabled, hour, minute, mode, daysMask, presetId, anchorEpochDay, " +
+          "deleteAfterFiring, freezeCycleDuringOff, cycleSpec, honorHolidays, polarity, isStudy) " +
+          "VALUES ('Смена', 1, 7, 0, 'shift', 0, '2x2', 20000, 0, 0, NULL, 0, 'WORK', 0)"
+      )
+      close()
+    }
+
+    val db = helper.runMigrationsAndValidate(dbName, 8, true, AppDatabase.MIGRATION_7_8)
+
+    // Старый будильник на месте.
+    db.query("SELECT label, enabled FROM alarms").use { c ->
+      assertTrue("ожидалась сохранённая строка будильника", c.moveToFirst())
+      assertEquals("Смена", c.getString(0))
+      assertEquals(1, c.getInt(1))
+    }
+
+    // Новая таблица пропусков существует и принимает запись, привязанную к будильнику.
+    db.execSQL(
+      "INSERT INTO skipped_alarm_occurrences (alarmId, triggerAtMillis) " +
+        "SELECT id, 1700000000000 FROM alarms LIMIT 1"
+    )
+    db.query("SELECT COUNT(*) FROM skipped_alarm_occurrences").use { c ->
+      assertTrue(c.moveToFirst())
+      assertEquals(1, c.getInt(0))
+    }
+    db.close()
+  }
+
+  @Test
   fun migrate6To7_movesWeeklyRestHonorToCalendar() {
     // v6: три будильника — weekly+REST+honor, weekly+REST без honor, shift+REST+honor.
     helper.createDatabase(dbName, 6).apply {

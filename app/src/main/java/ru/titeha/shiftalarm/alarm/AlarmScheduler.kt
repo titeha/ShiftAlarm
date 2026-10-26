@@ -86,38 +86,21 @@ object AlarmScheduler {
   suspend fun reschedule(context: Context, repo: AlarmRepository, alarm: AlarmEntity) {
     // AUD-2/B-04: собрать пропуски из старого кэша ДО перезаписи в refreshDirectBootCache ниже.
     collectMissed(context)
-    reschedule(
-      context = context,
-      alarm = alarm,
-      periods = offPeriodsFor(repo, alarm),
-      overrides = overridesFor(repo, alarm)
-    )
+    val next = if (alarm.enabled) {
+      nextUnskipped(context, repo, alarm, offPeriodsFor(repo, alarm), overridesFor(repo, alarm))
+    } else {
+      null
+    }
+    schedule(context, alarm, next)
     refreshDirectBootCache(context, repo)
   }
 
   /**
-   * Запланировать или отменить будильник.
+   * Запланировать или отменить будильник по уже вычисленному времени [next].
    *
    * Если будильник выключен или ближайшего срабатывания нет, системный сигнал снимается.
    */
-  fun reschedule(
-    context: Context,
-    alarm: AlarmEntity,
-    periods: List<AlarmPeriod> = emptyList(),
-    overrides: List<ScheduleOverrides.DayOverride> = emptyList()
-  ) {
-    val next = if (alarm.enabled) {
-      AlarmTimes.next(
-        alarm,
-        periods,
-        overrides,
-        LocalDateTime.now(),
-        SettingsStore(context).globalWorkWeek()
-      )
-    } else {
-      null
-    }
-
+  private fun schedule(context: Context, alarm: AlarmEntity, next: LocalDateTime?) {
     if (next == null) {
       cancel(context, alarm.id)
       AlarmEventLog(context).record(
@@ -250,18 +233,25 @@ object AlarmScheduler {
     val report = AlarmRescheduleBatch.run(
       alarms = alarms,
       operation = { alarm ->
-        // Через не-repo перегрузку, чтобы кэш Direct Boot пересобрать один раз ниже, а не на каждой
-        // записи. Периоды применимы всем режимам; правки (подмены смен) — только сменным.
-        reschedule(
-          context = context,
-          alarm = alarm,
-          periods = periodsByAlarm[alarm.id].orEmpty(),
-          overrides = if (alarm.mode == AlarmEntity.MODE_SHIFT) {
-            overridesByAlarm[alarm.id].orEmpty()
-          } else {
-            emptyList()
-          }
-        )
+        // next считаем здесь (периоды/правки уже сгруппированы), а [schedule] не трогает кэш Direct
+        // Boot — он пересобирается один раз ниже, а не на каждой записи. Периоды применимы всем
+        // режимам; правки (подмены смен) — только сменным.
+        val next = if (alarm.enabled) {
+          nextUnskipped(
+            context = context,
+            repo = repo,
+            alarm = alarm,
+            periods = periodsByAlarm[alarm.id].orEmpty(),
+            overrides = if (alarm.mode == AlarmEntity.MODE_SHIFT) {
+              overridesByAlarm[alarm.id].orEmpty()
+            } else {
+              emptyList()
+            }
+          )
+        } else {
+          null
+        }
+        schedule(context, alarm, next)
       }
     )
 
@@ -332,14 +322,36 @@ object AlarmScheduler {
     alarm: AlarmEntity,
   ): Long? {
     if (!alarm.enabled) return null
-    val next = AlarmTimes.next(
-      alarm,
-      offPeriodsFor(repo, alarm),
-      overridesFor(repo, alarm),
-      LocalDateTime.now(),
-      SettingsStore(context).globalWorkWeek()
+    val next = nextUnskipped(
+      context = context,
+      repo = repo,
+      alarm = alarm,
+      periods = offPeriodsFor(repo, alarm),
+      overrides = overridesFor(repo, alarm),
     ) ?: return null
     return AlarmInstant.epochMilli(next)
+  }
+
+  /**
+   * Ближайшее НЕпропущенное срабатывание будильника (LocalDateTime). Читает skip-множество
+   * ([AlarmRepository.skippedFor]) один раз и делегирует чистой логике [AlarmTimes.nextUnskipped].
+   */
+  private suspend fun nextUnskipped(
+    context: Context,
+    repo: AlarmRepository,
+    alarm: AlarmEntity,
+    periods: List<AlarmPeriod>,
+    overrides: List<ScheduleOverrides.DayOverride>,
+  ): LocalDateTime? {
+    val skipped = repo.skippedFor(alarm.id).toSet()
+    return AlarmTimes.nextUnskipped(
+      alarm = alarm,
+      periods = periods,
+      overrides = overrides,
+      from = LocalDateTime.now(),
+      globalWeek = SettingsStore(context).globalWorkWeek(),
+      skippedMillis = skipped,
+    )
   }
 
   /**
@@ -521,6 +533,11 @@ object AlarmScheduler {
     PLAN_MUTEX.withLock {
       // AUD-2/B-04: единственная точка перезаписи кэша — пропуски собираем ДО неё (идемпотентно).
       collectMissed(context)
+      // Пропущенные срабатывания НЕ удаляем в момент пропуска: запись должна пережить повторное
+      // перепланирование в окне до времени звонка (иначе «пропущенное» срабатывание воскреснет на
+      // старте/разблокировке). Удаляем только те, чьё время уже прошло — они больше не нужны.
+      // Чистим здесь (пересборка идёт после любого перепланирования), чтобы таблица не росла бесконечно.
+      repo.cleanupSkippedOlderThan(System.currentTimeMillis())
 
       val store = DirectBootAlarmStore(context)
 
@@ -532,15 +549,19 @@ object AlarmScheduler {
 
       // AUD-2: план ближайших срабатываний — до MAX_PLAN_PER_ALARM записей на будильник, чтобы
       // залоченный телефон мог прозвонить несколько раз до разблокировки (N-2). Разовый будильник
-      // получает ровно одну запись с флагом oneShot (без «завтра то же время» — N-1).
+      // получает ровно одну запись с флагом oneShot (без «завтра то же время» — N-1). Пропущенные
+      // срабатывания (skip-store) не попадают в план.
       val plan = repo.enabled().map { alarm ->
         val oneShot = AlarmTimes.isOneShot(alarm)
         val periods = offPeriodsFor(repo, alarm)
         val overrides = overridesFor(repo, alarm)
+        val skipped = repo.skippedFor(alarm.id).toSet()
         val nextMillis = buildList {
           var cursor = now
           while (size < MAX_PLAN_PER_ALARM) {
-            val next = AlarmTimes.next(alarm, periods, overrides, cursor, globalWeek) ?: break
+            val next = AlarmTimes.nextUnskipped(
+              alarm, periods, overrides, cursor, globalWeek, skipped
+            ) ?: break
             val millis = AlarmInstant.epochMilli(next)
             if (millis > horizonMillis) break
             add(millis)
