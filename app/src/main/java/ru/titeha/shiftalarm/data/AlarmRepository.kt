@@ -105,10 +105,6 @@ class AlarmRepository(context: Context) {
   suspend fun addSkipped(alarmId: Long, triggerAtMillis: Long) =
     skippedDao.insert(SkippedAlarmOccurrence(alarmId = alarmId, triggerAtMillis = triggerAtMillis))
 
-  /** Снять пометку пропуска с конкретного срабатывания. */
-  suspend fun removeSkipped(alarmId: Long, triggerAtMillis: Long) =
-    skippedDao.delete(alarmId, triggerAtMillis)
-
   /** Пропущено ли конкретное срабатывание [triggerAtMillis]. */
   suspend fun isSkipped(alarmId: Long, triggerAtMillis: Long): Boolean =
     skippedDao.exists(alarmId, triggerAtMillis)
