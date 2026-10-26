@@ -86,38 +86,21 @@ object AlarmScheduler {
   suspend fun reschedule(context: Context, repo: AlarmRepository, alarm: AlarmEntity) {
     // AUD-2/B-04: собрать пропуски из старого кэша ДО перезаписи в refreshDirectBootCache ниже.
     collectMissed(context)
-    reschedule(
-      context = context,
-      alarm = alarm,
-      periods = offPeriodsFor(repo, alarm),
-      overrides = overridesFor(repo, alarm)
-    )
+    val next = if (alarm.enabled) {
+      nextUnskipped(context, repo, alarm, offPeriodsFor(repo, alarm), overridesFor(repo, alarm))
+    } else {
+      null
+    }
+    schedule(context, alarm, next)
     refreshDirectBootCache(context, repo)
   }
 
   /**
-   * Запланировать или отменить будильник.
+   * Запланировать или отменить будильник по уже вычисленному времени [next].
    *
    * Если будильник выключен или ближайшего срабатывания нет, системный сигнал снимается.
    */
-  fun reschedule(
-    context: Context,
-    alarm: AlarmEntity,
-    periods: List<AlarmPeriod> = emptyList(),
-    overrides: List<ScheduleOverrides.DayOverride> = emptyList()
-  ) {
-    val next = if (alarm.enabled) {
-      AlarmTimes.next(
-        alarm,
-        periods,
-        overrides,
-        LocalDateTime.now(),
-        SettingsStore(context).globalWorkWeek()
-      )
-    } else {
-      null
-    }
-
+  private fun schedule(context: Context, alarm: AlarmEntity, next: LocalDateTime?) {
     if (next == null) {
       cancel(context, alarm.id)
       AlarmEventLog(context).record(
@@ -252,16 +235,22 @@ object AlarmScheduler {
       operation = { alarm ->
         // Через не-repo перегрузку, чтобы кэш Direct Boot пересобрать один раз ниже, а не на каждой
         // записи. Периоды применимы всем режимам; правки (подмены смен) — только сменным.
-        reschedule(
-          context = context,
-          alarm = alarm,
-          periods = periodsByAlarm[alarm.id].orEmpty(),
-          overrides = if (alarm.mode == AlarmEntity.MODE_SHIFT) {
-            overridesByAlarm[alarm.id].orEmpty()
-          } else {
-            emptyList()
-          }
-        )
+        val next = if (alarm.enabled) {
+          nextUnskipped(
+            context = context,
+            repo = repo,
+            alarm = alarm,
+            periods = periodsByAlarm[alarm.id].orEmpty(),
+            overrides = if (alarm.mode == AlarmEntity.MODE_SHIFT) {
+              overridesByAlarm[alarm.id].orEmpty()
+            } else {
+              emptyList()
+            }
+          )
+        } else {
+          null
+        }
+        schedule(context, alarm, next)
       }
     )
 
@@ -332,14 +321,36 @@ object AlarmScheduler {
     alarm: AlarmEntity,
   ): Long? {
     if (!alarm.enabled) return null
-    val next = AlarmTimes.next(
-      alarm,
-      offPeriodsFor(repo, alarm),
-      overridesFor(repo, alarm),
-      LocalDateTime.now(),
-      SettingsStore(context).globalWorkWeek()
+    val next = nextUnskipped(
+      context = context,
+      repo = repo,
+      alarm = alarm,
+      periods = offPeriodsFor(repo, alarm),
+      overrides = overridesFor(repo, alarm),
     ) ?: return null
     return AlarmInstant.epochMilli(next)
+  }
+
+  /**
+   * Ближайшее НЕпропущенное срабатывание будильника (LocalDateTime). Читает skip-множество
+   * ([AlarmRepository.skippedFor]) один раз и делегирует чистой логике [AlarmTimes.nextUnskipped].
+   */
+  private suspend fun nextUnskipped(
+    context: Context,
+    repo: AlarmRepository,
+    alarm: AlarmEntity,
+    periods: List<AlarmPeriod>,
+    overrides: List<ScheduleOverrides.DayOverride>,
+  ): LocalDateTime? {
+    val skipped = repo.skippedFor(alarm.id).toSet()
+    return AlarmTimes.nextUnskipped(
+      alarm = alarm,
+      periods = periods,
+      overrides = overrides,
+      from = LocalDateTime.now(),
+      globalWeek = SettingsStore(context).globalWorkWeek(),
+      skippedMillis = skipped,
+    )
   }
 
   /**

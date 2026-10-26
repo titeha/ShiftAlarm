@@ -216,6 +216,36 @@ object AlarmTimes {
     effectiveMode(alarm) == AlarmEntity.MODE_WEEKLY && alarm.daysMask == 0
 
   /**
+   * Ближайшее НЕпропущенное срабатывание строго после [from].
+   *
+   * [skippedMillis] — epoch-millis срабатываний, помеченных пропущенными (кнопка «Выключить
+   * будильник» в плашке PreRing). Каждое пропущенное срабатывание пропускается, и расчёт
+   * продолжается со следующего за ним времени. null — подходящего (непропущенного) срабатывания
+   * нет или за горизонтом.
+   *
+   * Разовый будильник ([isOneShot]) имеет единственное срабатывание: если оно пропущено, то
+   * «следующего» нет — возвращаем null (будильник остаётся включённым без запланированного
+   * звонка; завершение разового обрабатывается отдельно в PreRing).
+   */
+  fun nextUnskipped(
+    alarm: AlarmEntity,
+    periods: List<AlarmPeriod>,
+    overrides: List<ScheduleOverrides.DayOverride>,
+    from: LocalDateTime,
+    globalWeek: WorkWeek = CountryProfile.RU.standardWeek,
+    skippedMillis: Set<Long> = emptySet(),
+  ): LocalDateTime? {
+    var cursor = from
+    var next = next(alarm, periods, overrides, cursor, globalWeek) ?: return null
+    while (AlarmInstant.epochMilli(next) in skippedMillis) {
+      if (isOneShot(alarm)) return null
+      cursor = next
+      next = next(alarm, periods, overrides, cursor, globalWeek) ?: return null
+    }
+    return next
+  }
+
+  /**
    * Участвует ли производственный календарь в расчёте [alarm]. Если нет — отсутствие данных на год
    * расчёт не ухудшает, поэтому диагностика о деградации таким будильникам не пишется.
    *
