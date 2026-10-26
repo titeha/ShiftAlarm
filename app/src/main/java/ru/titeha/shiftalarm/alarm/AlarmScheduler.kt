@@ -532,6 +532,10 @@ object AlarmScheduler {
     PLAN_MUTEX.withLock {
       // AUD-2/B-04: единственная точка перезаписи кэша — пропуски собираем ДО неё (идемпотентно).
       collectMissed(context)
+      // Пропущенные срабатывания, чьё время уже прошло, больше не нужны: при следующем расчёте
+      // ближайшее время строго позже «сейчас». Чистим здесь (пересборка идёт после любого
+      // перепланирования), чтобы таблица не росла бесконечно.
+      repo.cleanupSkippedOlderThan(System.currentTimeMillis())
 
       val store = DirectBootAlarmStore(context)
 
@@ -543,15 +547,19 @@ object AlarmScheduler {
 
       // AUD-2: план ближайших срабатываний — до MAX_PLAN_PER_ALARM записей на будильник, чтобы
       // залоченный телефон мог прозвонить несколько раз до разблокировки (N-2). Разовый будильник
-      // получает ровно одну запись с флагом oneShot (без «завтра то же время» — N-1).
+      // получает ровно одну запись с флагом oneShot (без «завтра то же время» — N-1). Пропущенные
+      // срабатывания (skip-store) не попадают в план.
       val plan = repo.enabled().map { alarm ->
         val oneShot = AlarmTimes.isOneShot(alarm)
         val periods = offPeriodsFor(repo, alarm)
         val overrides = overridesFor(repo, alarm)
+        val skipped = repo.skippedFor(alarm.id).toSet()
         val nextMillis = buildList {
           var cursor = now
           while (size < MAX_PLAN_PER_ALARM) {
-            val next = AlarmTimes.next(alarm, periods, overrides, cursor, globalWeek) ?: break
+            val next = AlarmTimes.nextUnskipped(
+              alarm, periods, overrides, cursor, globalWeek, skipped
+            ) ?: break
             val millis = AlarmInstant.epochMilli(next)
             if (millis > horizonMillis) break
             add(millis)
