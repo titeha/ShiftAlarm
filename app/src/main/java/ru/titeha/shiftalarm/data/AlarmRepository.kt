@@ -11,6 +11,7 @@ class AlarmRepository(context: Context) {
   private val dao = db.alarmDao()
   private val periodDao = db.alarmPeriodDao()
   private val overrideDao = db.alarmOverrideDao()
+  private val skippedDao = db.skippedAlarmOccurrenceDao()
 
   val all: Flow<List<AlarmEntity>> = dao.observeAll()
 
@@ -97,4 +98,26 @@ class AlarmRepository(context: Context) {
     overrideDao.deleteCovering(alarmId, epochDay)
 
   suspend fun deleteOverridesForAlarm(alarmId: Long) = overrideDao.deleteForAlarm(alarmId)
+
+  // --- Пропущенные срабатывания (кнопка «Выключить будильник» в плашке PreRing) ---
+
+  /** Пометить конкретное срабатывание [triggerAtMillis] (epoch millis) пропущенным. Идемпотентно. */
+  suspend fun addSkipped(alarmId: Long, triggerAtMillis: Long) =
+    skippedDao.insert(SkippedAlarmOccurrence(alarmId = alarmId, triggerAtMillis = triggerAtMillis))
+
+  /** Снять пометку пропуска с конкретного срабатывания. */
+  suspend fun removeSkipped(alarmId: Long, triggerAtMillis: Long) =
+    skippedDao.delete(alarmId, triggerAtMillis)
+
+  /** Пропущено ли конкретное срабатывание [triggerAtMillis]. */
+  suspend fun isSkipped(alarmId: Long, triggerAtMillis: Long): Boolean =
+    skippedDao.exists(alarmId, triggerAtMillis)
+
+  /** Все пропущенные срабатывания будильника (epoch millis, по возрастанию). */
+  suspend fun skippedFor(alarmId: Long): List<Long> =
+    skippedDao.forAlarm(alarmId).map { it.triggerAtMillis }
+
+  /** Убрать пропуски, чьё время уже прошло ([cutoffMillis] — текущее время в epoch millis). */
+  suspend fun cleanupSkippedOlderThan(cutoffMillis: Long) =
+    skippedDao.deleteOlderThan(cutoffMillis)
 }
